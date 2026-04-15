@@ -1,0 +1,33 @@
+debug: true
+event_fifo: "/tmp/goftpd.fifo"
+
+irc:
+  host: "irc.example.com"
+  port: 6667
+  nick: "GoSitebot"
+  user: "sitebot"
+  realname: "GoSitebot v1.0"
+  password: ""          # IRC server password (leave empty if not needed)
+  channels:
+    - "#releases"
+    - "#announce"
+
+encryption:
+  enabled: true
+  keys:
+    "#releases": "cbc:YourBlowfishKeyHere123456"
+    "#announce": ""
+
+plugins:
+  enabled:
+    Announce: true
+    TVMaze: true
+    IMDB: true
+  config:
+    Announce:
+      template_dir: "./plugins/sitebot/etc/templates"
+    TVMaze:
+      enabled: true
+      api_key: ""
+    IMDB:
+      enabled: true

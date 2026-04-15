@@ -1,0 +1,65 @@
+# GoFTPd .gitignore
+
+# Binary
+/goftpd
+*.exe
+*.so
+*.dylib
+copy.sh
+
+# TLS certificates (generate your own with generate_certs.sh)
+etc/server.crt
+etc/server.key
+*.pem
+
+# User files - only keep default.user and goftpd as examples
+etc/users/*
+!etc/users/default.user
+!etc/users/goftpd
+
+# Group files - only keep NoGroup as example
+etc/groups/*
+!etc/groups/NoGroup
+
+# Passwd file (contains hashes)
+etc/passwd
+
+# Site data (actual files on disk)
+site/
+/site
+
+# Databases and logs
+*.db
+*.sqlite
+*.sqlite3
+logs/
+*.log
+
+# VFS persistence data
+userdata/
+
+# Runtime config (keep examples only)
+etc/config.yml
+!etc/config-master.yml
+!etc/config-slave.yml
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build / Dependencies
+vendor/
+*.o
+*.a
+
+# Proto generated files
+proto/pb/*.pb.go
+proto/pb/*_grpc.pb.go

@@ -1,0 +1,62 @@
+package core
+
+import (
+	"fmt"
+	"strings"
+)
+
+// DispatchSiteCommand routes SITE sub-commands to their specific handlers.
+// This keeps commands.go clean and focused on standard FTP/FXP protocol.
+func (s *Session) DispatchSiteCommand(args []string) bool {
+	if len(args) == 0 {
+		fmt.Fprintf(s.Conn, "500 SITE what?\r\n")
+		return false
+	}
+
+	siteCmd := strings.ToUpper(args[0])
+	remainingArgs := args[1:]
+
+	switch siteCmd {
+	// Informational Commands (site_info.go)
+	case "HELP":
+		return s.HandleSiteHelp(remainingArgs)
+	case "RULES":
+		return s.HandleSiteRules(remainingArgs)
+	case "WHO":
+		return s.HandleSiteWho(remainingArgs)
+
+	// Admin / User & Group Management (site_admin.go)
+	case "ADDUSER":
+		return s.HandleSiteAddUser(remainingArgs)
+	case "CHGRP":
+		return s.HandleSiteChGrp(remainingArgs)
+	case "CHPGRP":
+		return s.HandleSiteChPGrp(remainingArgs)
+	case "GADMIN":
+		return s.HandleSiteGAdmin(remainingArgs)
+	case "GRPADD":
+		return s.HandleSiteGrpAdd(remainingArgs)
+	case "GRPDEL":
+		return s.HandleSiteGrpDel(remainingArgs)
+	case "INVITE":
+		return s.HandleSiteInvite(remainingArgs)
+
+	// Release Management (site_nuke.go)
+	case "NUKE":
+		return s.HandleSiteNuke(remainingArgs)
+	case "UNNUKE":
+		return s.HandleSiteUnnuke(remainingArgs)
+
+	// Miscellaneous (site_misc.go)
+	case "CHMOD":
+		return s.HandleSiteChmod(remainingArgs)
+	case "XDUPE":
+		return s.HandleSiteXDupe(remainingArgs)
+	case "GRP":
+		return s.HandleSiteGrp(remainingArgs)
+
+	default:
+		fmt.Fprintf(s.Conn, "504 Unknown SITE command.\r\n")
+	}
+	return false
+}

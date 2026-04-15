@@ -1,0 +1,66 @@
+# ============================================================================
+# GoFTPd - MASTER Example
+# ============================================================================
+# Copy this to etc/config.yml on the MASTER machine.
+#
+# The master:
+#   - Listens for FTP clients on listen_port
+#   - Listens for slave connections on control_port
+#   - Keeps VFS in memory, routes transfers to slaves
+#   - Runs zipscript via VFS metadata (no disk writes)
+# ============================================================================
+
+sitename_long: "MySite"
+sitename_short: "MS"
+version: "1.0.0"
+
+listen_port: 21212
+public_ip: "1.2.3.4"
+pasv_min: 25000
+pasv_max: 30000
+
+mode: master
+
+master:
+  listen_host: "0.0.0.0"
+  control_port: 1099
+  heartbeat_timeout: 60
+
+slave:
+  name: ""
+  master_host: ""
+  master_port: 1099
+  roots: []
+
+storage_path: ./site
+acl_base_path: "/site"
+passwd_file: "etc/passwd"
+msg_path: "etc/msgs"
+
+tls_enabled: true
+tls_cert: ./etc/server.crt
+tls_key: ./etc/server.key
+
+creditcheck: true
+free_space_mb: 2048
+max_connections: 300
+
+show_diz:
+  .message: "*"
+  .imdb: "*"
+
+incomplete_indicator: "[incomplete]-%0"
+
+nuke_max_multiplier: 50
+nukedir_style: "[NUKED]-%N"
+
+plugins:
+  imdb:
+    enabled: true
+  tvmaze:
+    enabled: true
+
+xdupe_enabled: true
+xdupe_db_path: "./logs/xdupe.db"
+
+debug: false

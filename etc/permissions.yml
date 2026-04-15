@@ -1,0 +1,46 @@
+# GoFTPd goftpd-compatible ACL Rules
+# Format: type path [required_flags]
+# Types: privpath, upload, download, makedir, delete, rename, nuke, unnuke, dirlog, resume, deleteown, renameown, filemove, nodupecheck
+
+# Private sections
+privpath		/site/LINKS 						       1 =SiteOP
+privpath		/site/PRE/SiteOP 					       1 =SiteOP
+privpath		/site/PRE/TEST-GRP 					       1 =SiteOP
+privpath		/site/ARCHiVE/backup 					1 =SiteOP
+privpath		/site/ARCHiVE/COMPLETE 					1 =SiteOP
+
+# Upload permissions
+upload			/site/*							*
+
+# Resume/Download
+resume			/site/*							*
+download		/site/*							*
+
+# Directory operations
+makedir			/site/REQUESTS/*					1
+makedir			/site/*						1
+
+# Logging/Visibility
+dirlog			/site/PRE/*						       1
+dirlog			/site/*							*
+
+# Rename operations
+rename			/site/*							1
+renameown		/site/*							1
+
+# Nuke/Unnuke
+nuke			/site/*							1 A =NUKERS
+unnuke			/site/*							1 B =NUKERS
+
+# Delete operations
+delete			/site/PRE/*/*						       1
+delete			/site/*							1
+deleteown		/site/*							1
+
+# Move operations
+filemove		/site/*							=Admin
+
+# Dupe check bypass
+nodupecheck		/site/PRE/*						       1
+nodupecheck		/site/REQUESTS/*					       1
+nodupecheck		/site/SPEEDTEST/*					       1

@@ -1,0 +1,37 @@
+# ============================================================================
+# GoFTPd - SLAVE Example
+# ============================================================================
+# Copy this to etc/config.yml on each SLAVE machine.
+#
+# The slave:
+#   - Connects to master on startup (master_host:master_port)
+#   - Sends its name and file listing (remerge)
+#   - Waits for master commands (store, retrieve, delete)
+#   - Auto-reconnects if master restarts
+#
+# IMPORTANT:
+#   - Each slave MUST have a unique name
+#   - roots must point to existing directories
+#   - pasv_port_min/max must be open in your firewall
+#   - Uses the SAME TLS cert as the master
+# ============================================================================
+
+mode: slave
+
+slave:
+  name: "SLAVE1"
+  master_host: "1.2.3.4"
+  master_port: 1099
+  roots:
+    - "/data/site"
+    # - "/data2/site"          # Add more roots for multiple disks
+  pasv_port_min: 30000
+  pasv_port_max: 35000
+  bind_ip: ""
+  timeout: 60
+
+tls_enabled: true
+tls_cert: ./etc/server.crt
+tls_key: ./etc/server.key
+
+debug: false

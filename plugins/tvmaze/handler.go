@@ -1,0 +1,72 @@
+package tvmaze
+
+import (
+	"log"
+
+	"goftpd/internal/user"
+)
+
+type Handler struct {
+	APIKey string
+	Debug  bool
+}
+
+// New creates a new tvmaze handler with defaults.
+func New() *Handler {
+	return &Handler{
+		APIKey: "",
+		Debug:  false,
+	}
+}
+
+func NewHandler(apiKey string, debug bool) *Handler {
+	return &Handler{
+		APIKey: apiKey,
+		Debug:  debug,
+	}
+}
+
+// Plugin interface implementation
+
+func (h *Handler) Name() string {
+	return "tvmaze"
+}
+
+func (h *Handler) Init(config map[string]interface{}) error {
+	if apiKey, ok := config["api_key"].(string); ok {
+		h.APIKey = apiKey
+	}
+	if h.Debug {
+		log.Printf("[TVMAZE] Initialized with API key: %s", h.APIKey)
+	}
+	return nil
+}
+
+func (h *Handler) OnUpload(user *user.User, path string, filename string, size int64, speed float64) error {
+	// Extract release name from path/filename
+	// Query TVDB/TVMaze for episode info
+	// Update release directory with info
+	if h.Debug {
+		log.Printf("[TVMAZE] OnUpload: Checking %s for TV show data (speed=%.1f MB/s)", filename, speed/(1024*1024))
+	}
+	
+	// TODO: Parse filename, query API, add info to release
+	return nil
+}
+
+func (h *Handler) OnDownload(user *user.User, path string, filename string, size int64) error {
+	// Not needed for tvmaze
+	return nil
+}
+
+func (h *Handler) OnDirList(user *user.User, path string) (string, error) {
+	// Could return TV show info in directory listing
+	return "", nil
+}
+
+func (h *Handler) Stop() error {
+	if h.Debug {
+		log.Printf("[TVMAZE] Stopping")
+	}
+	return nil
+}
