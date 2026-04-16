@@ -110,18 +110,6 @@ Change the password immediately with `SITE CHPASS goftpd <newpass>`.
 
 Flags can be combined: `FLAGS 13` = siteop + user.
 
-## Race Stats
-
-Race stats are generated **live** from VFS metadata on every CWD (250- response). No `.message` files written to disk. Templates in `etc/msgs/racestats_*.msg`:
-
-- `racestats_header.msg`
-- `racestats_usertop.msg`
-- `racestats_groups.msg`
-- `racestats_grouptop.msg`
-- `racestats_footer.msg`
-
-Template variables: `%n` (position), `%u` (user), `%g` (group), `%f` (files), `%m` (size MB), `%s` (speed MB/s), `%p` (percent), `%e` (expected total files).
-
 ## Zipscript (master-side, drftpd-style)
 
 On every STOR:
