@@ -1,196 +1,187 @@
 # GoFTPd v1.0.1b
 
-A modular, drftpd-inspired FTP daemon written in Go. Distributed master/slave architecture with pzs-ng-style zipscript, CRC verification, race stats, and TLS 1.3.
+A distributed FTP daemon written in Go with a drftpd-inspired master/slave architecture. Features VFS-based zipscript with CRC32 verification, CP437 race stats, TLS 1.3, and glftpd-compatible user management.
 
 ## Architecture
 
-- **Master** — handles FTP clients, VFS in memory, routes transfers to slaves
-- **Slave** — storage daemon, auto-reconnects to master, handles file I/O
-- **Bridge** — master copies data between FTP client and slave, with CRC32 verification
+GoFTPd uses a master/slave model where transfers are bridged through the master:
 
-Run a slave on the same machine as the master if you want local data serving.
+```
+FTP Client <--TLS--> Master (VFS, zipscript, auth) <--gob--> Slave (disk I/O)
+```
+
+- **Master** — FTP server, VFS in memory, CRC32 verification, race stats, user auth
+- **Slave** — storage daemon, auto-reconnects, handles file reads/writes
+- **Bridge** — master relays data between client and slave via `io.TeeReader` (calculates CRC32 on the fly)
+
+To serve data locally, run a slave on the same machine as the master.
+
+## Quick Start
+
+```bash
+# Build
+./build.sh
+
+# Generate TLS certs (ECDSA P-384, TLS 1.3 AES-256-GCM)
+./generate_certs.sh
+
+# Configure
+cp etc/config-master.yml etc/config.yml
+# Edit etc/config.yml — set public_ip, ports, storage_path
+
+# Run master
+./goftpd
+
+# Run slave (same or different machine)
+cp etc/config-slave.yml etc/config.yml
+# Edit — set slave name, master_host, roots
+./goftpd
+```
+
+**Default login:** `goftpd` / `goftpd` (siteop). Change immediately with `SITE CHPASS`.
 
 ## Features
 
-- Distributed master/slave architecture
+**Transfer & Security**
 - TLS 1.3 with ECDSA P-384 certs (`TLS_AES_256_GCM_SHA384`)
-- VFS-based zipscript (no disk writes during upload — everything live)
-- CRC32 verification on upload (drftpd-style)
-- 0-byte file rejection
-- Virtual LIST entries (status bars, missing files, complete tags)
-- Live race stats on CWD (250- response from VFS)
-- pzs-ng-style SFV parsing
-- XDUPE protocol support
-- IMDb/TVMaze plugins
-- Dupe checker
-- Nuke/unnuke
+- AUTH TLS, PBSZ, PROT, SSCN, CPSV (FXP)
+- PRET, PASV, PORT modes
+- XDUPE duplicate file detection
+- Thread-safe gob streams (write mutex on master + slave)
+
+**Zipscript (master-side, drftpd-style)**
+- CRC32 verification on upload via `io.TeeReader` — zero overhead
+- 0-byte file rejection (unconditional delete)
+- CRC mismatch → file deleted, client notified
+- Files not in SFV → allowed (NFO, sample, tags pass through)
+- Virtual LIST entries: progress bars, complete tags, `-MISSING` files
+- Live race stats on CWD (250- response, CP437 box-drawing, ASCII art logo)
+- No disk writes during upload — all state in VFS memory
+
+**User Management**
 - glftpd-compatible user/group files
 - bcrypt + Apache MD5 (apr1) password hashing
+- Unknown hash formats rejected (fail-closed)
+- Per-user flags, groups, IPs, credits, ratios
+- ACL engine for path-based permissions
 
-## Build
+**Plugins**
+- IMDb — movie info lookup
+- TVMaze — TV show info
+- Sitebot — IRC integration (infrastructure)
 
-```bash
-./build.sh
-```
+## FTP Protocol Support
 
-Installs Go 1.26.2 if missing, downloads deps, builds `./goftpd` binary.
-
-## TLS Certificates
-
-```bash
-./generate_certs.sh
-```
-
-Generates ECDSA P-384 CA, server, and client certs (10-year validity).
-
-## Configuration
-
-Three config files in `etc/`:
-
-- `config.yml` — active config
-- `config-master.yml` — master example
-- `config-slave.yml` — slave example
-
-Copy whichever one applies to `config.yml` before starting.
-
-## Default Login
-
-- **User:** `goftpd`
-- **Password:** `goftpd`
-- **Flags:** `1` (siteop)
-
-Change the password immediately with `SITE CHPASS goftpd <newpass>`.
+`FEAT` `OPTS` `USER` `PASS` `SYST` `TYPE` `REST` `PWD` `CWD` `CDUP` `MKD` `RMD` `SIZE` `MDTM` `DELE` `RNFR` `RNTO` `PASV` `PORT` `LIST` `MLSD` `STOR` `RETR` `ABOR` `NOOP` `PRET` `PBSZ` `PROT` `SSCN` `CPSV` `AUTH TLS` `SITE` `XDUPE`
 
 ## SITE Commands
 
-### Informational
-- `SITE HELP` — show available commands
-- `SITE RULES` — site rules
-- `SITE WHO` — online users
-- `SITE STAT` — your stats
-- `SITE USER [user]` — user info
-- `SITE TIME` — server time
+**User Management** (flag `1` = siteop)
 
-### User Management (siteop only)
-- `SITE ADDUSER <user> <pass> [ident@ip ...]` — create user
-- `SITE DELUSER <user>` — delete user
-- `SITE CHPASS <user> <newpass>` — change password
-- `SITE ADDIP <user> <ident@ip> [...]` — add IP(s) to user
-- `SITE DELIP <user> <ident@ip> [...]` — remove IP(s)
-- `SITE FLAGS <user> <+|-|=><flags>` — modify user flags
-  - `+1` add flag, `-1` remove flag, `=13` replace all flags
-- `SITE CHGRP <user> <group> [...]` — toggle group membership
-- `SITE CHPGRP <user> <group>` — set primary group
-- `SITE GADMIN <user> <group>` — make user admin of group
+| Command | Usage | Description |
+|---------|-------|-------------|
+| `ADDUSER` | `<user> <pass> [ident@ip ...]` | Create user (fails if exists) |
+| `DELUSER` | `<user>` | Delete user (can't delete self) |
+| `CHPASS` | `<user> <newpass>` | Change password (bcrypt) |
+| `ADDIP` | `<user> <ident@ip> [...]` | Add IP(s), auto-prefixes `*@` |
+| `DELIP` | `<user> <ident@ip> [...]` | Remove IP(s) |
+| `FLAGS` | `<user> <+\|-\|=><flags>` | Modify flags: `+1` add, `-1` remove, `=13` set |
+| `CHGRP` | `<user> <group> [...]` | Toggle group membership |
+| `CHPGRP` | `<user> <group>` | Set primary group |
+| `GADMIN` | `<user> <group>` | Grant group admin |
 
-### Group Management (siteop only)
-- `SITE GRPADD <groupname> [description]` — create group
-- `SITE GRPDEL <groupname>` — delete group
-- `SITE GRP` — list groups
+**Group Management**
 
-### Release Management
-- `SITE NUKE <dir> <multiplier> <reason>` — nuke a release
-- `SITE UNNUKE <dir>` — undo nuke
+| Command | Usage | Description |
+|---------|-------|-------------|
+| `GRPADD` | `<name> [desc]` | Create group |
+| `GRPDEL` | `<name>` | Delete group |
+| `GRP` | | List groups |
 
-### Miscellaneous
-- `SITE CHMOD <mode> <file>` — change permissions
-- `SITE XDUPE <0|1|2|3|4>` — toggle XDUPE mode
-- `SITE INVITE <nick>` — invite to sitebot channels
+**Informational**
 
-## User Flags (glftpd-compatible)
+| Command | Description |
+|---------|-------------|
+| `HELP` | Available commands |
+| `RULES` | Site rules |
+| `WHO` | Online users |
+| `INVITE` | IRC channel invite |
 
-- `1` — Siteop (full admin)
-- `2` — Group admin (gadmin)
-- `3` — Regular user
-- `4` — Exempt from stats
-- `5` — Exempt from credits
-- `6` — Can kick users
-- `7` — Can see hidden directories
-- `8` — Elite uploader
+**Release Management**
 
-Flags can be combined: `FLAGS 13` = siteop + user.
+| Command | Usage | Description |
+|---------|-------|-------------|
+| `NUKE` | `<dir> <mult> <reason>` | Nuke release |
+| `UNNUKE` | `<dir>` | Undo nuke |
 
-## Zipscript (master-side, drftpd-style)
+**Misc:** `CHMOD`, `XDUPE`
 
-On every STOR:
-1. Bridge data from client to slave (with CRC32 via io.TeeReader)
-2. If 0 bytes → delete
-3. If in SFV and CRC mismatch → delete
-4. If in SFV and CRC matches → allowed
-5. If NOT in SFV → allowed (NFO, sample, tags pass through)
-6. Cache SFV data if `.sfv` file
+## User Flags
 
-LIST injects virtual entries:
-- Progress bar during upload: `[####::::::::] - 40% Complete - [XXX]`
-- Complete tag: `[XXX] - ( 1564M 17F - COMPLETE ) - [XXX]`
-- Missing files: `filename.r05-MISSING`
+| Flag | Role |
+|------|------|
+| `1` | Siteop (full admin) |
+| `2` | Group admin |
+| `3` | Regular user |
+| `4` | Exempt from stats |
+| `5` | Exempt from credits |
+| `6` | Can kick users |
+| `7` | See hidden dirs |
+| `8` | Elite uploader |
 
-## Directory Structure
+## Race Stats
+
+Rendered live from VFS on every `CWD` into a release directory. Uses CP437 box-drawing characters for proper rendering in FTP clients (FlashFXP, etc). Includes per-user and per-group stats with file count, size, speed, and percentage.
+
+## Configuration
+
+| File | Purpose |
+|------|---------|
+| `etc/config.yml` | Active config |
+| `etc/config-master.yml` | Master example |
+| `etc/config-slave.yml` | Slave example |
+| `etc/passwd` | Password hashes |
+| `etc/users/` | User files (glftpd format) |
+| `etc/groups/` | Group files |
+| `etc/msgs/` | Message templates (welcome, goodbye, rules, help) |
+
+## Project Structure
 
 ```
-/GoFTPd/
-├── cmd/goftpd/          # main.go entry point
-├── etc/
-│   ├── config.yml       # active config
-│   ├── config-master.yml
-│   ├── config-slave.yml
-│   ├── passwd           # password hashes
-│   ├── users/           # user files
-│   ├── groups/          # group files
-│   ├── msgs/            # templates
-│   └── certs/           # TLS certs
-├── internal/
-│   ├── config/          # config parsing
-│   ├── core/            # FTP protocol, SITE commands
-│   ├── master/          # master mode (bridge, VFS, slave manager)
-│   ├── slave/           # slave mode
-│   ├── protocol/        # master/slave wire protocol (gob)
-│   ├── user/            # user loading/saving
-│   ├── acl/             # ACL engine
-│   └── plugin/          # plugin interface
-├── plugins/
-│   ├── imdb/
-│   └── tvmaze/
-├── userdata/            # VFS persistence
-├── site/                # file storage (slave roots)
-└── logs/
+cmd/goftpd/           Entry point
+internal/
+  config/             YAML config parsing
+  core/               FTP protocol, SITE commands, race renderer, ACL, auth
+  master/             Bridge, VFS, slave manager, remote slave
+  slave/              Slave daemon, transfer handler
+  protocol/           Master/slave wire protocol (gob-encoded)
+  user/               User loading/saving (glftpd format)
+  acl/                Path-based ACL engine
+  plugin/             Plugin interface
+plugins/
+  imdb/               IMDb lookup
+  tvmaze/             TVMaze lookup
+  sitebot/            IRC bot config
 ```
-
-## Running
-
-**Master:**
-```bash
-cp etc/config-master.yml etc/config.yml
-./goftpd
-```
-
-**Slave:**
-```bash
-cp etc/config-slave.yml etc/config.yml
-./goftpd
-```
-
-Edit `etc/config.yml` before starting (set sitename, IPs, roots, etc).
 
 ## Changelog
 
-### v1.0.1b (2026-04-16)
-- Added SITE FLAGS command (glftpd-style `+1`/`-1`/`=13`)
-- SITE CHGRP now toggles group membership (drftpd-style)
-- SITE ADDUSER now fails if user exists (suggests CHPASS/ADDIP)
-- Added SITE DELUSER, SITE CHPASS, SITE ADDIP, SITE DELIP
-- Fixed password verification: unknown `$`-prefixed formats now REJECTED
-- Added Apache MD5 (apr1) password hash support
-- Passwords now bcrypt-hashed on SITE ADDUSER/CHPASS
-- Removed `.message` file writes (race stats now live on CWD)
-- Added thread-safe write mutex on master/slave gob streams
-- Increased slave response timeouts (60s) to prevent ACK timeouts
-- Drftpd-style CRC verification: delete on mismatch, delete 0-byte files
-- Pure ASCII race stats templates (renders correctly in all FTP clients)
+### v1.0.1b
+- Race stats rendered in code with CP437 box-drawing and ASCII art logo
+- SITE FLAGS command (glftpd-style `+`/`-`/`=`)
+- SITE CHGRP toggle (drftpd-style: add if not in group, remove if in)
+- SITE ADDUSER/DELUSER/CHPASS/ADDIP/DELIP
+- ADDUSER: fails if user exists, accepts multiple IPs, bcrypt-hashes password
+- Fixed password verification: unknown `$`-formats now rejected
+- Apache MD5 (apr1) hash support
+- Removed `.message` disk writes — race stats fully live from VFS
+- Write mutex on master + slave gob streams (fixes concurrent upload crashes)
+- CRC32 verification via io.TeeReader during bridge upload
+- 0-byte file rejection
 
 ### v1.0.0
 - Initial master/slave architecture
-- VFS-based zipscript replaces standalone plugin
+- VFS-based zipscript
 - TLS 1.3 with ECDSA P-384
 
 ## License
@@ -199,4 +190,4 @@ WTF
 
 ## Credits
 
-Inspired by drftpd, glftpd, and pzs-ng.
+Inspired by [drftpd](https://github.com/drftpd-ng/drftpd), [glftpd](https://glftpd.io), and [pzs-ng](https://github.com/pzs-ng/pzs-ng).
