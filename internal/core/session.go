@@ -77,6 +77,12 @@ func HandleSession(conn net.Conn, tlsConfig *tls.Config, cfg *Config, aclEngine 
 		cmd := strings.ToUpper(parts[0])
 		args := parts[1:]
 
+
+		if session.Config.Debug {
+			log.Printf("[CMD] raw=%q cmd=%q args=%q", line, cmd, args)
+		}
+
+
 		// Handle AUTH TLS to upgrade the control channel
 		if cmd == "AUTH" && len(args) > 0 && strings.ToUpper(args[0]) == "TLS" {
 			fmt.Fprintf(session.Conn, "234 AUTH TLS successful\r\n")

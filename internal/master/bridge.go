@@ -13,16 +13,26 @@ import (
 	"goftpd/internal/core"
 	"goftpd/internal/protocol"
 )
-
 // Bridge implements core.MasterBridge by wrapping a SlaveManager.
 // It's the glue between the FTP command layer (core) and the slave management layer (master).
 type Bridge struct {
-	sm *SlaveManager
+	sm     *SlaveManager
+	raceDB *RaceDB
 }
 
 // NewBridge creates a new Bridge adapter.
 func NewBridge(sm *SlaveManager) *Bridge {
-	return &Bridge{sm: sm}
+	b := &Bridge{sm: sm}
+	rdb, err := NewRaceDB("userdata/race.db")
+	if err != nil {
+		log.Printf("[Bridge] Race DB disabled: %v", err)
+		return b
+	}
+	b.raceDB = rdb
+	if err := b.raceDB.Reconcile(sm.GetVFS()); err != nil {
+		log.Printf("[Bridge] Race DB reconcile failed: %v", err)
+	}
+	return b
 }
 
 // Ensure Bridge implements MasterBridge at compile time.
@@ -134,6 +144,12 @@ func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group s
 		Checksum:     checksum,
 	})
 
+	if b.raceDB != nil {
+		if err := b.raceDB.RecordUpload(filePath, owner, group, written, xferTime, checksum); err != nil {
+			log.Printf("[Bridge] Race DB upload sync failed for %s: %v", filePath, err)
+		}
+	}
+
 	return written, checksum, nil
 }
 
@@ -204,12 +220,31 @@ func (b *Bridge) DownloadFile(filePath string, clientData net.Conn) error {
 
 // DeleteFile deletes from all slaves and VFS.
 func (b *Bridge) DeleteFile(filePath string) error {
-	return b.sm.DeleteFile(filePath)
+	vfsFile := b.sm.GetVFS().GetFile(filePath)
+	err := b.sm.DeleteFile(filePath)
+	if err != nil {
+		return err
+	}
+	if b.raceDB != nil {
+		isDir := vfsFile != nil && vfsFile.IsDir
+		if derr := b.raceDB.DeletePath(filepath.Clean(filePath), isDir); derr != nil {
+			log.Printf("[Bridge] Race DB delete sync failed for %s: %v", filePath, derr)
+		}
+	}
+	return nil
 }
 
 // RenameFile renames on all slaves and VFS.
 func (b *Bridge) RenameFile(from, toDir, toName string) {
+	vfsFile := b.sm.GetVFS().GetFile(from)
+	toPath := filepath.Join(toDir, toName)
 	b.sm.RenameFile(from, toDir, toName)
+	if b.raceDB != nil {
+		isDir := vfsFile != nil && vfsFile.IsDir
+		if err := b.raceDB.RenamePath(filepath.Clean(from), filepath.Clean(toPath), isDir); err != nil {
+			log.Printf("[Bridge] Race DB rename sync failed from %s to %s: %v", from, toPath, err)
+		}
+	}
 }
 
 // MakeDir creates a directory in the VFS and physically on the slave.
@@ -227,7 +262,7 @@ func (b *Bridge) MakeDir(dirPath, owner, group string) {
 	if slave != nil {
 		// Fire and forget directory creation command to the slave
 		_ = slave.SendCommand(&protocol.AsyncCommand{
-			Index: "none", 
+			Index: "none",
 			Name:  "makedir",
 			Args:  []string{dirPath},
 		})
@@ -405,7 +440,7 @@ func (v *VFSAdapter) MkdirAll(dirPath string, perm os.FileMode) error {
 
 	// Triggers VFS creation AND network broadcast to the slave
 	v.b.MakeDir(dirPath, owner, group)
-	
+
 	return nil
 }
 
@@ -422,9 +457,9 @@ type vfsFileInfo struct {
 	modTime time.Time
 }
 
-func (f vfsFileInfo) Name() string       { return f.name }
-func (f vfsFileInfo) Size() int64        { return f.size }
-func (f vfsFileInfo) Mode() os.FileMode  {
+func (f vfsFileInfo) Name() string { return f.name }
+func (f vfsFileInfo) Size() int64  { return f.size }
+func (f vfsFileInfo) Mode() os.FileMode {
 	if f.isDir {
 		return os.ModeDir | 0755
 	}
@@ -442,32 +477,50 @@ func (d vfsDirEntry) Name() string               { return d.info.name }
 func (d vfsDirEntry) IsDir() bool                { return d.info.isDir }
 func (d vfsDirEntry) Type() os.FileMode          { return d.info.Mode().Type() }
 func (d vfsDirEntry) Info() (os.FileInfo, error) { return d.info, nil }
-// CacheSFV stores parsed SFV entries on the VFS directory.
+
+// CacheSFV stores parsed SFV entries on the VFS directory and persists them.
 func (b *Bridge) CacheSFV(dirPath string, sfvName string, entries []core.SFVEntryInfo) {
 	sfvMap := make(map[string]uint32, len(entries))
 	for _, e := range entries {
 		sfvMap[e.FileName] = e.CRC32
 	}
 	b.sm.GetVFS().SetSFVData(dirPath, sfvName, sfvMap)
+	if b.raceDB != nil {
+		if err := b.raceDB.SaveSFV(filepath.Clean(dirPath), sfvName, sfvMap); err != nil {
+			log.Printf("[Bridge] Race DB SFV sync failed for %s: %v", dirPath, err)
+		}
+	}
 	log.Printf("[Bridge] Cached SFV for %s: %d entries", dirPath, len(entries))
 }
 
-// GetVFSRaceStats returns race statistics from VFS metadata.
+// GetVFSRaceStats returns race statistics for a directory,
+// counting ONLY files that are listed in the cached SFV data.
 func (b *Bridge) GetVFSRaceStats(dirPath string) ([]core.VFSRaceUser, []core.VFSRaceGroup, int64, int, int) {
+	if b.raceDB != nil {
+		return b.raceDB.GetRaceStats(filepath.Clean(dirPath))
+	}
+
 	users, groups, totalBytes, present, total := b.sm.GetVFS().GetRaceStats(dirPath)
 
 	coreUsers := make([]core.VFSRaceUser, len(users))
 	for i, u := range users {
 		coreUsers[i] = core.VFSRaceUser{
-			Name: u.Name, Group: u.Group, Files: u.Files,
-			Bytes: u.Bytes, Speed: u.Speed, Percent: u.Percent,
+			Name:    u.Name,
+			Group:   u.Group,
+			Files:   u.Files,
+			Bytes:   u.Bytes,
+			Speed:   u.Speed,
+			Percent: u.Percent,
 		}
 	}
 	coreGroups := make([]core.VFSRaceGroup, len(groups))
 	for i, g := range groups {
 		coreGroups[i] = core.VFSRaceGroup{
-			Name: g.Name, Files: g.Files,
-			Bytes: g.Bytes, Speed: g.Speed, Percent: g.Percent,
+			Name:    g.Name,
+			Files:   g.Files,
+			Bytes:   g.Bytes,
+			Speed:   g.Speed,
+			Percent: g.Percent,
 		}
 	}
 
