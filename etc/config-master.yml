@@ -12,7 +12,7 @@
 
 sitename_long: "MySite"
 sitename_short: "MS"
-version: "1.0.0"
+version: "1.0.1b"
 
 listen_port: 21212
 public_ip: "1.2.3.4"

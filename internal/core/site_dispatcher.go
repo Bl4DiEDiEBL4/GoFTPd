@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -16,6 +17,10 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 	siteCmd := strings.ToUpper(args[0])
 	remainingArgs := args[1:]
 
+	if s.Config.Debug {
+	  log.Printf("[SITE] siteCmd=%q remainingArgs=%q", siteCmd, remainingArgs)
+       }
+
 	switch siteCmd {
 	// Informational Commands (site_info.go)
 	case "HELP":
@@ -28,6 +33,16 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 	// Admin / User & Group Management (site_admin.go)
 	case "ADDUSER":
 		return s.HandleSiteAddUser(remainingArgs)
+	case "DELUSER":
+		return s.HandleSiteDelUser(remainingArgs)
+	case "CHPASS":
+		return s.HandleSiteChPass(remainingArgs)
+	case "ADDIP":
+		return s.HandleSiteAddIP(remainingArgs)
+	case "DELIP":
+		return s.HandleSiteDelIP(remainingArgs)
+	case "FLAGS":
+		return s.HandleSiteFlags(remainingArgs)
 	case "CHGRP":
 		return s.HandleSiteChGrp(remainingArgs)
 	case "CHPGRP":

@@ -22,7 +22,7 @@ etc/groups/*
 !etc/groups/NoGroup
 
 # Passwd file (contains hashes)
-etc/passwd
+#etc/passwd
 
 # Site data (actual files on disk)
 site/
@@ -60,6 +60,4 @@ vendor/
 *.o
 *.a
 
-# Proto generated files
-proto/pb/*.pb.go
-proto/pb/*_grpc.pb.go
+

@@ -1,104 +1,202 @@
-# GoFTPd - Modular FTP Daemon
+# GoFTPd v1.0.1b
 
-Lightweight FTP daemon 
+A modular, drftpd-inspired FTP daemon written in Go. Distributed master/slave architecture with pzs-ng-style zipscript, CRC verification, race stats, and TLS 1.3.
 
-## SITE Commands
+## Architecture
 
-- `SITE HELP` - Show commands
-- `SITE ADDUSER username password ip` - Add user
-- `SITE DELUSER username` - Delete user
-- `SITE CHANGE username field value` - Modify user
-- `SITE CHPASS username password` - Change password
-- `SITE NUKE dir multiplier reason` - Nuke directory
-- `SITE UNNUKE dir` - Unnuke
-- `SITE TAGLINE tag` - Change tagline
-- `SITE STAT` - Your stats
-- `SITE USER [user]` - User info
-- `SITE TIME` - Server time
+- **Master** — handles FTP clients, VFS in memory, routes transfers to slaves
+- **Slave** — storage daemon, auto-reconnects to master, handles file I/O
+- **Bridge** — master copies data between FTP client and slave, with CRC32 verification
+
+Run a slave on the same machine as the master if you want local data serving.
 
 ## Features
 
-✅ glftpd-compatible users/groups
-✅ Password hashing (bcrypt)
-✅ TLS/SSL support
-✅ File transfers with ratio/credits
-✅ SITE commands
-✅ Plugin system
+- Distributed master/slave architecture
+- TLS 1.3 with ECDSA P-384 certs (`TLS_AES_256_GCM_SHA384`)
+- VFS-based zipscript (no disk writes during upload — everything live)
+- CRC32 verification on upload (drftpd-style)
+- 0-byte file rejection
+- Virtual LIST entries (status bars, missing files, complete tags)
+- Live race stats on CWD (250- response from VFS)
+- pzs-ng-style SFV parsing
+- XDUPE protocol support
+- IMDb/TVMaze plugins
+- Dupe checker
+- Nuke/unnuke
+- glftpd-compatible user/group files
+- bcrypt + Apache MD5 (apr1) password hashing
 
-## Flags (glftpd-style)
+## Build
 
-- 1 = Admin/SiteOp
-- 2 = Upload
-- 3 = Download
-- 4 = Nuke
-- 5 = Unnuke
-- 6 = Delete
-- 7 = MKD
-- 8 = Rename
-- A-Z = Custom
-
-
-To install: 
-```
-git clone and run build.sh
-chmod +x build.sh
+```bash
 ./build.sh
 ```
 
-ps. its far from finished!
+Installs Go 1.26.2 if missing, downloads deps, builds `./goftpd` binary.
 
-Master: 
+## TLS Certificates
+
+```bash
+./generate_certs.sh
 ```
+
+Generates ECDSA P-384 CA, server, and client certs (10-year validity).
+
+## Configuration
+
+Three config files in `etc/`:
+
+- `config.yml` — active config
+- `config-master.yml` — master example
+- `config-slave.yml` — slave example
+
+Copy whichever one applies to `config.yml` before starting.
+
+## Default Login
+
+- **User:** `goftpd`
+- **Password:** `goftpd`
+- **Flags:** `1` (siteop)
+
+Change the password immediately with `SITE CHPASS goftpd <newpass>`.
+
+## SITE Commands
+
+### Informational
+- `SITE HELP` — show available commands
+- `SITE RULES` — site rules
+- `SITE WHO` — online users
+- `SITE STAT` — your stats
+- `SITE USER [user]` — user info
+- `SITE TIME` — server time
+
+### User Management (siteop only)
+- `SITE ADDUSER <user> <pass> [ident@ip ...]` — create user
+- `SITE DELUSER <user>` — delete user
+- `SITE CHPASS <user> <newpass>` — change password
+- `SITE ADDIP <user> <ident@ip> [...]` — add IP(s) to user
+- `SITE DELIP <user> <ident@ip> [...]` — remove IP(s)
+- `SITE FLAGS <user> <+|-|=><flags>` — modify user flags
+  - `+1` add flag, `-1` remove flag, `=13` replace all flags
+- `SITE CHGRP <user> <group> [...]` — toggle group membership
+- `SITE CHPGRP <user> <group>` — set primary group
+- `SITE GADMIN <user> <group>` — make user admin of group
+
+### Group Management (siteop only)
+- `SITE GRPADD <groupname> [description]` — create group
+- `SITE GRPDEL <groupname>` — delete group
+- `SITE GRP` — list groups
+
+### Release Management
+- `SITE NUKE <dir> <multiplier> <reason>` — nuke a release
+- `SITE UNNUKE <dir>` — undo nuke
+
+### Miscellaneous
+- `SITE CHMOD <mode> <file>` — change permissions
+- `SITE XDUPE <0|1|2|3|4>` — toggle XDUPE mode
+- `SITE INVITE <nick>` — invite to sitebot channels
+
+## User Flags (glftpd-compatible)
+
+- `1` — Siteop (full admin)
+- `2` — Group admin (gadmin)
+- `3` — Regular user
+- `4` — Exempt from stats
+- `5` — Exempt from credits
+- `6` — Can kick users
+- `7` — Can see hidden directories
+- `8` — Elite uploader
+
+Flags can be combined: `FLAGS 13` = siteop + user.
+
+## Zipscript (master-side, drftpd-style)
+
+On every STOR:
+1. Bridge data from client to slave (with CRC32 via io.TeeReader)
+2. If 0 bytes → delete
+3. If in SFV and CRC mismatch → delete
+4. If in SFV and CRC matches → allowed
+5. If NOT in SFV → allowed (NFO, sample, tags pass through)
+6. Cache SFV data if `.sfv` file
+
+LIST injects virtual entries:
+- Progress bar during upload: `[####::::::::] - 40% Complete - [XXX]`
+- Complete tag: `[XXX] - ( 1564M 17F - COMPLETE ) - [XXX]`
+- Missing files: `filename.r05-MISSING`
+
+## Directory Structure
+
+```
+/GoFTPd/
+├── cmd/goftpd/          # main.go entry point
+├── etc/
+│   ├── config.yml       # active config
+│   ├── config-master.yml
+│   ├── config-slave.yml
+│   ├── passwd           # password hashes
+│   ├── users/           # user files
+│   ├── groups/          # group files
+│   ├── msgs/            # templates
+│   └── certs/           # TLS certs
+├── internal/
+│   ├── config/          # config parsing
+│   ├── core/            # FTP protocol, SITE commands
+│   ├── master/          # master mode (bridge, VFS, slave manager)
+│   ├── slave/           # slave mode
+│   ├── protocol/        # master/slave wire protocol (gob)
+│   ├── user/            # user loading/saving
+│   ├── acl/             # ACL engine
+│   └── plugin/          # plugin interface
+├── plugins/
+│   ├── imdb/
+│   └── tvmaze/
+├── userdata/            # VFS persistence
+├── site/                # file storage (slave roots)
+└── logs/
+```
+
+## Running
+
+**Master:**
+```bash
+cp etc/config-master.yml etc/config.yml
 ./goftpd
-2026/04/15 23:00:26 [VFS] Loaded 45 entries from userdata/vfs.dat
-2026/04/15 23:00:26 [SlaveManager] Listening for slaves on 0.0.0.0:1099
-2026/04/15 23:00:26 [MASTER] SlaveManager listening on port 1099, waiting for slaves...
-2026/04/15 23:00:26 [PLUGINS] Initializing plugin system...
-2026/04/15 23:00:26 [PLUGIN-MANAGER] Registered plugin: imdb
-2026/04/15 23:00:26 [PLUGINS] Registered imdb plugin
-2026/04/15 23:00:26 [PLUGIN-MANAGER] Registered plugin: tvmaze
-2026/04/15 23:00:26 [PLUGINS] Registered tvmaze plugin
-2026/04/15 23:00:26 [PLUGIN-MANAGER] Initialized 2 plugins
-2026/04/15 23:00:26 [PLUGINS] All plugins initialized
-2026/04/15 23:00:26 [DUPE] Enabled and initialized at ./logs/xdupe.db
-2026/04/15 23:00:26 GoFTPd online at :21212 [Mode=master] [Plugins=2]
-2026/04/15 23:00:32 [SlaveManager] Accepted connection from 127.0.0.1:37256
-2026/04/15 23:00:32 [SlaveManager] Slave 'SLAVE1' connected from 127.0.0.1:37256
-2026/04/15 23:00:32 [SlaveManager] Slave SLAVE1 disk: 67802MB free / 7560161MB total
-2026/04/15 23:00:32 [SlaveManager] Starting remerge for slave SLAVE1 (instant online)
-2026/04/15 23:00:32 [SlaveManager] Slave SLAVE1 is now AVAILABLE (remerge running in background)
-2026/04/15 23:00:32 [SlaveManager] Remerge from SLAVE1: dir=/ files=1
-2026/04/15 23:00:32 [SlaveManager] Remerge from SLAVE1: dir=/TV-1080P files=1
-2026/04/15 23:00:32 [SlaveManager] Remerge from SLAVE1: dir=/TV-1080P/90.Day.The.Single.Life.Between.the.Sheets.S05E06.1080p.WEB.h264-CBFM files=16
-2026/04/15 23:00:32 [SlaveManager] Remerge from SLAVE1: dir=/TV-1080P/90.Day.The.Single.Life.Between.the.Sheets.S05E06.1080p.WEB.h264-CBFM/Sample files=1
-2026/04/15 23:00:32 [SlaveManager] Remerge from SLAVE1: dir=/TV-1080P/90.Day.The.Single.Life.Between.the.Sheets.S05E06.1080p.WEB.h264-CBFM files=1
-2026/04/15 23:00:32 [SlaveManager] Remerge from SLAVE1: dir=/TV-1080P files=1
-2026/04/15 23:00:32 [SlaveManager] Remerge from SLAVE1: dir=/TV-1080P/The.Dog.House.S09E03.1080p.WEB.H264-SKYFiRE files=1
-2026/04/15 23:00:32 [SlaveManager] Remerge from SLAVE1: dir=/TV-1080P/The.Dog.House.S09E03.1080p.WEB.H264-SKYFiRE/Sample files=1
-2026/04/15 23:00:32 [SlaveManager] Remerge from SLAVE1: dir=/TV-1080P/The.Dog.House.S09E03.1080p.WEB.H264-SKYFiRE files=16
-2026/04/15 23:00:32 [SlaveManager] Remerge from SLAVE1: dir=/TV-1080P files=1
-2026/04/15 23:00:32 [SlaveManager] Remerge from SLAVE1: dir=/TV-1080P/Tournament.of.Champions.S07E07.1080p.WEB.h264-CBFM files=1
-2026/04/15 23:00:32 [SlaveManager] Remerge complete for slave SLAVE1
-2026/04/15 23:00:32 [SlaveManager] Ghost files purged for SLAVE1
-2026/04/15 23:00:32 [VFS] Saved 45 entries to userdata/vfs.dat
-2026/04/15 23:00:36 [VFS] Saved 45 entries to userdata/vfs.dat
-
-
-Slave:
-
- ./goftpd
-2026/04/15 23:00:32 [SLAVE] Name 'slave', connecting to master
-2026/04/15 23:00:32 [SLAVE] Name=SLAVE1 Master=127.0.0.1:1099 Roots=[/slave1/site]
-2026/04/15 23:00:32 [Slave] SLAVE1 connecting to master at 127.0.0.1:1099
-2026/04/15 23:00:32 [Slave] Connected to master
-2026/04/15 23:00:32 [Slave] Registered as 'SLAVE1', entering command loop
-2026/04/15 23:00:32 [Slave] Received command: AsyncCommand[index=00, name=remerge, args=[/ false 0 1776286832424 false]]
-2026/04/15 23:00:32 [Slave] Starting remerge from / across 1 roots
-2026/04/15 23:00:32 [Slave] Remerge: scanning root /slave1/site
-2026/04/15 23:00:32 [Slave] Remerge root /slave1/site done: sent 11 directories
-2026/04/15 23:00:32 [Slave] Remerge complete: 35 files, 6 dirs across 11 sent directories
-2026/04/15 23:01:02 [Slave] Received command: AsyncCommand[index=01, name=ping, args=[]]
-
 ```
 
+**Slave:**
+```bash
+cp etc/config-slave.yml etc/config.yml
+./goftpd
+```
 
+Edit `etc/config.yml` before starting (set sitename, IPs, roots, etc).
+
+## Changelog
+
+### v1.0.1b (2026-04-16)
+- Added SITE FLAGS command (glftpd-style `+1`/`-1`/`=13`)
+- SITE CHGRP now toggles group membership (drftpd-style)
+- SITE ADDUSER now fails if user exists (suggests CHPASS/ADDIP)
+- Added SITE DELUSER, SITE CHPASS, SITE ADDIP, SITE DELIP
+- Fixed password verification: unknown `$`-prefixed formats now REJECTED
+- Added Apache MD5 (apr1) password hash support
+- Passwords now bcrypt-hashed on SITE ADDUSER/CHPASS
+- Removed `.message` file writes (race stats now live on CWD)
+- Added thread-safe write mutex on master/slave gob streams
+- Increased slave response timeouts (60s) to prevent ACK timeouts
+- Drftpd-style CRC verification: delete on mismatch, delete 0-byte files
+- Pure ASCII race stats templates (renders correctly in all FTP clients)
+
+### v1.0.0
+- Initial master/slave architecture
+- VFS-based zipscript replaces standalone plugin
+- TLS 1.3 with ECDSA P-384
+
+## License
+
+WTF
+
+## Credits
+
+Inspired by drftpd, glftpd, and pzs-ng.

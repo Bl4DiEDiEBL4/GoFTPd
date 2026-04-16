@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -13,6 +14,11 @@ func (s *Session) HandleSiteWho(args []string) bool {
 }
 
 func (s *Session) HandleSiteHelp(args []string) bool {
+
+	if s.Config.Debug {
+		log.Printf("[SITE HELP] args=%q", args)
+	}
+
 	vars := map[string]string{
 		"sitename": s.Config.SiteName,
 		"version":  s.Config.Version,
