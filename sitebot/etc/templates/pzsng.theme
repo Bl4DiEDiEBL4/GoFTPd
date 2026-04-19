@@ -26,6 +26,8 @@ announce.HALFWAY = "%b{%c13{HALFWAY:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%rel
 
 announce.TVINFO = "%b{%c03{TV-INFO:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%relname}} %c01{Genre:} %c05{%genre} %c01{- Type:} %c05{%b{%type}} %c01{- Link:} %c05{%link} %c01{- Network:} %c05{%b{%network}} %c01{- Rating:} %b{%c05{%rating}} %c01{- Language:} %c05{%language}"
 
+announce.MOVIEINFO = "%b{%c03{MOVIE-INFO:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%title}} %c01{(}%c05{%year}%c01{)} %c01{-} %c05{%genre} %c01{-} %b{%c05{%rating}}/10 %c01{(}%c05{%votes} votes%c01{) - Metacritic:} %c05{%metacritic} %c01{-} %c05{%runtime} %c01{-} %c05{%language} %c01{-} %c05{%link}\n%b{%c03{MOVIE-INFO:}} %c01{[}%c02{%section}%c01{]} %c01{Director:} %c04{%director} %c01{- Stars:} %c04{%stars}"
+
 announce.COMPLETE = "%b{%c03{COMPLETE:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%relname}} %c01{by} %c05{%u_count} %c01{racers -} %c05{%t_mbytes}%c01{/}%c05{%t_files}%c01{/}%c05{%t_avgspeed}%c01{/}%c05{%t_duration}"
 
 announce.STATS_HOF = "%b{%c02{STATS:}} ▂▃▅▇█▓▒░۩۞۩  %c03{Users Hall Of Fame} ۩۞۩░▒▓█▇▅▃▂"
@@ -39,3 +41,11 @@ announce.STATS_END = "%b{%c02{STATS:}} -----------====>>>>           %c03{END}  
 announce.NUKE = "%b{%c04{NUKE:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%relname}} %c01{by} %c04{%u_name}"
 
 announce.UNNUKE = "%b{%c03{UNNUKE:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%relname}} %c01{by} %c04{%u_name}"
+
+announce.PRE = "%b{%c04{PRE:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%relname}} %c01{by} %c04{%b{%group}} %c01{(}%c04{%user}%c01{)} %c01{-} %c05{%t_mbytes}%c01{/}%c05{%t_files}"
+
+announce.PREBW = "%b{%c02{PREBW:}} %c01{[}%c02{%section}%c01{]} %c01{::} %c06{%b{%relname}} %c01{::} %c03{%b{%traffic_val}}%c01{%traffic_unit} %c01{@} %c03{%b{%avg_val}}%c01{%avg_unit} %c01{:: Highest} %c03{%b{%peak_val}}%c01{%peak_unit}"
+
+announce.PREBWINTERVAL = "%b{%c02{PREBW:}} %c01{[}%c02{%section}%c01{]} %c01{::} %c03{%b{%b1}}%c01{%u1 @} %c03{%t1}%c01{s ::} %c03{%b{%b2}}%c01{%u2 @} %c03{%t2}%c01{s ::} %c03{%b{%b3}}%c01{%u3 @} %c03{%t3}%c01{s ::} %c03{%b{%b4}}%c01{%u4 @} %c03{%t4}%c01{s ::} %c03{%b{%b5}}%c01{%u5 @} %c03{%t5}%c01{s :: Highest} %c03{%b{%peak_val}}%c01{%peak_unit}"
+
+announce.PREBWUSER = "%b{%c02{PREBW:}} %c01{[}%c02{%section}%c01{]} %c01{::} %c04{%b{%user}} %c01{::} %c03{%b{%size_val}}%c01{%size_unit}%c01{/}%c03{%b{%cnt_files}}%c01{F @} %c03{%b{%avg_val_user}}%c01{%avg_unit_user} %c01{:: Highest} %c03{%b{%peak_val_user}}%c01{%peak_unit_user}"

@@ -51,8 +51,10 @@ func releaseName(evt *event.Event) string {
 	}
 	clean := path.Clean(evt.Path)
 	base := path.Base(clean)
-	// For MKDIR/RMDIR/RACEEND, Path IS the release directory itself.
-	if evt.Type == event.EventMKDir || evt.Type == event.EventRMDir || evt.Type == event.EventRaceEnd {
+	// For MKDIR/RMDIR/RACEEND/PRE, Path IS the release directory itself.
+	if evt.Type == event.EventMKDir || evt.Type == event.EventRMDir || evt.Type == event.EventRaceEnd ||
+		evt.Type == event.EventPre || evt.Type == event.EventPreBW ||
+		evt.Type == event.EventPreBWUser || evt.Type == event.EventPreBWInterval {
 		return base
 	}
 	name := strings.ToLower(evt.Filename)
@@ -225,6 +227,41 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]Output, error) {
 		outs = append(outs, Output{Type: "NUKE", Text: p.render("NUKE", vars, fmt.Sprintf("NUKE: [%s] %s by %s", section, rel, evt.User))})
 	case event.EventUnnuke:
 		outs = append(outs, Output{Type: "UNNUKE", Text: p.render("UNNUKE", vars, fmt.Sprintf("UNNUKE: [%s] %s by %s", section, rel, evt.User))})
+	case event.EventPre:
+		group := vars["group"]
+		user := vars["user"]
+		if group == "" {
+			group = evt.Group
+		}
+		if user == "" {
+			user = evt.User
+		}
+		fallback := fmt.Sprintf("PRE: [%s] %s by %s (%s) - %s/%s", section, rel, group, user, vars["t_mbytes"], vars["t_files"])
+		outs = append(outs, Output{Type: "PRE", Text: p.render("PRE", vars, fallback)})
+	case event.EventPreBW:
+		fallback := fmt.Sprintf("PREBW: [%s] %s :: %s%s @ %s%s :: Highest %s%s",
+			section, rel,
+			vars["traffic_val"], vars["traffic_unit"],
+			vars["avg_val"], vars["avg_unit"],
+			vars["peak_val"], vars["peak_unit"])
+		outs = append(outs, Output{Type: "PREBW", Text: p.render("PREBW", vars, fallback)})
+	case event.EventPreBWInterval:
+		fallback := fmt.Sprintf("PREBW: [%s] %s :: %s%s@%ss :: %s%s@%ss :: %s%s@%ss :: %s%s@%ss :: %s%s@%ss :: Highest %s%s",
+			section, rel,
+			vars["b1"], vars["u1"], vars["t1"],
+			vars["b2"], vars["u2"], vars["t2"],
+			vars["b3"], vars["u3"], vars["t3"],
+			vars["b4"], vars["u4"], vars["t4"],
+			vars["b5"], vars["u5"], vars["t5"],
+			vars["peak_val"], vars["peak_unit"])
+		outs = append(outs, Output{Type: "PREBW", Text: p.render("PREBWINTERVAL", vars, fallback)})
+	case event.EventPreBWUser:
+		fallback := fmt.Sprintf("PREBW: [%s] %s :: %s%s/%sF @ %s%s :: Highest %s%s",
+			section, vars["user"],
+			vars["size_val"], vars["size_unit"], vars["cnt_files"],
+			vars["avg_val_user"], vars["avg_unit_user"],
+			vars["peak_val_user"], vars["peak_unit_user"])
+		outs = append(outs, Output{Type: "PREBW", Text: p.render("PREBWUSER", vars, fallback)})
 	}
 	return outs, nil
 }

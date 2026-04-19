@@ -68,8 +68,9 @@ func main() {
 	}
 
 	// 6. MASTER MODE: Start SlaveManager and wire Bridge into config
+	var sm *master.SlaveManager
 	if cfg.Mode == "master" {
-		sm := master.NewSlaveManager(
+		sm = master.NewSlaveManager(
 			cfg.Master["listen_host"].(string),
 			intFromCfg(cfg.Master, "control_port", 1099),
 			cfg.TLSEnabled,
@@ -102,8 +103,34 @@ func main() {
 		bridge := master.NewBridge(sm)
 		cfg.MasterManager = bridge
 
+		// Meta lookup: async .tvmaze/.imdb writer triggered on MKD
+		if cfg.MetaLookupEnabled {
+			cfg.MetaLookup = core.NewMetaLookup(bridge, cfg.Debug, cfg.MetaLookupTVSects, cfg.MetaLookupIMSects)
+			log.Printf("[MASTER] Meta lookup enabled (TV=%v IMDB=%v)", cfg.MetaLookupTVSects, cfg.MetaLookupIMSects)
+		}
+
 		log.Printf("[MASTER] SlaveManager listening on port %d, waiting for slaves...",
 			intFromCfg(cfg.Master, "control_port", 1099))
+	}
+
+	// Register a post-rehash hook so SITE REHASH / SIGHUP both reapply slave
+	// routing policies after config is reloaded.
+	if sm != nil {
+		cfg.RehashHook = func(c *core.Config) {
+			policies := make(map[string]master.SlaveRoutePolicy, len(c.Slaves))
+			for _, sp := range c.Slaves {
+				if sp.Name == "" {
+					continue
+				}
+				policies[sp.Name] = master.SlaveRoutePolicy{
+					Sections: sp.Sections,
+					Paths:    sp.Paths,
+					Weight:   sp.Weight,
+				}
+			}
+			sm.SetSlavePolicies(policies)
+			log.Printf("[REHASH] reapplied %d slave policies", len(policies))
+		}
 	}
 
 	// 7. Initialize Plugin System
@@ -220,11 +247,21 @@ func main() {
 		}
 	}()
 
-	// Wait for signal
+	// Signal handling: SIGINT/SIGTERM shut down; SIGHUP rehashes config.
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-	<-sig
-	log.Println("Shutting down...")
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	for s := range sig {
+		if s == syscall.SIGHUP {
+			if path, err := cfg.Rehash(); err != nil {
+				log.Printf("[REHASH] SIGHUP reload failed: %v", err)
+			} else {
+				log.Printf("[REHASH] SIGHUP: reloaded %s", path)
+			}
+			continue
+		}
+		log.Println("Shutting down...")
+		return
+	}
 }
 
 // startSlave runs the slave daemon — no FTP server, just connect to master.

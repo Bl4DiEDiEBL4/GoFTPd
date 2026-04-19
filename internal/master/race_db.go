@@ -333,6 +333,7 @@ func (r *RaceDB) GetRaceStats(dirPath string) ([]core.VFSRaceUser, []core.VFSRac
 	for i := range users {
 		u := &users[i]
 		durationMs := userDurations[i]
+		u.DurationMs = durationMs
 		if durationMs > 0 {
 			u.Speed = float64(u.Bytes) / (float64(durationMs) / 1000.0)
 		}

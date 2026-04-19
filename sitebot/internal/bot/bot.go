@@ -76,7 +76,48 @@ func (b *Bot) initializePlugins() error {
 		if err := tv.Initialize(cfg); err != nil {
 			return err
 		}
+		// Provide an async emitter so TV lookups can post to IRC after the
+		// HTTP call returns, without blocking the event loop.
+		tv.SetAsyncEmitter(func(outType, text, section, relpath string) {
+			fakeEvt := &event.Event{Type: event.EventMKDir, Section: section, Path: relpath}
+			channels := b.routeChannels(fakeEvt, outType)
+			for _, line := range strings.Split(text, "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				for _, ch := range channels {
+					_ = b.IRC.SendMessage(ch, line)
+				}
+			}
+		})
 		if err := b.Plugins.Register(tv); err != nil {
+			return err
+		}
+	}
+	if enabled, ok := b.Config.Plugins.Enabled["IMDB"]; !ok || enabled {
+		im := plugin.NewIMDBPlugin()
+		cfg := map[string]interface{}{"debug": b.Debug, "theme_file": b.Config.Announce.ThemeFile}
+		for k, v := range b.Config.Plugins.Config {
+			cfg[k] = v
+		}
+		if err := im.Initialize(cfg); err != nil {
+			return err
+		}
+		im.SetAsyncEmitter(func(outType, text, section, relpath string) {
+			fakeEvt := &event.Event{Type: event.EventMKDir, Section: section, Path: relpath}
+			channels := b.routeChannels(fakeEvt, outType)
+			for _, line := range strings.Split(text, "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				for _, ch := range channels {
+					_ = b.IRC.SendMessage(ch, line)
+				}
+			}
+		})
+		if err := b.Plugins.Register(im); err != nil {
 			return err
 		}
 	}
@@ -144,19 +185,27 @@ func (b *Bot) listenIRC() {
 }
 
 func (b *Bot) onRegistered() {
+	opered := false
 	operUser := strings.TrimSpace(b.Config.IRC.OperUser)
 	if operUser == "" {
 		operUser = b.Config.IRC.Nick
 	}
 	if b.Config.IRC.AutoOper && strings.TrimSpace(b.Config.IRC.OperPassword) != "" {
-		if err := b.IRC.SendRaw(fmt.Sprintf("OPER %s %s", operUser, b.Config.IRC.OperPassword)); err != nil && b.Debug {
-			log.Printf("[Bot] OPER failed: %v", err)
-		}
-		if d := b.Config.IRC.AutoJoinDelay; d > 0 {
-			time.Sleep(time.Duration(d) * time.Millisecond)
+		if err := b.IRC.SendRaw(fmt.Sprintf("OPER %s %s", operUser, b.Config.IRC.OperPassword)); err != nil {
+			if b.Debug {
+				log.Printf("[Bot] OPER failed: %v", err)
+			}
 		} else {
-			time.Sleep(1500 * time.Millisecond)
+			opered = true
 		}
+		// Give server time to process OPER and apply oper privileges before
+		// we try SAJOIN. UnrealIRCd's OPER → +o is near-instant but still
+		// needs a roundtrip. Default 1500ms, overridable via autojoin_delay_ms.
+		delay := b.Config.IRC.AutoJoinDelay
+		if delay <= 0 {
+			delay = 1500
+		}
+		time.Sleep(time.Duration(delay) * time.Millisecond)
 	}
 
 	if modes := strings.TrimSpace(b.Config.IRC.UserModes); modes != "" {
@@ -169,8 +218,20 @@ func (b *Bot) onRegistered() {
 		}
 	}
 
+	// Join all configured channels. When oper'd, use SAJOIN to bypass +i
+	// (invite-only) and +R (registered-only) modes — this is how scene
+	// bots get into staff/ops channels without needing a permanent invite.
+	// Follow up with SAMODE +o so the bot has channel ops and can kick/ban
+	// / manage the channel later if needed.
 	for _, ch := range uniqueChannels(b.Config) {
-		_ = b.IRC.Join(ch)
+		if opered {
+			_ = b.IRC.SendRaw(fmt.Sprintf("SAJOIN %s %s", b.Config.IRC.Nick, ch))
+			// Small gap so SAJOIN lands before SAMODE hits the same channel.
+			time.Sleep(150 * time.Millisecond)
+			_ = b.IRC.SendRaw(fmt.Sprintf("SAMODE %s +o %s", ch, b.Config.IRC.Nick))
+		} else {
+			_ = b.IRC.Join(ch)
+		}
 		if d := b.Config.IRC.AutoJoinDelay; d > 0 {
 			time.Sleep(time.Duration(d) * time.Millisecond)
 		}
@@ -247,6 +308,12 @@ func (b *Bot) routeChannels(evt *event.Event, outType string) []string {
 	return b.Config.IRC.Channels
 }
 func (b *Bot) handleEvent(evt *event.Event) {
+	// Special case: INVITE events don't go to plugins — we send an IRC
+	// INVITE command directly for each channel the user is allowed into.
+	if evt.Type == event.EventInvite {
+		b.handleInviteEvent(evt)
+		return
+	}
 	outs, err := b.Plugins.ProcessEvent(evt)
 	if err != nil {
 		return
@@ -272,6 +339,40 @@ func (b *Bot) Stop() error {
 	}
 	_ = b.Plugins.Close()
 	return nil
+}
+
+// handleInviteEvent processes an INVITE event from goftpd. It sends an IRC
+// INVITE command for each channel in evt.Data["channels"] (comma-separated).
+// Requires the bot to have ops in those channels (or them to permit non-op
+// invites). The bot is typically oper'd via auto_oper, so it can invite
+// anywhere network-wide.
+func (b *Bot) handleInviteEvent(evt *event.Event) {
+	if b.IRC == nil {
+		return
+	}
+	nick := strings.TrimSpace(evt.Data["nick"])
+	channels := strings.TrimSpace(evt.Data["channels"])
+	if nick == "" || channels == "" {
+		if b.Debug {
+			log.Printf("[Bot] INVITE event missing nick or channels: %+v", evt.Data)
+		}
+		return
+	}
+	for _, ch := range strings.Split(channels, ",") {
+		ch = strings.TrimSpace(ch)
+		if ch == "" {
+			continue
+		}
+		if err := b.IRC.Invite(nick, ch); err != nil {
+			log.Printf("[Bot] INVITE %s %s failed: %v", nick, ch, err)
+		} else if b.Debug {
+			log.Printf("[Bot] Sent SAJOIN/INVITE %s to %s", nick, ch)
+		}
+		// Small pacing gap — SAJOIN+INVITE per channel is 2 lines, over 3
+		// channels that's 6 rapid commands. IRC servers often throttle or
+		// drop bursts. 300ms keeps us well under any reasonable flood limit.
+		time.Sleep(300 * time.Millisecond)
+	}
 }
 
 func parseEvent(line string) (*event.Event, error) {

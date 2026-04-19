@@ -1,6 +1,6 @@
 # GoFTPd
 
-A distributed FTP daemon written in Go, drftpd-inspired, glftpd-compatible. Master/slave architecture with VFS-based zipscript, live race stats, TLS 1.3, CRC32 verification, and an IRC sitebot for announces.
+A distributed FTP daemon written in Go, glftpd, pzsng and drftpd-inspired! Master/slave architecture with VFS-based zipscript, live race stats, TLS 1.3, CRC32 verification, and an IRC sitebot for announces.
 
 ## Architecture
 
@@ -38,16 +38,12 @@ You can run a slave on the same box as the master to serve local storage.
 # Generate TLS certs (ECDSA P-384, TLS 1.3 AES-256-GCM)
 ./generate_certs.sh
 
-# Configure master
-cp etc/config-master.yml etc/config.yml
-# edit: set public_ip, listen_port, pasv range, storage_path, slaves:
+# Configure — single config file used for both master and slave roles.
+# `mode:` decides which blocks are read.
+cp etc/config-example.yml etc/config.yml
+# edit: set mode, public_ip, listen_port, pasv range, storage_path, slaves:
 
-# Start master
-./goftpd
-
-# Start slave (same or different box)
-cp etc/config-slave.yml etc/config.yml
-# edit: set slave.name, master_host, roots
+# Start
 ./goftpd
 ```
 
@@ -59,6 +55,7 @@ Default login: `goftpd` / `goftpd` (siteop). Change it immediately with `SITE CH
 - TLS 1.3, ECDSA P-384 certs (`TLS_AES_256_GCM_SHA384`)
 - AUTH TLS, PBSZ, PROT, SSCN, CPSV (FXP)
 - PRET, PASV, PORT modes
+- MLSD / MLST machine-readable listings (cbftp compatible)
 - XDUPE duplicate detection
 - Thread-safe gob streams between master and slaves
 
@@ -71,6 +68,7 @@ Default login: `goftpd` / `goftpd` (siteop). Change it immediately with `SITE CH
 - Virtual LIST entries: progress bars, `[COMPLETE]` tags, `-MISSING` files
 - Live race stats on `CWD` into a release (CP437 box-drawing, ASCII logo)
 - Per-user and per-group stats tracked in SQLite race DB
+- glftpd-style LIST footer with site speed / user count / file stats
 - No disk writes during uploads — all state lives in the VFS
 
 ### Slave Affinity & Load Balancing
@@ -97,14 +95,23 @@ Selection order: section match → lowest `activeTransfers / weight` → most fr
 - Per-user flags, groups, IPs, credits, ratios
 - Path-based ACL engine
 
+### Affil Pres
+`SITE PRE <release> <section>` moves an affil release from its staging dir into the public section, then samples bandwidth for a configured window and announces results on IRC. Supports dated sections (MP3/FLAC/0DAY scene convention — `/MP3/0419/<rel>`). Separate `PRE`, `PREBW`, `PREBWINTERVAL`, and `PREBWUSER` events for theme flexibility.
+
+### Runtime Reload
+`SITE REHASH` (siteop) or `kill -HUP <pid>` reloads the config without restarting. Rehashable fields include: affils, pre settings, slave routing policies (reapplied to the SlaveManager), meta lookup toggles, TLS enforcement flags, IP restrictions, connection limits, show_diz map, nuke style, debug. Fields requiring restart: listen_port, pasv range, tls_cert/key, storage_path, mode, master.control_port, event_fifo.
+
+The sitebot supports the same — `SIGHUP` reloads channels, encryption keys, theme, sections, plugins, announce routing without dropping the IRC connection.
+
 ### Plugins
-- **IMDb** — movie info lookup
-- **TVMaze** — TV show info lookup
+- **IMDb** — movie info lookup via imdbapi.dev, async job queue, writes `.imdb` into release dirs
+- **TVMaze** — TV show info lookup, writes `.tvmaze` into release dirs
+- **Meta lookup** — auto-fires on MKD for configured sections, displays via `show_diz`
 - **sitebot** — IRC bot with FiSH Blowfish (CBC), pzs-ng-style themes, real-time race/stats announces
 
 ## FTP Commands
 
-`FEAT` `OPTS` `USER` `PASS` `SYST` `TYPE` `REST` `PWD` `CWD` `CDUP` `MKD` `RMD` `SIZE` `MDTM` `DELE` `RNFR` `RNTO` `PASV` `PORT` `LIST` `MLSD` `STOR` `RETR` `ABOR` `NOOP` `PRET` `PBSZ` `PROT` `SSCN` `CPSV` `AUTH TLS` `SITE` `XDUPE`
+`FEAT` `OPTS` `USER` `PASS` `SYST` `TYPE` `REST` `PWD` `CWD` `CDUP` `MKD` `RMD` `SIZE` `MDTM` `DELE` `RNFR` `RNTO` `PASV` `PORT` `LIST` `MLSD` `MLST` `STOR` `RETR` `ABOR` `NOOP` `PRET` `PBSZ` `PROT` `SSCN` `CPSV` `AUTH TLS` `SITE` `XDUPE`
 
 ## SITE Commands
 
@@ -129,10 +136,16 @@ Selection order: section match → lowest `activeTransfers / weight` → most fr
 | `GRP`    |                   | List groups     |
 
 ### Release Management
-| Command  | Usage                           | Description    |
-|----------|---------------------------------|----------------|
-| `NUKE`   | `<dir> <mult> <reason>`         | Nuke release   |
-| `UNNUKE` | `<dir>`                         | Undo nuke      |
+| Command  | Usage                           | Description                                   |
+|----------|---------------------------------|-----------------------------------------------|
+| `NUKE`   | `<dir> <mult> <reason>`         | Nuke release                                  |
+| `UNNUKE` | `<dir>`                         | Undo nuke                                     |
+| `PRE`    | `<release> <section>`           | Affil pre-release to section (+ BW announces) |
+
+### System (siteop)
+| Command  | Usage  | Description                                                  |
+|----------|--------|--------------------------------------------------------------|
+| `REHASH` |        | Reload config from disk without restarting (same as SIGHUP)  |
 
 ### Informational
 `HELP` `RULES` `WHO` `INVITE` `CHMOD` `XDUPE`
@@ -151,10 +164,10 @@ Selection order: section match → lowest `activeTransfers / weight` → most fr
 
 ## Sitebot (IRC Announces)
 
-The sitebot reads events from a FIFO and posts to IRC. Non-blocking FIFO writer — the FTP daemon never stalls when IRC is throttled or the bot is slow.
+The sitebot reads events from a FIFO and posts to IRC. Non-blocking FIFO writer — the FTP daemon never stalls when IRC is throttled or the bot is slow. TCP_NODELAY on the IRC socket. Uses SAJOIN + SAMODE when oper'd so the bot can join `+i`/`+R` channels and give itself chanops without needing channel registration.
 
 ### Event Types
-Individual events published in real time: `NEWDIR`, `SFV_RAR`, `UPDATE_RAR`, `RACE_RAR`, `NEWLEADER`, `HALFWAY`, `COMPLETE`, `STATS_HOF`, `STATS_SPEEDS`, `STATS_USER`, `STATS_END`, `TVINFO`, `NUKE`, `UNNUKE`.
+Individual events published in real time: `NEWDIR`, `SFV_RAR`, `UPDATE_RAR`, `RACE_RAR`, `NEWLEADER`, `HALFWAY`, `COMPLETE`, `STATS_HOF`, `STATS_SPEEDS`, `STATS_USER`, `STATS_END`, `TVINFO`, `MOVIEINFO`, `PRE`, `PREBW`, `PREBWINTERVAL`, `PREBWUSER`, `NUKE`, `UNNUKE`, `INVITE`.
 
 ### Theme
 pzs-ng-style `.theme` file at `sitebot/etc/templates/pzsng.theme`. Supports `%b{}` bold, `%cNN{}` mIRC color, `%u{}` underline, `%{varname}` variable expansion. Ships with a light-background-friendly default (dark colors only — no grey/yellow).
@@ -168,35 +181,40 @@ sections:
     paths: ["/TV-1080P/*"]
   - name: "MP3"
     channels: ["#goftpd-spam"]
-    paths: ["/MP3/*"]
+    paths: ["/MP3/*", "/MP3/*/*"]   # second pattern for dated subdirs
 ```
 `type_routes` (e.g. routing all NUKEs to a dedicated channel) overrides section routing.
 
 ### Encryption
-Per-channel Blowfish keys via FiSH CBC (`cbc:` prefix). Use `plain:` for ECB (legacy).
+Per-channel Blowfish keys via FiSH CBC (`cbc:` prefix) with random IV and zero-padding. Use `plain:` for ECB (legacy).
+
+### SITE INVITE
+Restricts which bot channels a given user can be invited to, based on their user flags. Configured in the sitebot's config under `invite_channels:` — channels not listed are public to everyone.
 
 ## Configuration Files
 
-| File                            | Purpose                                |
-|---------------------------------|----------------------------------------|
-| `etc/config.yml`                | Active master/slave config             |
-| `etc/config-master.yml`         | Master example (with slave policies)   |
-| `etc/config-slave.yml`          | Slave example                          |
-| `etc/passwd`                    | Password hashes                        |
-| `etc/users/`                    | User files (glftpd format)             |
-| `etc/groups/`                   | Group files                            |
-| `etc/msgs/`                     | Message templates                      |
-| `sitebot/etc/config.yml`        | Sitebot config                         |
-| `sitebot/etc/templates/*.theme` | Announce themes                        |
+| File                            | Purpose                                              |
+|---------------------------------|------------------------------------------------------|
+| `etc/config.yml`                | Active config (single file, `mode:` flag)            |
+| `etc/config-example.yml`        | Fully annotated example                              |
+| `etc/config-slave.yml`          | Dedicated slave example (historical)                 |
+| `etc/passwd`                    | Password hashes                                      |
+| `etc/users/`                    | User files (glftpd format)                           |
+| `etc/groups/`                   | Group files                                          |
+| `etc/msgs/`                     | Message templates                                    |
+| `sitebot/etc/config.yml`        | Sitebot config (channels, invite rules, routing)     |
+| `sitebot/etc/templates/*.theme` | Announce themes                                      |
 
 ## Project Structure
 
 ```
-cmd/goftpd/          Entry point
+cmd/goftpd/          Entry point — SIGHUP handler, SlaveManager wiring
 internal/
   acl/               Path-based ACL engine
-  config/            Master/slave YAML parsing
+  config/            Slave routing policy YAML parsing
   core/              FTP protocol, SITE commands, race renderer, auth, events
+                     — SITE PRE + BW sampler, SITE REHASH, SITE INVITE
+                     — meta_lookup for auto .imdb/.tvmaze writes
   dupe/              XDUPE handling
   master/            Bridge, VFS, slave manager, remote slave, race DB
   plugin/            Plugin interface
@@ -207,19 +225,35 @@ plugins/
   imdb/              IMDb lookup
   tvmaze/            TVMaze lookup
 sitebot/
-  cmd/gositebot/     Sitebot entry point
+  cmd/               Sitebot entry point — SIGHUP handler
   internal/
-    bot/             Bot coordinator, channel routing
-    event/           Event type definitions
+    bot/             Bot coordinator, channel routing, SAJOIN/SAMODE
+    event/           Event type definitions (mirrored from daemon)
     irc/             IRC client + FiSH/Blowfish
-    plugin/          Announce, TVMaze, IMDb
+    plugin/          Announce, TVMaze, IMDb (async job queues)
     template/        Theme parser/renderer
   etc/templates/     Announce themes
 ```
 
 ## Changelog
 
-### v1.0.2
+### v1.0.3b
+- **SITE PRE** — affil pre-releases with move-to-section + IRC announce
+- **PREBW bandwidth sampler** — post-pre async monitoring; emits `PREBW`, `PREBWINTERVAL`, `PREBWUSER` events for theme-driven IRC output matching fin-prebw.py
+- **Dated sections** — scene-style per-day subdirs (e.g. `/MP3/0419/<rel>`), auto-created if missing
+- **SITE REHASH** — reload config on-the-fly without dropping connections; SIGHUP does the same. Rehashable: affils, pre config, slave policies, meta lookup, TLS flags, IP restrictions, limits. Sitebot supports SIGHUP rehash too (channels, encryption, theme, sections, plugins).
+- **SITE INVITE** — per-user invite filtering with flag rules read from the sitebot config; uses SAJOIN + INVITE fallback
+- **Meta lookup** — async .imdb/.tvmaze writer on MKD for configured sections, displayed via `show_diz`
+- **IMDb plugin** rewritten against imdbapi.dev (camelCase JSON, two-phase search + details)
+- **TVMaze / IMDb async** — plugins no longer block the sitebot event loop; 64-slot job queue + worker goroutine + late-emit callback
+- **MLST handler** + MLSD in `FEAT` — cbftp-compatible listings
+- **cbftp LIST hang fix** — send `150` before `Accept()` (strict-ordering clients were deadlocking)
+- **MLSD VFS mode** — was reading local disk in master mode, now uses VFS like LIST does
+- **Race speed fix** — final race speed now uses max per-user `DurationMs` (wall-clock span) instead of the last file's transfer time (prevents 17+ GB/s bogus readings)
+- **Unified config** — single `config-example.yml` for master and slave roles with every field documented
+- **IRC output improvements** — TCP_NODELAY, SAJOIN + SAMODE bootstrap on connect
+
+### v1.0.2b
 - **Sitebot** with real-time per-event IRC announces (NEW, RACE, NEWLEADER, HALFWAY, COMPLETE, STATS, TV-INFO, NUKE, UNNUKE)
 - Non-blocking FIFO writer — FTP stays fast regardless of IRC throttling
 - FiSH Blowfish CBC encryption (random IV, zero-padding)

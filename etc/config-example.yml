@@ -1,61 +1,74 @@
-# ============================================================================
-# GoFTPd - MASTER Example
-# ============================================================================
-# Copy this to etc/config.yml on the MASTER machine.
+# =============================================================================
+#  GoFTPd configuration — single file used for both master and slave roles.
 #
-# The master:
-#   - Listens for FTP clients on listen_port
-#   - Listens for slave connections on control_port
-#   - Keeps VFS in memory, routes transfers to slaves
-#   - Runs zipscript via VFS metadata (no disk writes)
-# ============================================================================
+#  The `mode:` setting decides which blocks are read. When `mode: master`,
+#  the `slave:` block is ignored (and vice versa). You can keep this same
+#  file on both boxes and just flip `mode:` + fill in the relevant block.
+# =============================================================================
 
-sitename_long: "MySite"
-sitename_short: "MS"
-version: "1.0.2b"
 
-listen_port: 21212
-public_ip: "1.2.3.4"
-pasv_min: 25000
-pasv_max: 30000
+# =============================================================================
+#  Server identity — cosmetic, shown in welcome banners and stats.
+# =============================================================================
+sitename_long:  "MySite"        # Full site name, shown in FTP banners
+sitename_short: "MS"            # 2-3 char site tag used in race stats
+version:        "1.0.2b"        # Displayed in FEAT / LIST headers
 
-mode: master
-passthrough: true
 
+# =============================================================================
+#  Listening + mode
+# =============================================================================
+mode:         master            # "master" or "slave" — controls which blocks below are active
+listen_port:  21212             # FTP control-channel port (master only)
+public_ip:    "1.2.3.4"         # IP advertised in PASV responses (master only)
+pasv_min:     25000             # Passive data-port range lower bound (master only)
+pasv_max:     30000             #   -"- upper bound
+passthrough:  true              # true = client connects directly to slave (recommended)
+                                # false = master proxies all data (2x bandwidth cost)
+
+
+# =============================================================================
+#  Master block — used when mode: master
+#  Safe to leave filled on slave boxes; ignored there.
+# =============================================================================
 master:
-  listen_host: "0.0.0.0"
-  control_port: 1099
-  heartbeat_timeout: 60
+  listen_host:       "0.0.0.0"  # Interface to bind slave-control socket
+  control_port:      1099       # Port slaves connect to
+  heartbeat_timeout: 60         # Seconds before a silent slave is marked offline
 
+
+# =============================================================================
+#  Slave block — used when mode: slave
+#  On a master-only box, you can leave this with placeholder values.
+# =============================================================================
 slave:
-  name: ""
-  master_host: ""
-  master_port: 1099
-  roots: []
+  name:          ""             # Unique slave identifier — MUST match an entry in `slaves:` below
+  master_host:   ""             # IP or hostname of the master
+  master_port:   1099           # Must match master's control_port
+  roots:         []             # List of root dirs this slave serves, e.g. ["/data/site"]
+  pasv_port_min: 30000          # Passive-port range for client→slave data transfers
+  pasv_port_max: 35000
+  bind_ip:       ""             # Public IP advertised in PASV responses from this slave.
+                                # If empty, slave auto-detects from the master connection.
+                                # Set explicitly if the slave sits behind NAT.
+  timeout:       60             # Network timeout in seconds for slave↔master operations
 
-# ============================================================================
-# Per-slave routing policies (master mode only)
-# ============================================================================
-# Control which sections/paths go to which slave, and how uploads are
-# load-balanced across multiple slaves.
+
+# =============================================================================
+#  Slave routing policies — master-only
+#  Control which sections/paths each slave accepts, and load-balancing weights.
 #
-# - "name" must match the slave's registered name (slave's `slave.name`).
-# - "sections" restricts this slave to the listed top-level sections
-#   (case-insensitive). Empty = any section.
-# - "paths" is an optional list of glob patterns; a match also allows routing.
-#   e.g. "/TV-*/*" or "/MOVIES/*".
-# - "weight" biases the load balancer. Default is 1. A slave with weight=2
-#   receives roughly twice as many concurrent uploads as a weight=1 slave
-#   (score = activeTransfers / weight; lowest score wins; ties go to most
-#   free space).
-# - Omit this block or list a slave without it to let the slave accept
-#   everything (no restrictions).
-# - If every policy excludes the current upload, the master falls back to
-#   picking from ALL available slaves (fail-open).
+#    name:     Must match the slave's `slave.name`
+#    sections: First path component(s) this slave accepts (case-insensitive)
+#    paths:    Optional glob patterns, e.g. "/TV-*/*" or "/MOVIES/*"
+#    weight:   Higher = more uploads routed here (default 1). Load balancer
+#              picks the slave with the lowest (activeTransfers / weight) score,
+#              tie-breaking on most free disk space.
 #
-# Example: route TV to slave1 (weight 2), music to slave2, let slave3 catch
-# anything else as overflow capacity.
-#
+#  - A slave with no policy OR with empty sections+paths accepts everything.
+#  - If every policy excludes an upload, the master falls back to all available
+#    slaves (fail-open) rather than rejecting the upload.
+# =============================================================================
 # slaves:
 #   - name: "SLAVE1"
 #     sections: ["TV-1080P", "TV-720P"]
@@ -65,39 +78,150 @@ slave:
 #     sections: ["MP3", "FLAC"]
 #     weight: 1
 #   - name: "SLAVE3"
-#     # no sections/paths = fallback/overflow for anything not matched above
+#     # no sections/paths = overflow/catch-all
 #     weight: 1
-# ============================================================================
 
-storage_path: ./site
-acl_base_path: "/site"
-passwd_file: "etc/passwd"
-msg_path: "etc/msgs"
 
+# =============================================================================
+#  Storage + paths
+# =============================================================================
+storage_path:   ./site          # Master: fallback path. Slave: default root if `roots:` empty.
+acl_base_path:  "/site"         # Virtual FTP root as seen by clients (usually "/site")
+passwd_file:    "etc/passwd"    # Password hash file (bcrypt / apr1)
+msg_path:       "etc/msgs"      # Directory with welcome/rules/goodbye message templates
+
+
+# =============================================================================
+#  TLS — used on both master and slaves (same cert pair on all boxes).
+# =============================================================================
 tls_enabled: true
-tls_cert: ./etc/server.crt
-tls_key: ./etc/server.key
+tls_cert:    ./etc/server.crt
+tls_key:     ./etc/server.key
 
-creditcheck: true
-free_space_mb: 2048
-max_connections: 300
 
+# =============================================================================
+#  Limits + credits
+# =============================================================================
+creditcheck:     true           # Enforce user credit/ratio rules on downloads
+free_space_mb:   2048           # Reject uploads when free space drops below this
+max_connections: 300            # Global concurrent FTP session cap
+
+
+# =============================================================================
+#  show_diz — files whose contents are displayed on CWD as part of the 250- reply.
+#  Map of filename → who_can_see ("*" = all users, or a flag like "1" for siteop).
+#  The daemon writes .imdb / .tvmaze files automatically via meta_lookup (below).
+# =============================================================================
 show_diz:
   .message: "*"
-  .imdb: "*"
+  .imdb:    "*"
+  .tvmaze:  "*"
 
+
+# =============================================================================
+#  Meta lookup — async TVMaze / IMDb lookup on MKD, writes .tvmaze / .imdb
+#  files into the new release dir for CWD display (via show_diz above).
+# =============================================================================
+meta_lookup_enabled:         true
+meta_lookup_tv_sections:     ["TV"]                                 # substring-matched, case-insensitive
+meta_lookup_imdb_sections:   ["MOVIE", "X264", "X265", "BLURAY", "DVDR"]
+
+
+# =============================================================================
+#  Incomplete indicator — dir-name marker shown in LIST for incomplete releases.
+#  %0 is replaced with a progress bar. Leave empty to disable.
+# =============================================================================
 incomplete_indicator: "[incomplete]-%0"
 
-nuke_max_multiplier: 50
-nukedir_style: "[NUKED]-%N"
 
+# =============================================================================
+#  NUKE
+# =============================================================================
+nuke_max_multiplier: 50         # Highest multiplier a siteop can nuke with
+nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
+
+
+# =============================================================================
+#  Plugins — enable/disable the master-side plugin hooks.
+#  (The sitebot has its own plugin list in the sitebot config.)
+# =============================================================================
 plugins:
   imdb:
     enabled: true
   tvmaze:
     enabled: true
 
+
+# =============================================================================
+#  Sitebot integration
+#    - event_fifo:     Named pipe the daemon writes events to, sitebot reads from
+#    - sitebot_config: Path to the sitebot's config.yml. SITE INVITE reads
+#                      irc.channels + invite_channels from there (flag rules
+#                      restricting which channels which users can be invited to).
+# =============================================================================
+event_fifo:     "/GoFTPd/etc/goftpd.sitebot.fifo"
+sitebot_config: "/GoFTPd/sitebot/etc/config.yml"
+
+
+# =============================================================================
+#  Dupe detection — prevents re-uploading known releases.
+# =============================================================================
 xdupe_enabled: true
 xdupe_db_path: "./logs/xdupe.db"
 
-debug: false
+
+# =============================================================================
+#  SITE PRE — affil pre-releases.
+#
+#  Usage:  SITE PRE <releasename> <section>
+#
+#  Flow:
+#    1. User must be in an affil group (see `affils:` below).
+#    2. The release dir must exist under that group's predir.
+#    3. Section must be in pre_sections whitelist.
+#    4. Release moves from <predir>/<rel> → /<section>/<rel>
+#       (or /<section>/<MMDD>/<rel> for dated sections).
+#    5. A PRE event announces in IRC via the sitebot.
+#    6. Daemon samples race bandwidth for pre_bw_duration seconds and emits
+#       PREBW / PREBWINTERVAL / PREBWUSER announces.
+# =============================================================================
+pre_enabled:        true
+pre_base:           "/PRE"       # Root of all affil staging dirs (cosmetic, not enforced)
+pre_bw_duration:    30           # Seconds to measure bandwidth after the pre
+pre_bw_interval_ms: 500          # Polling interval (ms) — finer = more accurate peaks
+
+pre_sections:
+  - TV-1080P
+  - TV-720P
+  - MOVIE
+  - X264
+  - X265
+  - BLURAY
+  - MP3
+  - FLAC
+  - 0DAY
+
+# Sections that use dated subdirs (scene convention for MP3/FLAC/0DAY/etc).
+# When pre'ing to these, releases go to /<section>/<MMDD>/<rel> where MMDD
+# is today's date (e.g. 0419). A separate midnight script is expected to
+# pre-create the next day's dir + !Today_<SECTION> symlinks; if the MMDD
+# dir doesn't exist yet when SITE PRE fires, goftpd creates it on the fly.
+pre_dated_sections:
+  - MP3
+  - FLAC
+  - 0DAY
+
+# Map of affil groups → their staging dir. Only users whose primary or
+# secondary group matches one of these can SITE PRE, and only from the
+# corresponding predir.
+affils:
+  - group:  "GoFTPd"
+    predir: "/PRE/GoFTPd"
+  - group:  "GRPTST"
+    predir: "/PRE/GRPTST"
+
+
+# =============================================================================
+#  Debug — verbose logging for all subsystems.
+# =============================================================================
+debug: true

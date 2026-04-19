@@ -88,13 +88,14 @@ type SFVEntryInfo struct {
 
 // VFSRaceUser holds per-user race stats from VFS.
 type VFSRaceUser struct {
-	Name      string
-	Group     string
-	Files     int
-	Bytes     int64
-	Speed     float64
-	PeakSpeed float64
-	Percent   int
+	Name       string
+	Group      string
+	Files      int
+	Bytes      int64
+	Speed      float64
+	PeakSpeed  float64
+	Percent    int
+	DurationMs int64 // sum of file durations for this user (effective transfer time)
 }
 
 // VFSRaceGroup holds per-group race stats from VFS.
