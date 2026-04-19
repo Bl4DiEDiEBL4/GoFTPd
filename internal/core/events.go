@@ -29,6 +29,11 @@ const (
 	EventRMDir        EventType = "RMDIR"
 	EventRename       EventType = "RENAME"
 	EventUnnuke       EventType = "UNNUKE"
+	EventInvite       EventType = "INVITE"
+	EventPre          EventType = "PRE"          // release pre'd — relname, section, group, files, mbytes
+	EventPreBW        EventType = "PREBW"        // race-bw totals after pre
+	EventPreBWUser    EventType = "PREBWUSER"    // per-user race-bw after pre
+	EventPreBWInterval EventType = "PREBWINTERVAL" // interval snapshots after pre
 )
 
 // Event is the daemon-side event payload written to the event FIFO as JSON lines.
@@ -135,9 +140,17 @@ func (s *JSONLineFileSink) ensureWriter() {
 // that only blocks this goroutine, not the FTP session calling Publish().
 func (s *JSONLineFileSink) writer() {
 	for line := range s.queue {
-		if err := s.ensureOpen(); err != nil {
-			// Can't open FIFO (no reader yet). Drop the event and try again later.
-			continue
+		// Keep trying to open the FIFO until a reader is present.
+		// Once open, stays open across subsequent events.
+		for {
+			if err := s.ensureOpen(); err != nil {
+				// No reader yet — wait briefly and retry. Events keep
+				// queuing behind us; if the queue fills up, Publish() drops
+				// newest so we don't grow unbounded.
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
+			break
 		}
 		if _, err := s.file.Write(line); err != nil {
 			_ = s.file.Close()
@@ -278,8 +291,31 @@ func (s *Session) emitEvent(evtType EventType, eventPath, fileName string, size 
 // one for the COMPLETE line, one for the HOF header+speeds, one per user in
 // the Hall of Fame, and one for the footer. Each event is a separate FIFO
 // write and a separate IRC PRIVMSG, matching pzs-ng behavior.
+//
+// The xferMs argument is the duration of the LAST file only (the one that
+// completed the race) and is ignored for aggregate speed calculation — we
+// use max(user.DurationMs) as the wall-clock span instead, which is the
+// effective critical-path time across all racers.
 func emitRaceEnd(s *Session, users []VFSRaceUser, totalBytes int64, total int, xferMs int64) {
-	durSec := float64(max64(1, xferMs/1000))
+	// Race span = longest per-user active transfer time. With a single
+	// uploader this equals wall-clock time; with parallel racers it's a
+	// good approximation since the slowest concurrent uploader dictates
+	// when the release is complete. Using the last-file xferMs (old
+	// behavior) gives wildly inflated speeds when files are small/fast.
+	var raceDurationMs int64
+	for _, u := range users {
+		if u.DurationMs > raceDurationMs {
+			raceDurationMs = u.DurationMs
+		}
+	}
+	if raceDurationMs == 0 {
+		raceDurationMs = xferMs // fallback for safety
+	}
+	if raceDurationMs < 1 {
+		raceDurationMs = 1
+	}
+
+	durSec := float64(raceDurationMs) / 1000.0
 	avgMB := 0.0
 	if durSec > 0 {
 		avgMB = (float64(totalBytes) / 1024.0 / 1024.0) / durSec
@@ -289,7 +325,7 @@ func emitRaceEnd(s *Session, users []VFSRaceUser, totalBytes int64, total int, x
 		"relname":    rel,
 		"t_files":    fmt.Sprintf("%dF", total),
 		"t_mbytes":   fmt.Sprintf("%.0fMB", float64(totalBytes)/1024.0/1024.0),
-		"t_duration": fmt.Sprintf("%ds", max64(1, xferMs/1000)),
+		"t_duration": fmt.Sprintf("%ds", max64(1, raceDurationMs/1000)),
 		"t_avgspeed": fmt.Sprintf("%.2fMB/s", avgMB),
 		"u_count":    fmt.Sprintf("%d", len(users)),
 	}

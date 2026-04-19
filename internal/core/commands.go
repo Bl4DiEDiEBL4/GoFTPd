@@ -41,9 +41,12 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		fmt.Fprintf(s.Conn, " PROT\r\n")
 		fmt.Fprintf(s.Conn, " SIZE\r\n")
 		fmt.Fprintf(s.Conn, " MDTM\r\n")
+		fmt.Fprintf(s.Conn, " MLSD\r\n")
+		fmt.Fprintf(s.Conn, " MLST Type*;Size*;Modify*;Perm*;\r\n")
 		fmt.Fprintf(s.Conn, " REST STREAM\r\n")
 		fmt.Fprintf(s.Conn, " SSCN\r\n")
 		fmt.Fprintf(s.Conn, " CPSV\r\n")
+		fmt.Fprintf(s.Conn, " PRET\r\n")
 		fmt.Fprintf(s.Conn, " SITE\r\n")
 		fmt.Fprintf(s.Conn, " UTF8\r\n")
 		fmt.Fprintf(s.Conn, "211 End\r\n")
@@ -358,6 +361,12 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		}
 
 		s.emitEvent(EventMKDir, path.Join(s.CurrentDir, args[0]), args[0], 0, 0, nil)
+
+		// Fire meta lookup (TVMaze/IMDB) — writes .tvmaze/.imdb file async.
+		if s.Config.MetaLookup != nil {
+			s.Config.MetaLookup.OnMKDir(path.Join(s.CurrentDir, args[0]))
+		}
+
 		fmt.Fprintf(s.Conn, "257 \"%s\" created\r\n", args[0])
 
 	case "RMD":
@@ -567,16 +576,70 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		s.ActiveAddr = fmt.Sprintf("%s:%d", ip, p1*256+p2)
 		fmt.Fprintf(s.Conn, "200 PORT command successful.\r\n")
 
+	case "MLST":
+		// MLST returns facts for a single file/dir on the CONTROL channel
+		// (unlike MLSD which uses a data connection). cbftp uses this at
+		// login to verify CWD works before listing.
+		target := s.CurrentDir
+		if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
+			t := strings.TrimSpace(args[0])
+			if strings.HasPrefix(t, "/") {
+				target = path.Clean(t)
+			} else {
+				target = path.Clean(path.Join(s.CurrentDir, t))
+			}
+		}
+
+		facts := ""
+		found := false
+		if s.Config.Mode == "master" && s.MasterManager != nil {
+			if bridge, ok := s.MasterManager.(MasterBridge); ok {
+				// Root is always a directory
+				if target == "/" {
+					facts = "Type=dir;Perm=flcdmpe; /"
+					found = true
+				} else {
+					parent := path.Dir(target)
+					name := path.Base(target)
+					for _, e := range bridge.ListDir(parent) {
+						if e.Name == name {
+							ts := time.Unix(e.ModTime, 0).Format("20060102150405")
+							parts := []string{fmt.Sprintf("Modify=%s", ts), "Perm=flcdmpe"}
+							if e.IsDir {
+								parts = append(parts, "Type=dir")
+							} else {
+								parts = append(parts, "Type=file")
+								parts = append(parts, fmt.Sprintf("Size=%d", e.Size))
+							}
+							facts = strings.Join(parts, ";") + "; " + target
+							found = true
+							break
+						}
+					}
+				}
+			}
+		}
+
+		if !found {
+			fmt.Fprintf(s.Conn, "550 %s: no such file or directory\r\n", target)
+			return false
+		}
+		fmt.Fprintf(s.Conn, "250- Listing %s\r\n", target)
+		fmt.Fprintf(s.Conn, " %s\r\n", facts)
+		fmt.Fprintf(s.Conn, "250 End\r\n")
+
 	case "MLSD":
 		if s.Config.Debug {
 			log.Printf("[MLSD] Client requesting machine list for %s", s.CurrentDir)
 		}
+		// Send 150 before Accept (see comment in LIST handler).
+		fmt.Fprintf(s.Conn, "150 File status okay; about to open data connection.\r\n")
+
 		raw, err := s.getRawDataConn()
 		if err != nil {
 			fmt.Fprintf(s.Conn, "425 Data connection failed\r\n")
 			return false
 		}
-		fmt.Fprintf(s.Conn, "150 File status okay; about to open data connection.\r\n")
 		dataConn, err := s.upgradeDataTLS(raw, tlsConfig)
 		if err != nil {
 			raw.Close()
@@ -584,47 +647,76 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			return false
 		}
 
-		mlsdPath := filepath.Join(s.Config.StoragePath, s.CurrentDir)
-		files, err := os.ReadDir(mlsdPath)
 		var output strings.Builder
 
-		for _, f := range files {
-			if strings.HasPrefix(f.Name(), ".") {
-				continue
+		// Master mode: use VFS (files aren't on this machine's disk)
+		if s.Config.Mode == "master" && s.MasterManager != nil {
+			if bridge, ok := s.MasterManager.(MasterBridge); ok {
+				entries := bridge.ListDir(s.CurrentDir)
+				for _, e := range entries {
+					if strings.HasPrefix(e.Name, ".") {
+						continue
+					}
+					aclPath := path.Join(s.Config.ACLBasePath, s.CurrentDir, e.Name)
+					if !s.ACLEngine.CanPerform(s.User, "LIST", aclPath) {
+						continue
+					}
+					ts := time.Unix(e.ModTime, 0).Format("20060102150405")
+					facts := []string{
+						fmt.Sprintf("Modify=%s", ts),
+						"Perm=flcdmpe",
+					}
+					if e.IsDir {
+						facts = append(facts, "Type=dir")
+					} else {
+						facts = append(facts, "Type=file")
+						facts = append(facts, fmt.Sprintf("Size=%d", e.Size))
+					}
+					output.WriteString(strings.Join(facts, ";") + "; " + e.Name + "\r\n")
+				}
 			}
-			if !s.Config.ShowSymlinks && f.Type()&fs.ModeSymlink != 0 {
-				continue
+		} else {
+			// Standalone mode: read local filesystem
+			mlsdPath := filepath.Join(s.Config.StoragePath, s.CurrentDir)
+			files, err := os.ReadDir(mlsdPath)
+			if err != nil {
+				if s.Config.Debug {
+					log.Printf("[MLSD] ReadDir %s: %v", mlsdPath, err)
+				}
 			}
-
-			fileName := f.Name()
-			fullPath := filepath.Join(mlsdPath, fileName)
-			isSymlink := f.Type()&fs.ModeSymlink != 0
-
-			var info os.FileInfo
-			if isSymlink {
-				info, err = os.Lstat(fullPath)
-			} else {
-				info, err = f.Info()
+			for _, f := range files {
+				if strings.HasPrefix(f.Name(), ".") {
+					continue
+				}
+				if !s.Config.ShowSymlinks && f.Type()&fs.ModeSymlink != 0 {
+					continue
+				}
+				fileName := f.Name()
+				fullPath := filepath.Join(mlsdPath, fileName)
+				isSymlink := f.Type()&fs.ModeSymlink != 0
+				var info os.FileInfo
+				if isSymlink {
+					info, err = os.Lstat(fullPath)
+				} else {
+					info, err = f.Info()
+				}
+				if err != nil || info == nil {
+					continue
+				}
+				facts := []string{
+					fmt.Sprintf("Modify=%s", info.ModTime().Format("20060102150405")),
+					fmt.Sprintf("Perm=%s", getMlsdPerm(info, isSymlink)),
+				}
+				if isSymlink {
+					facts = append(facts, "Type=OS.unix=symlink")
+				} else if info.IsDir() {
+					facts = append(facts, "Type=dir")
+				} else {
+					facts = append(facts, "Type=file")
+					facts = append(facts, fmt.Sprintf("Size=%d", info.Size()))
+				}
+				output.WriteString(strings.Join(facts, ";") + "; " + fileName + "\r\n")
 			}
-			if err != nil || info == nil {
-				continue
-			}
-
-			facts := []string{
-				fmt.Sprintf("Modify=%s", info.ModTime().Format("20060102150405")),
-				fmt.Sprintf("Perm=%s", getMlsdPerm(info, isSymlink)),
-			}
-
-			if isSymlink {
-				facts = append(facts, "Type=OS.unix=symlink")
-			} else if info.IsDir() {
-				facts = append(facts, "Type=dir")
-			} else {
-				facts = append(facts, "Type=file")
-				facts = append(facts, fmt.Sprintf("Size=%d", info.Size()))
-			}
-
-			output.WriteString(strings.Join(facts, ";") + "; " + fileName + "\r\n")
 		}
 
 		dataConn.Write([]byte(output.String()))
@@ -633,12 +725,18 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		return false
 
 	case "LIST":
+		// Send 150 BEFORE accepting the data connection. Some clients
+		// (notably cbftp) wait for 150 on the control channel before they
+		// open the PASV TCP connection, creating a deadlock if we Accept()
+		// first. FlashFXP/RushFTP open early and either order works for
+		// them. RFC order is: 1xx preliminary reply first, then data conn.
+		fmt.Fprintf(s.Conn, "150 Opening ASCII mode data connection.\r\n")
+
 		raw, err := s.getRawDataConn()
 		if err != nil {
 			fmt.Fprintf(s.Conn, "425 Data connection failed\r\n")
 			return false
 		}
-		fmt.Fprintf(s.Conn, "150 Opening ASCII mode data connection.\r\n")
 		dataConn, err := s.upgradeDataTLS(raw, tlsConfig)
 		if err != nil {
 			raw.Close()

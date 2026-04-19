@@ -19,7 +19,17 @@ func main() {
 	if err := b.Start(); err != nil { log.Fatalf("start: %v", err) }
 	log.Println("GoSitebot running...")
 	c := make(chan os.Signal, 1)
-	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-	<-c
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	for s := range c {
+		if s == syscall.SIGHUP {
+			if path, err := cfg.Rehash(); err != nil {
+				log.Printf("[REHASH] failed: %v", err)
+			} else {
+				log.Printf("[REHASH] reloaded %s", path)
+			}
+			continue
+		}
+		break
+	}
 	_ = b.Stop()
 }

@@ -1,11 +1,18 @@
 package core
 
 import (
-	"gopkg.in/yaml.v3"
+	"fmt"
 	"os"
+	"sync"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
+	// Private: path we loaded from, and a mutex protecting rehash swaps.
+	configPath string       `yaml:"-"`
+	rehashMu   sync.RWMutex `yaml:"-"`
+
 	// Server Identity
 	SiteName      string `yaml:"sitename_long"`
 	SiteNameShort string `yaml:"sitename_short"`
@@ -26,6 +33,22 @@ type Config struct {
 	Master map[string]interface{} `yaml:"master"`
 	Slave  map[string]interface{} `yaml:"slave"`
 	Slaves []SlavePolicyConfig    `yaml:"slaves"` // per-slave routing/affinity rules (master mode)
+
+	// InviteChannels maps channel names to required user flags. Channels
+	// not listed here are considered public and returned to every user
+	// regardless of flags. A user needs at least ONE of the listed flags.
+	// Example:
+	//   invite_channels:
+	//     - channel: "#goftpd-staff"
+	//       flags: "1"         # siteop only
+	//     - channel: "#goftpd-nuke"
+	//       flags: "12"        # siteop or group admin
+	InviteChannels []InviteRule `yaml:"invite_channels"`
+
+	// SitebotConfig is the path to the sitebot's config.yml. Used by
+	// SITE INVITE to read the announce channels from the sitebot config
+	// (single source of truth).
+	SitebotConfig string `yaml:"sitebot_config"`
 
 	// Storage & Paths
 	StoragePath string `yaml:"storage_path"`
@@ -95,6 +118,36 @@ type Config struct {
 	EventFIFO       string                            `yaml:"event_fifo"`
 	EventDispatcher *EventDispatcher                  `yaml:"-"` // Set at runtime
 	MasterManager   interface{}                       `yaml:"-"` // *master.Manager for master mode
+	MetaLookup      *MetaLookup                       `yaml:"-"` // tvmaze/imdb .meta-file writer
+	RehashHook      func(*Config)                     `yaml:"-"` // called after Rehash() swaps fields
+
+	// Meta lookup (writes .tvmaze / .imdb files in release dirs on MKD).
+	// Files are shown on CWD via show_diz. Requires adding `.tvmaze: "*"`
+	// and/or `.imdb: "*"` to show_diz.
+	MetaLookupEnabled  bool     `yaml:"meta_lookup_enabled"`
+	MetaLookupTVSects  []string `yaml:"meta_lookup_tv_sections"`
+	MetaLookupIMSects  []string `yaml:"meta_lookup_imdb_sections"`
+
+	// SITE PRE — move a release from /PRE/<group>/<rel> to /<section>/<rel>
+	// and announce it. Affils are listed in `affils:`, which maps group
+	// name -> pre staging path (inside the site root). Example:
+	//   pre_enabled: true
+	//   pre_base: "/PRE"
+	//   pre_sections: ["TV-1080P", "MOVIE", "MP3", "FLAC", "X264", "X265"]
+	//   pre_bw_duration: 30        # seconds to sample bandwidth after pre
+	//   pre_bw_interval_ms: 500    # polling interval (ms)
+	//   affils:
+	//     - group: "GoFTPd"
+	//       predir: "/PRE/GoFTPd"
+	//     - group: "B0MBARDiERS"
+	//       predir: "/PRE/B0MBARDiERS"
+	PreEnabled     bool        `yaml:"pre_enabled"`
+	PreBase        string      `yaml:"pre_base"`
+	PreSections    []string    `yaml:"pre_sections"`
+	PreDatedSections []string  `yaml:"pre_dated_sections"` // use MMDD subdir (MP3/FLAC/0DAY)
+	PreBWDuration  int         `yaml:"pre_bw_duration"`    // seconds
+	PreBWIntervalMs int        `yaml:"pre_bw_interval_ms"` // polling interval
+	Affils         []AffilRule `yaml:"affils"`
 
 	// Debug
 	Debug bool `yaml:"debug"`
@@ -106,6 +159,14 @@ type Config struct {
 	IPRestrictions    map[string][]string `yaml:"ip_restrictions"`     // username -> allowed IPs (optional)
 }
 
+// InviteRule restricts a channel to users with specific flags.
+// If any of the flag characters in `Flags` appears in the user's flag string,
+// the user may see the channel on SITE INVITE.
+type InviteRule struct {
+	Channel string `yaml:"channel"`
+	Flags   string `yaml:"flags"`
+}
+
 // SlavePolicyConfig defines per-slave routing rules (section affinity + load-balancer weight).
 // Parsed from the master config's `slaves:` list.
 type SlavePolicyConfig struct {
@@ -113,6 +174,14 @@ type SlavePolicyConfig struct {
 	Sections []string `yaml:"sections"` // e.g. ["TV-1080P", "MP3"] (case-insensitive)
 	Paths    []string `yaml:"paths"`    // e.g. ["/TV-1080P/*"]
 	Weight   int      `yaml:"weight"`   // default 1, higher = more uploads routed here
+}
+
+// AffilRule maps a group name to a pre-staging directory. Used by SITE PRE
+// to enforce that only members of the affil group can pre from that group's
+// dir. `Predir` is relative to the site root (ACLBasePath), e.g. "/PRE/GoFTPd".
+type AffilRule struct {
+	Group  string `yaml:"group"`
+	Predir string `yaml:"predir"`
 }
 
 func LoadConfig(filePath string) (*Config, error) {
@@ -124,5 +193,89 @@ func LoadConfig(filePath string) (*Config, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, err
 	}
+	cfg.configPath = filePath
 	return cfg, nil
+}
+
+// Rehash reloads the YAML config from disk and swaps in the fields that
+// are safe to change at runtime. Fields that require process restart
+// (listen_port, tls_*, storage_path, mode, master.control_port) are
+// intentionally NOT updated.
+//
+// Runtime pointers (PluginManager, EventDispatcher, MasterManager,
+// MetaLookup) are preserved. The reload is protected by a mutex so
+// concurrent sessions see a consistent snapshot.
+//
+// Returns the path actually reloaded, or an error.
+func (c *Config) Rehash() (string, error) {
+	path := c.configPath
+	if path == "" {
+		return "", fmt.Errorf("no config path recorded; was this loaded via LoadConfig?")
+	}
+	fresh, err := LoadConfig(path)
+	if err != nil {
+		return path, err
+	}
+
+	c.rehashMu.Lock()
+	defer c.rehashMu.Unlock()
+
+	// Identity / cosmetic
+	c.SiteName = fresh.SiteName
+	c.SiteNameShort = fresh.SiteNameShort
+	c.Version = fresh.Version
+	c.Email = fresh.Email
+	c.LoginPrompt = fresh.LoginPrompt
+
+	// File-show-diz map
+	c.ShowDiz = fresh.ShowDiz
+
+	// Release management
+	c.NukeMaxMultiplier = fresh.NukeMaxMultiplier
+	c.NukeDirStyle = fresh.NukeDirStyle
+
+	// Invite + sitebot pointer
+	c.InviteChannels = fresh.InviteChannels
+	c.SitebotConfig = fresh.SitebotConfig
+
+	// Meta lookup toggles (the MetaLookup runtime object stays; only the
+	// enable flag + section lists are swapped. MetaLookup re-reads the
+	// sections from config every call.)
+	c.MetaLookupEnabled = fresh.MetaLookupEnabled
+	c.MetaLookupTVSects = fresh.MetaLookupTVSects
+	c.MetaLookupIMSects = fresh.MetaLookupIMSects
+
+	// SITE PRE
+	c.PreEnabled = fresh.PreEnabled
+	c.PreBase = fresh.PreBase
+	c.PreSections = fresh.PreSections
+	c.PreDatedSections = fresh.PreDatedSections
+	c.PreBWDuration = fresh.PreBWDuration
+	c.PreBWIntervalMs = fresh.PreBWIntervalMs
+	c.Affils = fresh.Affils
+
+	// Slaves policy
+	c.Slaves = fresh.Slaves
+
+	// Security / TLS policy (policy toggles, not socket-level TLS itself)
+	c.RequireTLSControl = fresh.RequireTLSControl
+	c.RequireTLSData = fresh.RequireTLSData
+	c.TLSExemptUsers = fresh.TLSExemptUsers
+	c.IPRestrictions = fresh.IPRestrictions
+
+	// User limits
+	c.MaxConnections = fresh.MaxConnections
+	c.MaxUsers = fresh.MaxUsers
+	c.MaxUsersPerIP = fresh.MaxUsersPerIP
+	c.TotalUsers = fresh.TotalUsers
+
+	// Debug toggle
+	c.Debug = fresh.Debug
+
+	// Fire post-rehash hook if set (e.g. reapply slave policies to SlaveManager).
+	if c.RehashHook != nil {
+		c.RehashHook(c)
+	}
+
+	return path, nil
 }

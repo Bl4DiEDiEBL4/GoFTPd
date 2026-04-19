@@ -61,6 +61,10 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 		return s.HandleSiteNuke(remainingArgs)
 	case "UNNUKE":
 		return s.HandleSiteUnnuke(remainingArgs)
+	case "PRE":
+		return s.HandleSitePre(remainingArgs)
+	case "REHASH":
+		return s.HandleSiteRehash(remainingArgs)
 
 	// Miscellaneous (site_misc.go / site_race.go)
 	case "RACE":

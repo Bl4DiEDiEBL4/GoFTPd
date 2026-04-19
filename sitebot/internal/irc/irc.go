@@ -67,6 +67,12 @@ func (b *Bot) SendMessage(channel, msg string) error {
 
 func (b *Bot) SendNotice(channel, msg string) error { return b.SendRaw(fmt.Sprintf("NOTICE %s :%s", channel, msg)) }
 func (b *Bot) Join(channel string) error { b.Channel = channel; return b.SendRaw(fmt.Sprintf("JOIN %s", channel)) }
+
+// Invite sends an IRC INVITE command for nick into channel.
+// The bot must have ops (or the channel must allow invites from non-ops).
+func (b *Bot) Invite(nick, channel string) error {
+	return b.SendRaw(fmt.Sprintf("INVITE %s %s", nick, channel))
+}
 func (b *Bot) SetChannelKey(channel, key string) error { if key=="" { delete(b.Keys, channel); return nil }; enc, err := NewBlowfishEncryptor(key); if err!=nil { return err}; b.Keys[channel]=enc; return nil }
 func (b *Bot) Listen(handler func(string)) error {
 	buf := make([]byte, 2048)

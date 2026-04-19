@@ -18,6 +18,11 @@ const (
 	EventRMDir    EventType = "RMDIR"
 	EventRename   EventType = "RENAME"
 	EventUnnuke   EventType = "UNNUKE"
+	EventInvite   EventType = "INVITE"
+	EventPre          EventType = "PRE"
+	EventPreBW        EventType = "PREBW"
+	EventPreBWUser    EventType = "PREBWUSER"
+	EventPreBWInterval EventType = "PREBWINTERVAL"
 )
 
 type Event struct {

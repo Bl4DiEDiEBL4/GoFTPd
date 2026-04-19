@@ -1,12 +1,18 @@
 package bot
 
 import (
+	"fmt"
 	"os"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
+	// Private: source path + mutex for rehash.
+	configPath string       `yaml:"-"`
+	rehashMu   sync.RWMutex `yaml:"-"`
+
 	Debug      bool           `yaml:"debug"`
 	EventFIFO  string         `yaml:"event_fifo"`
 	IRC        IRCConfig      `yaml:"irc"`
@@ -78,5 +84,40 @@ func LoadConfig(path string) (*Config, error) {
 	if cfg.Announce.ThemeFile == "" {
 		cfg.Announce.ThemeFile = "./etc/templates/pzsng.theme"
 	}
+	cfg.configPath = path
 	return cfg, nil
+}
+
+// Rehash reloads the config from disk and swaps in fields that are safe
+// to change while running. Host/port/SSL/nick/password in `IRC` are NOT
+// reloaded — the IRC socket is already established; changing those would
+// require a full reconnect. Channels, encryption keys, themes, sections,
+// announce routing, and plugin settings all ARE reloaded.
+func (c *Config) Rehash() (string, error) {
+	if c.configPath == "" {
+		return "", fmt.Errorf("no config path recorded; was this loaded via LoadConfig?")
+	}
+	fresh, err := LoadConfig(c.configPath)
+	if err != nil {
+		return c.configPath, err
+	}
+
+	c.rehashMu.Lock()
+	defer c.rehashMu.Unlock()
+
+	c.Debug = fresh.Debug
+	// EventFIFO path change requires restart (reader goroutine has it open)
+	// IRC connection details: keep old. Only refresh auto-join list + modes.
+	c.IRC.Channels = fresh.IRC.Channels
+	c.IRC.UserModes = fresh.IRC.UserModes
+	c.IRC.AutoJoinDelay = fresh.IRC.AutoJoinDelay
+	c.IRC.AutoOper = fresh.IRC.AutoOper
+	c.IRC.OperUser = fresh.IRC.OperUser
+	c.IRC.OperPassword = fresh.IRC.OperPassword
+
+	c.Encryption = fresh.Encryption
+	c.Announce = fresh.Announce
+	c.Sections = fresh.Sections
+	c.Plugins = fresh.Plugins
+	return c.configPath, nil
 }

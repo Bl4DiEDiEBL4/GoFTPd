@@ -19,6 +19,22 @@ irc:
     - "#goftpd"
     - "#goftpd-announce"
 
+# ============================================================================
+# SITE INVITE channel visibility
+# ============================================================================
+# Channels listed here are restricted to users with at least one of the given
+# flags. Any channel NOT listed is considered public and returned to everyone.
+# Flags are matched character-by-character — "12" means flag 1 OR flag 2.
+#
+# Example: keep #goftpd and #goftpd-spam public, restrict #goftpd-staff to
+# siteops only. SITE INVITE then returns:
+#   - siteop       -> #goftpd, #goftpd-spam, #goftpd-staff
+#   - regular user -> #goftpd, #goftpd-spam
+# ============================================================================
+invite_channels:
+  - channel: "#goftpd-staff"
+    flags: "1"
+
 encryption:
   enabled: true
   keys:
@@ -52,13 +68,13 @@ sections:
       - "/MP3/*"
 
 
-# Do not enable tvmaze or imdb yet, need to fix it.. the output works but something is blocking the daemon
 plugins:
   enabled:
     Announce: true
-    TVMaze: false
-    IMDB: false
+    TVMaze: true
+    IMDB: true
   config:
+    #Section matching is case-insensitive substring — "TV" matches TV-1080P, TV-720P, etc. So in practice you only need TV:
     debug: true
-    tvmaze_enabled: false
-    imdb_enabled: false
+    tvmaze_sections: ["TV-1080P", "TV-720P"]
+    imdb_sections: ["X264-SD", "X265", "BLURAY"]

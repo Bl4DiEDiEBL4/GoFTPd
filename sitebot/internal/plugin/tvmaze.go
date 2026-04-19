@@ -24,6 +24,21 @@ type TVMazePlugin struct {
 	seen     map[string]bool
 	client   *http.Client
 	sections []string // only announce when section contains one of these (case-insensitive)
+
+	// Async lookup plumbing. OnEvent enqueues a job; the worker goroutine
+	// performs the HTTP call and uses asyncEmit to post the resulting TV-INFO
+	// line to IRC. This keeps the bot's event loop from stalling for up to
+	// 8s per HTTP timeout when TVMaze is slow or unreachable.
+	jobs      chan tvmazeJob
+	asyncEmit func(outType, text string, section, relpath string)
+	startOnce sync.Once
+}
+
+type tvmazeJob struct {
+	rel     string
+	section string
+	relpath string
+	data    map[string]string
 }
 
 type tvmazeShow struct {
@@ -52,7 +67,26 @@ func NewTVMazePlugin() *TVMazePlugin {
 		seen:     map[string]bool{},
 		client:   &http.Client{Timeout: 8 * time.Second},
 		sections: []string{"TV"},
+		jobs:     make(chan tvmazeJob, 64),
 	}
+}
+
+// SetAsyncEmitter wires up the callback used to post late TV-INFO lines.
+// Called by the bot during plugin setup. If not set, async output is dropped.
+func (p *TVMazePlugin) SetAsyncEmitter(fn func(outType, text string, section, relpath string)) {
+	p.asyncEmit = fn
+}
+
+// startWorker launches a single background goroutine that drains tvmaze jobs.
+// Running one lookup at a time keeps the TVMaze API happy and avoids a stampede.
+func (p *TVMazePlugin) startWorker() {
+	p.startOnce.Do(func() {
+		go func() {
+			for job := range p.jobs {
+				p.doLookup(job)
+			}
+		}()
+	})
 }
 
 func (p *TVMazePlugin) Name() string { return "TVMaze" }
@@ -67,13 +101,29 @@ func (p *TVMazePlugin) Initialize(config map[string]interface{}) error {
 			p.theme = th
 		}
 	}
-	if secs, ok := config["tvmaze_sections"].([]string); ok && len(secs) > 0 {
-		p.sections = secs
+	if raw, ok := config["tvmaze_sections"]; ok {
+		p.sections = toStringSlice(raw, p.sections)
 	}
 	return nil
 }
 
 func (p *TVMazePlugin) Close() error { return nil }
+
+// isReleaseDirName returns true if the directory name looks like a scene
+// release rather than a subfolder (Sample, Proof, Subs, etc). A real release
+// has dots, a -GROUP suffix, and a season/year tag.
+func isReleaseDirName(rel string) bool {
+	// Scene releases always contain dots and a group suffix.
+	if !strings.Contains(rel, ".") {
+		return false
+	}
+	if !strings.Contains(rel, "-") {
+		return false
+	}
+	// Must have a season/episode tag or a 4-digit year.
+	re := regexp.MustCompile(`(?i)(^|\.)(S\d{1,2}(E\d{1,3})?|Season\.?\d+|\d{4})(\.|$)`)
+	return re.MatchString(rel)
+}
 
 // extractShowName parses a scene-style release name and returns a query title.
 // e.g. "Fire.Country.S04E15.1080p.WEB.h264-ETHEL" -> "Fire Country"
@@ -134,6 +184,11 @@ func (p *TVMazePlugin) OnEvent(evt *event.Event) ([]Output, error) {
 	if rel == "" || rel == "." || rel == "/" {
 		return nil, nil
 	}
+	// Skip scene subfolders like Sample, Proof, Subs, Cover, etc.
+	// These sit inside a release dir, not at the section root.
+	if !isReleaseDirName(rel) {
+		return nil, nil
+	}
 
 	p.mu.Lock()
 	if p.seen[rel] {
@@ -146,16 +201,39 @@ func (p *TVMazePlugin) OnEvent(evt *event.Event) ([]Output, error) {
 	}
 	p.mu.Unlock()
 
-	query := extractShowName(rel)
+	// Copy event data so the worker goroutine has a stable snapshot.
+	dataCopy := map[string]string{}
+	for k, v := range evt.Data {
+		dataCopy[k] = v
+	}
+
+	p.startWorker()
+	// Enqueue non-blocking — if queue is full (TVMaze is stuck on slow
+	// lookups), drop this one rather than blocking the bot's event loop.
+	select {
+	case p.jobs <- tvmazeJob{rel: rel, section: evt.Section, relpath: evt.Path, data: dataCopy}:
+	default:
+		if p.debug {
+			log.Printf("[TVMaze] queue full, dropping lookup for %q", rel)
+		}
+	}
+	return nil, nil
+}
+
+// doLookup performs the TVMaze HTTP call and emits TV-INFO asynchronously.
+// Runs on the plugin's worker goroutine — can block on HTTP without stalling
+// the bot's main event loop.
+func (p *TVMazePlugin) doLookup(job tvmazeJob) {
+	query := extractShowName(job.rel)
 	if query == "" {
-		return nil, nil
+		return
 	}
 	show, err := p.lookup(query)
 	if err != nil {
 		if p.debug {
 			log.Printf("[TVMaze] lookup %q failed: %v", query, err)
 		}
-		return nil, nil
+		return
 	}
 
 	genres := "N/A"
@@ -187,8 +265,8 @@ func (p *TVMazePlugin) OnEvent(evt *event.Event) ([]Output, error) {
 	}
 
 	vars := map[string]string{
-		"section":  evt.Section,
-		"relname":  rel,
+		"section":  job.section,
+		"relname":  job.rel,
 		"genre":    genres,
 		"type":     showType,
 		"network":  network,
@@ -197,7 +275,7 @@ func (p *TVMazePlugin) OnEvent(evt *event.Event) ([]Output, error) {
 		"link":     link,
 		"title":    show.Name,
 	}
-	for k, v := range evt.Data {
+	for k, v := range job.data {
 		vars[k] = v
 	}
 
@@ -209,7 +287,10 @@ func (p *TVMazePlugin) OnEvent(evt *event.Event) ([]Output, error) {
 	}
 	if text == "" {
 		text = fmt.Sprintf("TV-INFO: [%s] %s Genre: %s - Type: %s - Link: %s - Network: %s - Rating: %s - Language: %s",
-			evt.Section, rel, genres, showType, link, network, rating, language)
+			job.section, job.rel, genres, showType, link, network, rating, language)
 	}
-	return []Output{{Type: "TV-INFO", Text: text}}, nil
+
+	if p.asyncEmit != nil {
+		p.asyncEmit("TV_INFO", text, job.section, job.relpath)
+	}
 }
