@@ -84,14 +84,11 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		}
 
 	case "CPSV":
-		// CPSV = PASV + SSL client mode (for FXP)
-		// CPSV is ALWAYS for transfers (never LIST), so always use passthrough
 		if s.Config.Debug {
 			log.Printf("[CPSV] Starting passive mode setup (passthrough=%v)", s.Config.Passthrough)
 		}
 		s.SSCN = true
 
-		// Passthrough: return slave's IP:port — other site connects to slave directly
 		if s.Config.Passthrough && s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
 				slaveIP, port, xferIdx, slaveName, err := bridge.SlaveListenForPassthrough(s.CurrentDir)
@@ -116,7 +113,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			}
 		}
 
-		// Fallback: standard PASV on master
 		var l net.Listener
 		var port int
 		var err error
@@ -329,13 +325,27 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			fmt.Fprintf(s.Conn, "501 Syntax error\r\n")
 			return false
 		}
-		aclPath := path.Join(s.Config.ACLBasePath, s.CurrentDir, args[0])
+
+		requestedPath := args[0]
+		var targetPath string
+		if path.IsAbs(requestedPath) {
+			targetPath = path.Clean(requestedPath)
+		} else {
+			targetPath = path.Join("/", s.CurrentDir, requestedPath)
+		}
+
+		if !path.IsAbs(targetPath) {
+			targetPath = "/" + targetPath
+		}
+		targetPath = path.Clean(targetPath)
+
+		aclPath := path.Join(s.Config.ACLBasePath, targetPath)
 		if !s.ACLEngine.CanPerform(s.User, "MKD", aclPath) {
 			fmt.Fprintf(s.Conn, "550 Access Denied: Insufficient flags.\r\n")
 			return false
 		}
 
-		dirName := args[0]
+		dirName := path.Base(targetPath)
 		if s.DupeChecker != nil {
 			if dc, ok := s.DupeChecker.(interface{ IsDupe(string) (bool, error) }); ok {
 				if isDupe, err := dc.IsDupe(dirName); err == nil && isDupe {
@@ -347,8 +357,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
-				dirPath := path.Join(s.CurrentDir, args[0])
-				bridge.MakeDir(dirPath, s.User.Name, s.User.PrimaryGroup)
+				bridge.MakeDir(targetPath, s.User.Name, s.User.PrimaryGroup)
 			}
 		}
 
@@ -360,14 +369,13 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			}
 		}
 
-		s.emitEvent(EventMKDir, path.Join(s.CurrentDir, args[0]), args[0], 0, 0, nil)
+		s.emitEvent(EventMKDir, targetPath, dirName, 0, 0, nil)
 
-		// Fire meta lookup (TVMaze/IMDB) — writes .tvmaze/.imdb file async.
 		if s.Config.MetaLookup != nil {
-			s.Config.MetaLookup.OnMKDir(path.Join(s.CurrentDir, args[0]))
+			s.Config.MetaLookup.OnMKDir(targetPath)
 		}
 
-		fmt.Fprintf(s.Conn, "257 \"%s\" created\r\n", args[0])
+		fmt.Fprintf(s.Conn, "257 \"%s\" created\r\n", targetPath)
 
 	case "RMD":
 		if len(args) == 0 {
@@ -505,7 +513,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			log.Printf("[PASV] Starting passive mode setup (pret=%s, passthrough=%v)", s.PretCmd, s.Config.Passthrough)
 		}
 
-		// Passthrough mode: for STOR/RETR, ask slave to listen and return slave's IP:port
 		if s.Config.Passthrough && s.Config.Mode == "master" && s.MasterManager != nil {
 			if s.PretCmd == "STOR" || s.PretCmd == "RETR" {
 				if bridge, ok := s.MasterManager.(MasterBridge); ok {
@@ -517,7 +524,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					}
 					s.PassthruSlave = slaveName
 					s.PassthruXferIdx = xferIdx
-					// Close any existing master listener
 					if s.DataListen != nil {
 						s.DataListen.Close()
 						s.DataListen = nil
@@ -533,7 +539,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			}
 		}
 
-		// Standard proxy PASV: master listens
 		var l net.Listener
 		var port int
 		var err error
@@ -552,7 +557,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			return false
 		}
 		s.DataListen = l
-		s.PassthruSlave = nil // clear any passthrough state
+		s.PassthruSlave = nil 
 		ip := strings.ReplaceAll(s.Config.PublicIP, ".", ",")
 		response := fmt.Sprintf("227 Entering Passive Mode (%s,%d,%d)\r\n", ip, port/256, port%256)
 		if s.Config.Debug {
@@ -577,9 +582,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		fmt.Fprintf(s.Conn, "200 PORT command successful.\r\n")
 
 	case "MLST":
-		// MLST returns facts for a single file/dir on the CONTROL channel
-		// (unlike MLSD which uses a data connection). cbftp uses this at
-		// login to verify CWD works before listing.
 		target := s.CurrentDir
 		if len(args) > 0 && strings.TrimSpace(args[0]) != "" {
 			t := strings.TrimSpace(args[0])
@@ -594,9 +596,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		found := false
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
-				// Root is always a directory
 				if target == "/" {
-					facts = "Type=dir;Perm=flcdmpe; /"
+					facts = "Type=dir;Perm=elcmp; /"
 					found = true
 				} else {
 					parent := path.Dir(target)
@@ -604,12 +605,20 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					for _, e := range bridge.ListDir(parent) {
 						if e.Name == name {
 							ts := time.Unix(e.ModTime, 0).Format("20060102150405")
-							parts := []string{fmt.Sprintf("Modify=%s", ts), "Perm=flcdmpe"}
+							var parts []string
 							if e.IsDir {
-								parts = append(parts, "Type=dir")
+								parts = []string{
+									fmt.Sprintf("Modify=%s", ts),
+									"Perm=elcmp",
+									"Type=dir",
+								}
 							} else {
-								parts = append(parts, "Type=file")
-								parts = append(parts, fmt.Sprintf("Size=%d", e.Size))
+								parts = []string{
+									fmt.Sprintf("Modify=%s", ts),
+									"Perm=radfw",
+									"Type=file",
+									fmt.Sprintf("Size=%d", e.Size),
+								}
 							}
 							facts = strings.Join(parts, ";") + "; " + target
 							found = true
@@ -632,7 +641,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		if s.Config.Debug {
 			log.Printf("[MLSD] Client requesting machine list for %s", s.CurrentDir)
 		}
-		// Send 150 before Accept (see comment in LIST handler).
 		fmt.Fprintf(s.Conn, "150 File status okay; about to open data connection.\r\n")
 
 		raw, err := s.getRawDataConn()
@@ -649,10 +657,43 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 
 		var output strings.Builder
 
-		// Master mode: use VFS (files aren't on this machine's disk)
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
 				entries := bridge.ListDir(s.CurrentDir)
+
+				// Race-stats virtual entry — mirrors the [HV] - ( ... COMPLETE ) - [HV]
+				// row that LIST shows. Rendered as Type=dir so it appears at the top
+				// of client browsers the same way LIST's drwxr-xr-x row did.
+				_, _, totalBytes, present, total := bridge.GetVFSRaceStats(s.CurrentDir)
+				if total > 0 {
+					siteName := s.Config.SiteNameShort
+					if siteName == "" {
+						siteName = "GoFTPd"
+					}
+					var statusName string
+					if present >= total {
+						totalMB := float64(totalBytes) / (1024 * 1024)
+						statusName = fmt.Sprintf("[%s] - ( %.0fM %dF - COMPLETE ) - [%s]",
+							siteName, totalMB, total, siteName)
+					} else {
+						pct := (present * 100) / total
+						bar := "["
+						barWidth := 20
+						filled := (present * barWidth) / total
+						for i := 0; i < barWidth; i++ {
+							if i < filled {
+								bar += "#"
+							} else {
+								bar += ":"
+							}
+						}
+						bar += "]"
+						statusName = fmt.Sprintf("%s - %3d%% Complete - [%s]", bar, pct, siteName)
+					}
+					nowTs := time.Now().Format("20060102150405")
+					output.WriteString(fmt.Sprintf("Modify=%s;Perm=el;Type=dir; %s\r\n", nowTs, statusName))
+				}
+
 				for _, e := range entries {
 					if strings.HasPrefix(e.Name, ".") {
 						continue
@@ -662,21 +703,28 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						continue
 					}
 					ts := time.Unix(e.ModTime, 0).Format("20060102150405")
-					facts := []string{
-						fmt.Sprintf("Modify=%s", ts),
-						"Perm=flcdmpe",
-					}
+					var perm string
+					var facts []string
 					if e.IsDir {
-						facts = append(facts, "Type=dir")
+						perm = "elcmp" // enter, list, create, mkdir, purge
+						facts = []string{
+							fmt.Sprintf("Modify=%s", ts),
+							"Perm=" + perm,
+							"Type=dir",
+						}
 					} else {
-						facts = append(facts, "Type=file")
-						facts = append(facts, fmt.Sprintf("Size=%d", e.Size))
+						perm = "radfw" // read, append, delete, rename, write
+						facts = []string{
+							fmt.Sprintf("Modify=%s", ts),
+							"Perm=" + perm,
+							"Type=file",
+							fmt.Sprintf("Size=%d", e.Size),
+						}
 					}
 					output.WriteString(strings.Join(facts, ";") + "; " + e.Name + "\r\n")
 				}
 			}
 		} else {
-			// Standalone mode: read local filesystem
 			mlsdPath := filepath.Join(s.Config.StoragePath, s.CurrentDir)
 			files, err := os.ReadDir(mlsdPath)
 			if err != nil {
@@ -725,11 +773,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		return false
 
 	case "LIST":
-		// Send 150 BEFORE accepting the data connection. Some clients
-		// (notably cbftp) wait for 150 on the control channel before they
-		// open the PASV TCP connection, creating a deadlock if we Accept()
-		// first. FlashFXP/RushFTP open early and either order works for
-		// them. RFC order is: 1xx preliminary reply first, then data conn.
 		fmt.Fprintf(s.Conn, "150 Opening ASCII mode data connection.\r\n")
 
 		raw, err := s.getRawDataConn()
@@ -744,8 +787,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			return false
 		}
 
+		var output strings.Builder
+
 		if s.Config.Mode == "master" && s.MasterManager != nil {
-			var output strings.Builder
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
 				entries := bridge.ListDir(s.CurrentDir)
 				now := time.Now().Format("Jan _2 15:04")
@@ -755,6 +799,11 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				}
 
 				_, _, totalBytes, present, total := bridge.GetVFSRaceStats(s.CurrentDir)
+
+				if s.Config.Debug {
+					log.Printf("[LIST/RACESTATS] dir=%s totalBytes=%d present=%d total=%d",
+						s.CurrentDir, totalBytes, present, total)
+				}
 
 				existingFiles := make(map[string]bool)
 				for _, e := range entries {
@@ -834,14 +883,46 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					}
 				}
 			}
-			dataConn.Write([]byte(output.String()))
-			dataConn.Close()
-			s.showGlobalStats("226", false)
-			fmt.Fprintf(s.Conn, "226 Directory listing complete.\r\n")
-			return false
+		} else {
+			// FALLBACK: Standalone mode directory listing for cbftp
+			listPath := filepath.Join(s.Config.StoragePath, s.CurrentDir)
+			files, err := os.ReadDir(listPath)
+			if err == nil {
+				
+				for _, f := range files {
+					if strings.HasPrefix(f.Name(), ".") {
+						continue
+					}
+					if !s.Config.ShowSymlinks && f.Type()&fs.ModeSymlink != 0 {
+						continue
+					}
+					info, err := f.Info()
+					if err != nil {
+						continue
+					}
+					mode := "-rw-r--r--"
+					size := fmt.Sprintf("%d", info.Size())
+					if info.IsDir() {
+						mode = "drwxr-xr-x"
+						size = "4096"
+					} else if f.Type()&fs.ModeSymlink != 0 {
+						mode = "lrwxrwxrwx"
+					}
+					ts := info.ModTime().Format("Jan _2 15:04")
+					output.WriteString(fmt.Sprintf("%s   1 %-8s %-8s %10s %s %s\r\n",
+						mode, "GoFTPd", "GoFTPd", size, ts, f.Name()))
+				}
+			}
 		}
 
+		dataConn.Write([]byte(output.String()))
 		dataConn.Close()
+
+		// Only show stats in master mode so we don't crash standalone
+		if s.Config.Mode == "master" && s.MasterManager != nil {
+			s.showGlobalStats("226", false)
+		}
+		
 		fmt.Fprintf(s.Conn, "226 Directory listing complete.\r\n")
 		return false
 
@@ -883,8 +964,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			}
 		}
 
-		// PORT PASSTHROUGH: skip getRawDataConn, tell slave to connect out directly
-		// But NOT when PassthruSlave is set (CPSV passthrough — slave is listening, not connecting out)
 		if s.Config.Passthrough && s.Config.Mode == "master" && s.MasterManager != nil && s.ActiveAddr != "" && s.PassthruSlave == nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
 				filePath := path.Join(s.CurrentDir, fileName)
@@ -951,7 +1030,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				}
 				if regexp.MustCompile(`(?i)\.(rar|r\d\d)$`).MatchString(fileName) {
 					data["t_mbytes"] = mbString(fileSize)
-					// Attach live race progress for NEW LEADER / HALFWAY detection
 					if sfvEntries := bridge.GetSFVData(s.CurrentDir); sfvEntries != nil {
 						users, _, totalBytes, present, total := bridge.GetVFSRaceStats(s.CurrentDir)
 						if total > 0 {
@@ -959,7 +1037,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 							data["t_files"] = fmt.Sprintf("%d", total)
 							data["t_present"] = fmt.Sprintf("%d", present)
 							data["t_totalmb"] = fmt.Sprintf("%.1f", float64(totalBytes)/1024.0/1024.0)
-							// Estimate total release size from first rar size * expected file count
 							estBytes := fileSize * int64(total)
 							data["t_mbytes"] = fmt.Sprintf("%.0fMB", float64(estBytes)/1024.0/1024.0)
 							if len(users) > 0 {
@@ -995,7 +1072,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		raw, err := s.getRawDataConn()
 		if err != nil {
 			if s.PassthruSlave != nil && s.Config.Passthrough {
-				// fall through to PASV passthrough handler below
 			} else {
 				fmt.Fprintf(s.Conn, "425 Data connection failed\r\n")
 				return false
@@ -1011,7 +1087,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				var xferMs int64
 
 				if s.PassthruSlave != nil && s.Config.Passthrough {
-					// PASSTHROUGH: client already connected to slave directly
 					slaveName := s.PassthruSlave.(string)
 					fmt.Fprintf(s.Conn, "150 Opening binary mode data connection.\r\n")
 					log.Printf("[Passthrough] STOR %s via slave %s (xferIdx=%d)", filePath, slaveName, s.PassthruXferIdx)
@@ -1026,7 +1101,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						return false
 					}
 				} else {
-					// PROXY: bridge data through master
 					fmt.Fprintf(s.Conn, "150 Opening binary mode data connection.\r\n")
 					dataConn, err := s.upgradeDataTLS(raw, tlsConfig)
 					if err != nil {
@@ -1094,7 +1168,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				}
 				if regexp.MustCompile(`(?i)\.(rar|r\d\d)$`).MatchString(fileName) {
 					data["t_mbytes"] = mbString(fileSize)
-					// Attach live race progress for NEW LEADER / HALFWAY detection
 					if sfvEntries := bridge.GetSFVData(s.CurrentDir); sfvEntries != nil {
 						users, _, totalBytes, present, total := bridge.GetVFSRaceStats(s.CurrentDir)
 						if total > 0 {
@@ -1102,7 +1175,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 							data["t_files"] = fmt.Sprintf("%d", total)
 							data["t_present"] = fmt.Sprintf("%d", present)
 							data["t_totalmb"] = fmt.Sprintf("%.1f", float64(totalBytes)/1024.0/1024.0)
-							// Estimate total release size from first rar size * expected file count
 							estBytes := fileSize * int64(total)
 							data["t_mbytes"] = fmt.Sprintf("%.0fMB", float64(estBytes)/1024.0/1024.0)
 							if len(users) > 0 {
@@ -1178,7 +1250,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				}
 
 				if s.PassthruSlave != nil && s.Config.Passthrough {
-					// PASSTHROUGH: client already connected to slave directly
 					slaveName := s.PassthruSlave.(string)
 					fmt.Fprintf(s.Conn, "150 Opening binary mode data connection for %s (%d bytes).\r\n", args[0], fileSize)
 					log.Printf("[Passthrough] RETR %s via slave %s (xferIdx=%d)", filePath, slaveName, s.PassthruXferIdx)
@@ -1199,7 +1270,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						s.emitEvent(EventDownload, filePath, args[0], fileSize, 0, nil)
 					}
 				} else {
-					// PROXY: bridge through master
 					raw, err := s.getRawDataConn()
 					if err != nil {
 						fmt.Fprintf(s.Conn, "425 Data connection failed\r\n")
@@ -1228,6 +1298,54 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			}
 			return false
 		}
+
+	case "STAT":
+		// STAT with no args = server status. STAT <path> = listing on control
+		// channel (no data connection). cbftp uses STAT -l at login as a
+		// cheap way to probe the server without opening a data conn.
+		if len(args) == 0 {
+			fmt.Fprintf(s.Conn, "211- %s server status:\r\n", s.Config.SiteNameShort)
+			fmt.Fprintf(s.Conn, " Connected from %s\r\n", s.Conn.RemoteAddr())
+			fmt.Fprintf(s.Conn, " Logged in as %s\r\n", s.User.Name)
+			fmt.Fprintf(s.Conn, " TYPE: %s, STRU: F, MODE: S\r\n", "BINARY")
+			fmt.Fprintf(s.Conn, "211 End of status.\r\n")
+			return false
+		}
+
+		// STAT with args — if it's a flag like "-l" or "-la", treat as listing
+		// of current dir. If it's a path, list that path.
+		target := s.CurrentDir
+		arg := strings.TrimSpace(args[0])
+		if arg != "" && !strings.HasPrefix(arg, "-") {
+			if strings.HasPrefix(arg, "/") {
+				target = path.Clean(arg)
+			} else {
+				target = path.Clean(path.Join(s.CurrentDir, arg))
+			}
+		}
+
+		fmt.Fprintf(s.Conn, "213- Status of %s:\r\n", target)
+		if s.Config.Mode == "master" && s.MasterManager != nil {
+			if bridge, ok := s.MasterManager.(MasterBridge); ok {
+				entries := bridge.ListDir(target)
+				for _, e := range entries {
+					if strings.HasPrefix(e.Name, ".") {
+						continue
+					}
+					mode := "-rw-r--r--"
+					size := fmt.Sprintf("%d", e.Size)
+					if e.IsDir {
+						mode = "drwxr-xr-x"
+						size = "4096"
+					}
+					ts := time.Unix(e.ModTime, 0).Format("Jan _2 15:04")
+					fmt.Fprintf(s.Conn, " %s   1 %-8s %-8s %10s %s %s\r\n",
+						mode, "GoFTPd", "GoFTPd", size, ts, e.Name)
+				}
+			}
+		}
+		fmt.Fprintf(s.Conn, "213 End of status.\r\n")
+		return false
 
 	case "QUIT":
 		fmt.Fprintf(s.Conn, "221 Goodbye.\r\n")
