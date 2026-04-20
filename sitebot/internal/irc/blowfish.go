@@ -153,13 +153,10 @@ func (b *BlowfishEncryptor) decryptCBC(ciphertext string) (string, error) {
 	mode := cipher.NewCBCDecrypter(b.cipher, iv)
 	mode.CryptBlocks(data[blockSize:], data[blockSize:])
 	
-	// Remove padding
-	if len(data) > blockSize {
-		padLen := int(data[len(data)-1])
-		if padLen <= blockSize && padLen > 0 {
-			data = data[:len(data)-padLen]
-		}
+	plain := data[blockSize:]
+	for len(plain) > 0 && plain[len(plain)-1] == 0 {
+		plain = plain[:len(plain)-1]
 	}
-	
-	return string(data[blockSize:]), nil
+
+	return string(plain), nil
 }

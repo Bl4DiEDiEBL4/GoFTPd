@@ -232,7 +232,7 @@ func (b *Bot) commandEventFromPrivmsg(line string) *event.Event {
 		ciphertext := strings.TrimSpace(strings.TrimPrefix(msg, "+OK "))
 		ciphertext = strings.TrimPrefix(ciphertext, "*")
 		if plain, err := enc.Decrypt(ciphertext); err == nil {
-			msg = strings.TrimSpace(plain)
+			msg = cleanIRCText(plain)
 		} else if b.Debug {
 			log.Printf("[Bot] Failed to decrypt command from %s in %s: %v", sender, target, err)
 		}
@@ -260,6 +260,10 @@ func (b *Bot) commandEventFromPrivmsg(line string) *event.Event {
 		log.Printf("[Bot] IRC command %q from %s in %s", command, sender, target)
 	}
 	return evt
+}
+
+func cleanIRCText(s string) string {
+	return strings.Trim(strings.TrimSpace(s), "\x00")
 }
 
 func (b *Bot) onRegistered() {
