@@ -314,30 +314,38 @@ func (b *Bridge) ReadFile(filePath string) ([]byte, error) {
 
 // GetSFVInfo asks a slave to parse an SFV file and return the entries.
 func (b *Bridge) GetSFVInfo(sfvPath string) ([]core.SFVEntryInfo, error) {
-	slave := b.sm.SelectSlaveForDownload(sfvPath)
-	if slave == nil {
-		return nil, fmt.Errorf("sfv not found: %s", sfvPath)
-	}
-
-	index, err := IssueSFVFile(slave, sfvPath)
-	if err != nil {
-		return nil, fmt.Errorf("issue sfvFile: %w", err)
-	}
-
-	resp, err := slave.FetchResponse(index, 30*time.Second)
-	if err != nil {
-		return nil, err
-	}
-
-	if sfv, ok := resp.(*protocol.AsyncResponseSFVInfo); ok {
-		entries := make([]core.SFVEntryInfo, len(sfv.Entries))
-		for i, e := range sfv.Entries {
-			entries[i] = core.SFVEntryInfo{FileName: e.FileName, CRC32: e.CRC32}
+	var lastErr error
+	for _, slave := range b.candidateSlavesForPath(sfvPath) {
+		index, err := IssueSFVFile(slave, sfvPath)
+		if err != nil {
+			lastErr = fmt.Errorf("issue sfvFile to %s: %w", slave.Name(), err)
+			continue
 		}
-		return entries, nil
-	}
 
-	return nil, fmt.Errorf("unexpected response type: %T", resp)
+		resp, err := slave.FetchResponse(index, 30*time.Second)
+		if err != nil {
+			lastErr = fmt.Errorf("%s: %w", slave.Name(), err)
+			continue
+		}
+		if errResp, ok := resp.(*protocol.AsyncResponseError); ok {
+			lastErr = fmt.Errorf("%s: %s", slave.Name(), errResp.Message)
+			continue
+		}
+
+		if sfv, ok := resp.(*protocol.AsyncResponseSFVInfo); ok {
+			entries := make([]core.SFVEntryInfo, len(sfv.Entries))
+			for i, e := range sfv.Entries {
+				entries[i] = core.SFVEntryInfo{FileName: e.FileName, CRC32: e.CRC32}
+			}
+			return entries, nil
+		}
+
+		lastErr = fmt.Errorf("%s: unexpected response type: %T", slave.Name(), resp)
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("sfv not found: %s", sfvPath)
 }
 
 // WriteFile writes a small file to a slave.
@@ -369,6 +377,70 @@ func (b *Bridge) WriteFile(filePath string, content []byte) error {
 		SlaveName:    slave.Name(),
 	})
 
+	return nil
+}
+
+func (b *Bridge) ChecksumFile(filePath string) (uint32, error) {
+	var lastErr error
+	for _, slave := range b.candidateSlavesForPath(filePath) {
+		index, err := IssueChecksum(slave, filePath)
+		if err != nil {
+			lastErr = fmt.Errorf("issue checksum to %s: %w", slave.Name(), err)
+			continue
+		}
+		resp, err := slave.FetchResponse(index, 10*time.Minute)
+		if err != nil {
+			lastErr = fmt.Errorf("%s: %w", slave.Name(), err)
+			continue
+		}
+		if errResp, ok := resp.(*protocol.AsyncResponseError); ok {
+			lastErr = fmt.Errorf("%s: %s", slave.Name(), errResp.Message)
+			continue
+		}
+		if checksum, ok := resp.(*protocol.AsyncResponseChecksum); ok {
+			return checksum.Checksum, nil
+		}
+		lastErr = fmt.Errorf("%s: unexpected response type: %T", slave.Name(), resp)
+	}
+	if lastErr != nil {
+		return 0, lastErr
+	}
+	return 0, fmt.Errorf("file not found: %s", filePath)
+}
+
+func (b *Bridge) candidateSlavesForPath(filePath string) []*RemoteSlave {
+	out := make([]*RemoteSlave, 0, 1)
+	seen := map[string]bool{}
+	if slave := b.sm.SelectSlaveForDownload(filePath); slave != nil {
+		out = append(out, slave)
+		seen[slave.Name()] = true
+	}
+	for _, slave := range b.sm.GetAvailableSlaves() {
+		if slave == nil || seen[slave.Name()] {
+			continue
+		}
+		out = append(out, slave)
+		seen[slave.Name()] = true
+	}
+	return out
+}
+
+func (b *Bridge) MarkFileMissing(filePath string) error {
+	b.sm.GetVFS().DeleteFile(filePath)
+	if b.raceDB != nil {
+		return b.raceDB.DeletePath(filepath.Clean(filePath), false)
+	}
+	return nil
+}
+
+func (b *Bridge) SyncPresentFile(filePath string, checksum uint32) error {
+	f := b.sm.GetVFS().GetFile(filePath)
+	if f == nil || f.IsDir {
+		return fmt.Errorf("file not found: %s", filePath)
+	}
+	if b.raceDB != nil {
+		return b.raceDB.RecordUpload(filePath, f.Owner, f.Group, f.Size, f.XferTime, checksum)
+	}
 	return nil
 }
 

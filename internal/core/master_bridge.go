@@ -46,6 +46,15 @@ type MasterBridge interface {
 	// WriteFile writes a small file to a slave (for .message generation).
 	WriteFile(filePath string, content []byte) error
 
+	// ChecksumFile returns the CRC32 of a file from the slave that owns it.
+	ChecksumFile(filePath string) (uint32, error)
+
+	// MarkFileMissing removes a file from VFS/RaceDB presence without requiring it to exist.
+	MarkFileMissing(filePath string) error
+
+	// SyncPresentFile refreshes RaceDB presence for an existing VFS file.
+	SyncPresentFile(filePath string, checksum uint32) error
+
 	// CacheSFV caches parsed SFV entries on a VFS directory for race tracking.
 	CacheSFV(dirPath string, sfvName string, entries []SFVEntryInfo)
 

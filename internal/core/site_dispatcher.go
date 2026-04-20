@@ -71,6 +71,8 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 		return s.HandleSiteRace(remainingArgs)
 	case "SEARCH":
 		return s.HandleSiteSearch(remainingArgs)
+	case "RESCAN":
+		return s.HandleSiteRescan(remainingArgs)
 	case "CHMOD":
 		return s.HandleSiteChmod(remainingArgs)
 	case "XDUPE":
