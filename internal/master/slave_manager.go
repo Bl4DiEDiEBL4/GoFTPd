@@ -108,6 +108,10 @@ func (sm *SlaveManager) SetSlavePolicies(policies map[string]SlaveRoutePolicy) {
 	}
 }
 
+func (sm *SlaveManager) SetProtectedDirs(paths []string) {
+	sm.vfs.SetProtectedDirs(paths)
+}
+
 func (sm *SlaveManager) getPolicy(name string) (SlaveRoutePolicy, bool) {
 	sm.policiesMu.RLock()
 	defer sm.policiesMu.RUnlock()

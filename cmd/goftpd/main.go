@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -104,6 +105,7 @@ func main() {
 				},
 			})
 		})
+		sm.SetProtectedDirs(protectedVFSDirs(cfg))
 		if err := sm.Start(); err != nil {
 			log.Fatalf("SlaveManager failed: %v", err)
 		}
@@ -122,6 +124,7 @@ func main() {
 				}
 			}
 			sm.SetSlavePolicies(policies)
+			sm.SetProtectedDirs(protectedVFSDirs(cfg))
 			sm.PublishAllDiskStatuses()
 			log.Printf("[MASTER] Applied routing policies for %d slave(s)", len(policies))
 		}
@@ -152,6 +155,7 @@ func main() {
 				}
 			}
 			sm.SetSlavePolicies(policies)
+			sm.SetProtectedDirs(protectedVFSDirs(c))
 			sm.PublishAllDiskStatuses()
 			log.Printf("[REHASH] reapplied %d slave policies", len(policies))
 		}
@@ -363,4 +367,53 @@ func intFromCfg(m map[string]interface{}, key string, def int) int {
 	default:
 		return def
 	}
+}
+
+func protectedVFSDirs(cfg *core.Config) []string {
+	if cfg == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	add := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" || strings.ContainsAny(p, "*?[]") {
+			return
+		}
+		if !strings.HasPrefix(p, "/") {
+			p = "/" + p
+		}
+		p = path.Clean(p)
+		if p == "." {
+			p = "/"
+		}
+		if p != "/" {
+			seen[p] = true
+		}
+	}
+	for _, sp := range cfg.Slaves {
+		for _, section := range sp.Sections {
+			add(section)
+		}
+		for _, pat := range sp.Paths {
+			clean := path.Clean("/" + strings.TrimSpace(pat))
+			parts := strings.Split(strings.TrimPrefix(clean, "/"), "/")
+			if len(parts) > 0 {
+				add(parts[0])
+			}
+		}
+	}
+	for _, section := range cfg.PreSections {
+		add(section)
+	}
+	if cfg.PreBase != "" {
+		add(cfg.PreBase)
+	}
+	for _, affil := range cfg.Affils {
+		add(affil.Predir)
+	}
+	out := make([]string, 0, len(seen))
+	for p := range seen {
+		out = append(out, p)
+	}
+	return out
 }

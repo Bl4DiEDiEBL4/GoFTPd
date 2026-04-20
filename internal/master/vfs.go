@@ -43,15 +43,17 @@ type VFSSearchResult struct {
 // VirtualFileSystem maintains the master's view of files across all slaves.
 //  / VirtualFileSystemDirectory.
 type VirtualFileSystem struct {
-	files   map[string]*VFSFile
-	dirMeta map[string]*VFSDirMeta // dir path -> metadata (SFV cache etc)
-	mu      sync.RWMutex
+	files         map[string]*VFSFile
+	dirMeta       map[string]*VFSDirMeta // dir path -> metadata (SFV cache etc)
+	protectedDirs map[string]bool
+	mu            sync.RWMutex
 }
 
 func NewVirtualFileSystem() *VirtualFileSystem {
 	vfs := &VirtualFileSystem{
-		files:   make(map[string]*VFSFile),
-		dirMeta: make(map[string]*VFSDirMeta),
+		files:         make(map[string]*VFSFile),
+		dirMeta:       make(map[string]*VFSDirMeta),
+		protectedDirs: make(map[string]bool),
 	}
 	vfs.files["/"] = &VFSFile{Path: "/", IsDir: true, Seen: true}
 	return vfs
@@ -62,11 +64,19 @@ func (vfs *VirtualFileSystem) AddFile(path string, file VFSFile) {
 	defer vfs.mu.Unlock()
 
 	// Normalize path
-	path = filepath.Clean(path)
-	if !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
+	path = cleanVFSPath(path)
 	file.Path = path
+	if vfs.protectedDirs == nil {
+		vfs.protectedDirs = make(map[string]bool)
+	}
+	if file.IsDir && filepath.Dir(path) == "/" && path != "/" {
+		vfs.protectedDirs[path] = true
+	}
+	if vfs.protectedDirs[path] {
+		file.IsDir = true
+		file.Seen = true
+		file.SlaveName = ""
+	}
 
 	vfs.files[path] = &file
 
@@ -94,7 +104,12 @@ func (vfs *VirtualFileSystem) AddFile(path string, file VFSFile) {
 func (vfs *VirtualFileSystem) MarkAllUnseen(slaveName string) {
 	vfs.mu.Lock()
 	defer vfs.mu.Unlock()
-	for _, file := range vfs.files {
+	for path, file := range vfs.files {
+		if vfs.protectedDirs[path] {
+			file.Seen = true
+			file.SlaveName = ""
+			continue
+		}
 		if file.SlaveName == slaveName {
 			file.Seen = false
 		}
@@ -106,9 +121,43 @@ func (vfs *VirtualFileSystem) PurgeUnseen(slaveName string) {
 	vfs.mu.Lock()
 	defer vfs.mu.Unlock()
 	for path, file := range vfs.files {
+		if vfs.protectedDirs[path] {
+			file.Seen = true
+			file.SlaveName = ""
+			continue
+		}
 		if file.SlaveName == slaveName && !file.Seen {
 			delete(vfs.files, path)
 		}
+	}
+}
+
+func (vfs *VirtualFileSystem) SetProtectedDirs(paths []string) {
+	vfs.mu.Lock()
+	defer vfs.mu.Unlock()
+
+	vfs.protectedDirs = make(map[string]bool, len(paths)+1)
+	vfs.protectedDirs["/"] = true
+	for p, f := range vfs.files {
+		if f != nil && f.IsDir && filepath.Dir(cleanVFSPath(p)) == "/" && cleanVFSPath(p) != "/" {
+			vfs.protectedDirs[cleanVFSPath(p)] = true
+		}
+	}
+	for _, p := range paths {
+		p = cleanVFSPath(p)
+		if p == "" || p == "." {
+			continue
+		}
+		vfs.protectedDirs[p] = true
+		f := vfs.files[p]
+		if f == nil {
+			f = &VFSFile{Path: p, IsDir: true}
+			vfs.files[p] = f
+		}
+		f.Path = p
+		f.IsDir = true
+		f.Seen = true
+		f.SlaveName = ""
 	}
 }
 
@@ -388,9 +437,23 @@ func (vfs *VirtualFileSystem) LoadFromDisk(filePath string) error {
 	if _, ok := vfs.files["/"]; !ok {
 		vfs.files["/"] = &VFSFile{Path: "/", IsDir: true, Seen: true}
 	}
+	if vfs.protectedDirs == nil {
+		vfs.protectedDirs = make(map[string]bool)
+	}
 
 	log.Printf("[VFS] Loaded %d entries from %s", len(vfs.files), filePath)
 	return nil
+}
+
+func cleanVFSPath(p string) string {
+	p = filepath.ToSlash(filepath.Clean(strings.TrimSpace(p)))
+	if p == "." || p == "" {
+		return "/"
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return p
 }
 // SetSFVData caches parsed SFV entries on a directory (like drftpd's pluginMetaData).
 func (vfs *VirtualFileSystem) SetSFVData(dirPath string, sfvName string, entries map[string]uint32) {
