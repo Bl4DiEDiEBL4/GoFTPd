@@ -6,8 +6,10 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 // VFSFile represents a file or directory in the master's virtual file system.
@@ -29,6 +31,13 @@ type VFSFile struct {
 type VFSDirMeta struct {
 	SFVEntries map[string]uint32 // filename -> CRC32 from parsed SFV
 	SFVName    string            // name of the .sfv file
+}
+
+type VFSSearchResult struct {
+	Path    string
+	Files   int
+	Bytes   int64
+	ModTime int64
 }
 
 // VirtualFileSystem maintains the master's view of files across all slaves.
@@ -244,11 +253,80 @@ func (vfs *VirtualFileSystem) GetAllFiles() map[string]*VFSFile {
 	return result
 }
 
+func (vfs *VirtualFileSystem) SearchDirs(query string, limit int) []VFSSearchResult {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+
+	vfs.mu.RLock()
+	defer vfs.mu.RUnlock()
+
+	dirs := make([]*VFSFile, 0)
+	for _, f := range vfs.files {
+		if f == nil || !f.IsDir || f.Path == "/" {
+			continue
+		}
+		cleanPath := filepath.ToSlash(filepath.Clean(f.Path))
+		base := filepath.Base(cleanPath)
+		if strings.Contains(strings.ToLower(cleanPath), query) || strings.Contains(strings.ToLower(base), query) {
+			dirs = append(dirs, f)
+		}
+	}
+
+	sort.Slice(dirs, func(i, j int) bool {
+		return strings.ToLower(filepath.ToSlash(dirs[i].Path)) < strings.ToLower(filepath.ToSlash(dirs[j].Path))
+	})
+
+	now := time.Now().Unix()
+	results := make([]VFSSearchResult, 0, minInt(limit, len(dirs)))
+	for _, dir := range dirs {
+		if len(results) >= limit {
+			break
+		}
+		dirPath := filepath.ToSlash(filepath.Clean(dir.Path))
+		prefix := strings.TrimRight(dirPath, "/") + "/"
+		res := VFSSearchResult{
+			Path:    dirPath,
+			ModTime: dir.LastModified,
+		}
+		for _, f := range vfs.files {
+			if f == nil || f.IsDir {
+				continue
+			}
+			filePath := filepath.ToSlash(filepath.Clean(f.Path))
+			if !strings.HasPrefix(filePath, prefix) {
+				continue
+			}
+			res.Files++
+			res.Bytes += f.Size
+			if f.LastModified > res.ModTime {
+				res.ModTime = f.LastModified
+			}
+		}
+		if res.ModTime <= 0 {
+			res.ModTime = now
+		}
+		results = append(results, res)
+	}
+	return results
+}
+
 // Count returns the number of entries in the VFS
 func (vfs *VirtualFileSystem) Count() int {
 	vfs.mu.RLock()
 	defer vfs.mu.RUnlock()
 	return len(vfs.files)
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // SaveToDisk persists the VFS to a gob file.

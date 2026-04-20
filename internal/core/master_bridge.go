@@ -61,6 +61,9 @@ type MasterBridge interface {
 	// Returns nil if no SFV is cached for this directory.
 	GetSFVData(dirPath string) map[string]uint32
 
+	// SearchDirs searches the master's VFS for directories matching query.
+	SearchDirs(query string, limit int) []VFSSearchResult
+
 	// Passthrough PORT: tell slave to connect out to remote address and receive file
 	SlaveConnectAndReceive(filePath, remoteAddr, owner, group string) (int64, uint32, int64, error)
 
@@ -83,6 +86,14 @@ type MasterFileEntry struct {
 	Owner   string
 	Group   string
 	Slave   string
+}
+
+// VFSSearchResult is one SITE SEARCH directory result from the master's VFS.
+type VFSSearchResult struct {
+	Path    string
+	Files   int
+	Bytes   int64
+	ModTime int64
 }
 
 // SFVEntryInfo is a filename→CRC32 pair from a parsed SFV file.

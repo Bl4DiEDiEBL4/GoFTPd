@@ -551,6 +551,20 @@ func (b *Bridge) GetSFVData(dirPath string) map[string]uint32 {
 	return meta.SFVEntries
 }
 
+func (b *Bridge) SearchDirs(query string, limit int) []core.VFSSearchResult {
+	vfsResults := b.sm.GetVFS().SearchDirs(query, limit)
+	results := make([]core.VFSSearchResult, 0, len(vfsResults))
+	for _, r := range vfsResults {
+		results = append(results, core.VFSSearchResult{
+			Path:    r.Path,
+			Files:   r.Files,
+			Bytes:   r.Bytes,
+			ModTime: r.ModTime,
+		})
+	}
+	return results
+}
+
 // SlaveListenForPassthrough asks a slave to open a listener for direct client connection.
 // uploadPath may be empty if the eventual upload path is not yet known (pure PASV);
 // pass it when possible so section-affinity routing picks the right slave.
