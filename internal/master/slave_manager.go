@@ -39,6 +39,7 @@ type SlaveManager struct {
 
 	listener   net.Listener
 	running    atomic.Bool // Changed to atomic to prevent data races
+	diskStatusHook func(name string, status protocol.DiskStatus, online, available bool, sections []string)
 }
 
 // SlaveRoutePolicy is the runtime form of SlavePolicy from config.
@@ -59,6 +60,33 @@ func NewSlaveManager(host string, port int, tlsEnabled bool, tlsCert, tlsKey str
 		policies:   make(map[string]SlaveRoutePolicy),
 		vfs:        NewVirtualFileSystem(),
 	}
+}
+
+func (sm *SlaveManager) SetDiskStatusHook(fn func(name string, status protocol.DiskStatus, online, available bool, sections []string)) {
+	sm.diskStatusHook = fn
+}
+
+func (sm *SlaveManager) publishDiskStatus(rs *RemoteSlave) {
+	if sm.diskStatusHook == nil || rs == nil {
+		return
+	}
+	sm.diskStatusHook(rs.Name(), rs.GetDiskStatus(), rs.IsOnline(), rs.IsAvailable(), sm.policySections(rs.Name()))
+}
+
+func (sm *SlaveManager) PublishAllDiskStatuses() {
+	for _, rs := range sm.GetAllSlaves() {
+		sm.publishDiskStatus(rs)
+	}
+}
+
+func (sm *SlaveManager) policySections(slaveName string) []string {
+	policy, ok := sm.getPolicy(slaveName)
+	if !ok || len(policy.Sections) == 0 {
+		return []string{"*"}
+	}
+	out := make([]string, len(policy.Sections))
+	copy(out, policy.Sections)
+	return out
 }
 
 // SetSlavePolicies configures per-slave routing rules (section affinity + weights).
@@ -195,6 +223,7 @@ func (sm *SlaveManager) handleSlaveConnection(conn net.Conn) {
 		rs.diskMu.Unlock()
 		log.Printf("[SlaveManager] Slave %s disk: %dMB free / %dMB total",
 			slaveName, ds.Status.SpaceAvailable/1024/1024, ds.Status.SpaceCapacity/1024/1024)
+		sm.publishDiskStatus(rs)
 	}
 
 	// Start remerge ()

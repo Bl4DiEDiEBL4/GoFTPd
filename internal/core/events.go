@@ -32,6 +32,7 @@ const (
 	EventRename       EventType = "RENAME"
 	EventUnnuke       EventType = "UNNUKE"
 	EventInvite       EventType = "INVITE"
+	EventDiskStatus   EventType = "DISKSTATUS"
 	EventPre          EventType = "PRE"          // release pre'd — relname, section, group, files, mbytes
 	EventPreBW        EventType = "PREBW"        // race-bw totals after pre
 	EventPreBWUser    EventType = "PREBWUSER"    // per-user race-bw after pre
@@ -235,6 +236,13 @@ func getOrInitEventDispatcher(cfg *Config) *EventDispatcher {
 	}
 	cfg.EventDispatcher = d
 	return d
+}
+
+func PublishEvent(cfg *Config, evt Event) {
+	d := getOrInitEventDispatcher(cfg)
+	if d != nil {
+		d.Emit(evt)
+	}
 }
 
 func sectionFromPath(p string) string {

@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"fmt"
 	"sort"
 
 	"goftpd/sitebot/internal/event"
@@ -113,13 +114,28 @@ func (m *Manager) List() []string {
 }
 func (m *Manager) ProcessEvent(evt *event.Event) ([]Output, error) {
 	var outs []Output
+	var errs []error
 	for _, name := range m.List() {
-		o, err := m.plugins[name].OnEvent(evt)
+		o, err := callPlugin(m.plugins[name], evt)
 		if err == nil {
 			outs = append(outs, o...)
+		} else {
+			errs = append(errs, fmt.Errorf("%s: %w", name, err))
 		}
 	}
+	if len(errs) > 0 {
+		return outs, fmt.Errorf("%v", errs)
+	}
 	return outs, nil
+}
+
+func callPlugin(p Handler, evt *event.Event) (outs []Output, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
+	return p.OnEvent(evt)
 }
 func (m *Manager) Close() error {
 	for _, name := range m.List() {

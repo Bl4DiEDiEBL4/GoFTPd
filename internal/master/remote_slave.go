@@ -263,6 +263,7 @@ func (rs *RemoteSlave) Run(masterSlaveManager *SlaveManager) {
 			rs.diskMu.Lock()
 			rs.diskStatus = resp.Status
 			rs.diskMu.Unlock()
+			masterSlaveManager.publishDiskStatus(rs)
 
 		case *protocol.AsyncResponseRemerge:
 			// Process remerge data - add files to master's VFS

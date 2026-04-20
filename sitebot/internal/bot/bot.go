@@ -15,6 +15,7 @@ import (
 	"goftpd/sitebot/internal/irc"
 	"goftpd/sitebot/internal/plugin"
 	announceplugin "goftpd/sitebot/plugins/announce"
+	freeplugin "goftpd/sitebot/plugins/free"
 	imdbplugin "goftpd/sitebot/plugins/imdb"
 	newsplugin "goftpd/sitebot/plugins/news"
 	tvmazeplugin "goftpd/sitebot/plugins/tvmaze"
@@ -135,6 +136,19 @@ func (b *Bot) initializePlugins() error {
 			return err
 		}
 		if err := b.Plugins.Register(news); err != nil {
+			return err
+		}
+	}
+	if enabled, ok := b.Config.Plugins.Enabled["Free"]; ok && enabled {
+		free := freeplugin.New()
+		cfg := map[string]interface{}{"debug": b.Debug}
+		for k, v := range b.Config.Plugins.Config {
+			cfg[k] = v
+		}
+		if err := free.Initialize(cfg); err != nil {
+			return err
+		}
+		if err := b.Plugins.Register(free); err != nil {
 			return err
 		}
 	}
@@ -396,9 +410,20 @@ func (b *Bot) handleEvent(evt *event.Event) {
 		b.handleInviteEvent(evt)
 		return
 	}
+	if b.Debug {
+		log.Printf("[Bot] Event %s section=%s path=%s file=%s", evt.Type, evt.Section, evt.Path, evt.Filename)
+	}
 	outs, err := b.Plugins.ProcessEvent(evt)
 	if err != nil {
-		return
+		if b.Debug {
+			log.Printf("[Bot] Plugin processing failed for %s: %v", evt.Type, err)
+		}
+		if len(outs) == 0 {
+			return
+		}
+	}
+	if b.Debug && len(outs) == 0 {
+		log.Printf("[Bot] Event %s produced no plugin output", evt.Type)
 	}
 	for _, out := range outs {
 		if strings.TrimSpace(out.Target) != "" {
@@ -406,6 +431,13 @@ func (b *Bot) handleEvent(evt *event.Event) {
 				line = strings.TrimSpace(line)
 				if line == "" {
 					continue
+				}
+				if b.Debug {
+					kind := "PRIVMSG"
+					if out.Notice {
+						kind = "NOTICE"
+					}
+					log.Printf("[Bot] Sending %s to %s: %s", kind, out.Target, line)
 				}
 				if out.Notice {
 					_ = b.IRC.SendNotice(out.Target, line)
@@ -422,6 +454,9 @@ func (b *Bot) handleEvent(evt *event.Event) {
 				continue
 			}
 			for _, ch := range channels {
+				if b.Debug {
+					log.Printf("[Bot] Sending %s to %s: %s", out.Type, ch, line)
+				}
 				_ = b.IRC.SendMessage(ch, line)
 			}
 		}

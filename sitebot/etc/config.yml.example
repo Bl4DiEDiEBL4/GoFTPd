@@ -74,6 +74,7 @@ plugins:
     TVMaze: true
     IMDB: true
     News: true
+    Free: true
   config:
     debug: true
 
@@ -94,3 +95,7 @@ plugins:
       channels: ["#goftpd"]
       staff_channels: ["#goftpd-staff"]
       staff_hosts: []
+
+    free:
+      reply_target: "channel"
+      stale_after_seconds: 600

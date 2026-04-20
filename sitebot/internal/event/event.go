@@ -20,6 +20,7 @@ const (
 	EventUnnuke        EventType = "UNNUKE"
 	EventInvite        EventType = "INVITE"
 	EventCommand       EventType = "COMMAND"
+	EventDiskStatus    EventType = "DISKSTATUS"
 	EventPre           EventType = "PRE"
 	EventPreBW         EventType = "PREBW"
 	EventPreBWUser     EventType = "PREBWUSER"
