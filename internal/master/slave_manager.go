@@ -150,6 +150,7 @@ func (sm *SlaveManager) Start() error {
 
 	go sm.acceptLoop()
 	go sm.vfsPersistLoop()
+	go sm.diskStatusLoop()
 
 	return nil
 }
@@ -245,6 +246,7 @@ func (sm *SlaveManager) initializeSlaveAfterConnect(rs *RemoteSlave) {
 	// Files will appear in listings as the remerge progresses.
 	rs.remerging.Store(true)
 	rs.SetAvailable(true)
+	sm.publishDiskStatus(rs)
 	log.Printf("[SlaveManager] Slave %s is now AVAILABLE (remerge running in background)", rs.name)
 
 	// [ADDED] Mark all current files as unseen before the remerge starts
@@ -276,6 +278,7 @@ func (sm *SlaveManager) initializeSlaveAfterConnect(rs *RemoteSlave) {
 		}
 	}
 	rs.remerging.Store(false)
+	sm.publishDiskStatus(rs)
 }
 
 // ProcessRemerge handles incoming remerge data from a slave.
@@ -555,5 +558,15 @@ func (sm *SlaveManager) vfsPersistLoop() {
 				log.Printf("[SlaveManager] Error saving VFS: %v", err)
 			}
 		}
+	}
+}
+
+func (sm *SlaveManager) diskStatusLoop() {
+	ticker := time.NewTicker(60 * time.Second)
+	defer ticker.Stop()
+
+	for sm.running.Load() {
+		<-ticker.C
+		sm.PublishAllDiskStatuses()
 	}
 }

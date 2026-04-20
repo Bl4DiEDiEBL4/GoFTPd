@@ -276,6 +276,7 @@ func (rs *RemoteSlave) Run(masterSlaveManager *SlaveManager) {
 				rt.UpdateStatus(resp.Status)
 				if resp.Status.Finished {
 					rs.transfers.Delete(resp.Status.TransferIndex)
+					masterSlaveManager.publishDiskStatus(rs)
 				}
 			}
 
