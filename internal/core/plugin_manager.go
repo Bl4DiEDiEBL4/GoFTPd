@@ -2,18 +2,26 @@ package core
 
 import (
 	"log"
+	"path"
+	"strings"
+	"sync"
 
 	"goftpd/internal/plugin"
-	"goftpd/internal/user"
 )
 
-// PluginManager manages all loaded plugins
+// PluginManager owns the registered plugins and dispatches events to them.
+// It's created at startup, plugins are registered, then initialized with
+// per-plugin config sub-maps. After Init, the session/command handlers call
+// Dispatch() with a populated Event to notify all plugins.
 type PluginManager struct {
+	mu      sync.RWMutex
 	plugins []plugin.Plugin
+	svc     *plugin.Services
 	debug   bool
 }
 
-// NewPluginManager creates a new plugin manager
+// NewPluginManager creates a manager. Call SetServices before registering
+// plugins (Init passes the services handle to each plugin).
 func NewPluginManager(debug bool) *PluginManager {
 	return &PluginManager{
 		plugins: make([]plugin.Plugin, 0),
@@ -21,8 +29,25 @@ func NewPluginManager(debug bool) *PluginManager {
 	}
 }
 
-// RegisterPlugin adds a plugin to the manager
+// SetServices attaches the Services handle the manager will pass to each
+// plugin's Init call. The bridge inside Services must implement
+// plugin.MasterBridge — our master.Bridge does, via its WriteFile/ReadFile
+// methods.
+func (pm *PluginManager) SetServices(svc *plugin.Services) {
+	pm.svc = svc
+}
+
+// RegisterPlugin adds a plugin to the manager (pre-Init). Duplicate names
+// are rejected.
 func (pm *PluginManager) RegisterPlugin(p plugin.Plugin) error {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+	for _, existing := range pm.plugins {
+		if existing.Name() == p.Name() {
+			log.Printf("[PLUGIN-MANAGER] Duplicate plugin name %q ignored", p.Name())
+			return nil
+		}
+	}
 	pm.plugins = append(pm.plugins, p)
 	if pm.debug {
 		log.Printf("[PLUGIN-MANAGER] Registered plugin: %s", p.Name())
@@ -30,67 +55,64 @@ func (pm *PluginManager) RegisterPlugin(p plugin.Plugin) error {
 	return nil
 }
 
-// InitializePlugins initializes all registered plugins with their configs
+// InitializePlugins calls Init on each registered plugin with its config
+// sub-map. The outer map is keyed by plugin name (e.g. {"tvmaze": {...}}).
+// Plugins without a config entry receive an empty map.
 func (pm *PluginManager) InitializePlugins(pluginConfigs map[string]map[string]interface{}) error {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+
+	if pm.svc == nil {
+		log.Printf("[PLUGIN-MANAGER] Warning: no Services set, plugins will have nil Bridge")
+		pm.svc = &plugin.Services{Debug: pm.debug}
+	}
+
 	for _, p := range pm.plugins {
 		name := p.Name()
-		config := pluginConfigs[name]
-		if config == nil {
-			config = make(map[string]interface{})
+		cfg := pluginConfigs[name]
+		if cfg == nil {
+			cfg = make(map[string]interface{})
 		}
-		if err := p.Init(config); err != nil {
-			if pm.debug {
-				log.Printf("[PLUGIN-MANAGER] Failed to initialize %s: %v", name, err)
-			}
+		if err := p.Init(pm.svc, cfg); err != nil {
+			log.Printf("[PLUGIN-MANAGER] Init %s failed: %v", name, err)
 			return err
 		}
-	}
-	if pm.debug {
-		log.Printf("[PLUGIN-MANAGER] Initialized %d plugins", len(pm.plugins))
-	}
-	return nil
-}
-
-// CallOnUpload calls OnUpload on all registered plugins
-func (pm *PluginManager) CallOnUpload(userInterface interface{}, path, filename string, size int64, speed float64) error {
-	u := userInterface.(*user.User)
-	for _, p := range pm.plugins {
-		if err := p.OnUpload(u, path, filename, size, speed); err != nil {
-			if pm.debug {
-				log.Printf("[PLUGIN-MANAGER] %s.OnUpload error: %v", p.Name(), err)
-			}
+		if pm.debug {
+			log.Printf("[PLUGIN-MANAGER] Initialized %s", name)
 		}
 	}
 	return nil
 }
 
-// CallOnDownload calls OnDownload on all registered plugins
-func (pm *PluginManager) CallOnDownload(userInterface interface{}, path, filename string, size int64) error {
-	u := userInterface.(*user.User)
-	for _, p := range pm.plugins {
-		if err := p.OnDownload(u, path, filename, size); err != nil {
-			if pm.debug {
-				log.Printf("[PLUGIN-MANAGER] %s.OnDownload error: %v", p.Name(), err)
-			}
+// Dispatch fires evt to every registered plugin. It populates the Section
+// field automatically if empty. Errors from individual plugins are logged
+// but don't short-circuit dispatch. This is called from the session/command
+// handlers and must be fast — plugins are responsible for offloading work
+// to goroutines.
+func (pm *PluginManager) Dispatch(evt *plugin.Event) {
+	if pm == nil || evt == nil {
+		return
+	}
+	if evt.Section == "" && evt.Path != "" {
+		evt.Section = sectionFromPluginPath(evt.Path)
+	}
+
+	pm.mu.RLock()
+	plugins := make([]plugin.Plugin, len(pm.plugins))
+	copy(plugins, pm.plugins)
+	pm.mu.RUnlock()
+
+	for _, p := range plugins {
+		if err := p.OnEvent(evt); err != nil && pm.debug {
+			log.Printf("[PLUGIN-MANAGER] %s.OnEvent(%s) error: %v", p.Name(), evt.Type, err)
 		}
 	}
-	return nil
 }
 
-// CallOnDirList calls OnDirList on all registered plugins
-func (pm *PluginManager) CallOnDirList(userInterface interface{}, path string) (string, error) {
-	u := userInterface.(*user.User)
-	var output string
-	for _, p := range pm.plugins {
-		if result, err := p.OnDirList(u, path); err == nil && result != "" {
-			output += result + "\n"
-		}
-	}
-	return output, nil
-}
-
-// StopAll stops all plugins
+// StopAll calls Stop() on every registered plugin. Called at shutdown.
 func (pm *PluginManager) StopAll() error {
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
 	for _, p := range pm.plugins {
 		if err := p.Stop(); err != nil {
 			log.Printf("[PLUGIN-MANAGER] %s.Stop error: %v", p.Name(), err)
@@ -99,7 +121,25 @@ func (pm *PluginManager) StopAll() error {
 	return nil
 }
 
-// GetPlugins returns all registered plugins
+// GetPlugins returns a snapshot of the plugin list.
 func (pm *PluginManager) GetPlugins() []plugin.Plugin {
-	return pm.plugins
+	pm.mu.RLock()
+	defer pm.mu.RUnlock()
+	out := make([]plugin.Plugin, len(pm.plugins))
+	copy(out, pm.plugins)
+	return out
+}
+
+// sectionFromPluginPath extracts the first path component from p.
+// "/TV-1080P/Some.Release" → "TV-1080P", "/" → "", "" → "".
+func sectionFromPluginPath(p string) string {
+	if p == "" || p == "/" {
+		return ""
+	}
+	clean := path.Clean(p)
+	parts := strings.Split(strings.TrimPrefix(clean, "/"), "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[0]
 }

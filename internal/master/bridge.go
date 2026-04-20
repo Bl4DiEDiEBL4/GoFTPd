@@ -373,7 +373,7 @@ func (b *Bridge) WriteFile(filePath string, content []byte) error {
 }
 
 // =====================================================================
-// VFS ADAPTER FOR PLUGINS (Implements zipscript.FileSystem implicitly)
+// VFS ADAPTER FOR PLUGINS (Implements plugin.MasterBridge implicitly)
 // =====================================================================
 
 func (b *Bridge) PluginFS() *VFSAdapter {

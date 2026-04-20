@@ -110,21 +110,12 @@ max_connections: 300            # Global concurrent FTP session cap
 # =============================================================================
 #  show_diz — files whose contents are displayed on CWD as part of the 250- reply.
 #  Map of filename → who_can_see ("*" = all users, or a flag like "1" for siteop).
-#  The daemon writes .imdb / .tvmaze files automatically via meta_lookup (below).
+#  The tvmaze / imdb plugins write .tvmaze / .imdb files automatically on MKD.
 # =============================================================================
 show_diz:
   .message: "*"
   .imdb:    "*"
   .tvmaze:  "*"
-
-
-# =============================================================================
-#  Meta lookup — async TVMaze / IMDb lookup on MKD, writes .tvmaze / .imdb
-#  files into the new release dir for CWD display (via show_diz above).
-# =============================================================================
-meta_lookup_enabled:         true
-meta_lookup_tv_sections:     ["TV"]                                 # substring-matched, case-insensitive
-meta_lookup_imdb_sections:   ["MOVIE", "X264", "X265", "BLURAY", "DVDR"]
 
 
 # =============================================================================
@@ -142,14 +133,32 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 
 
 # =============================================================================
-#  Plugins — enable/disable the master-side plugin hooks.
-#  (The sitebot has its own plugin list in the sitebot config.)
+#  Plugins — extend the daemon with custom behavior. Each plugin receives
+#  events (MKDIR, UPLOAD, DELETE, NUKE, etc.) and has access to the master
+#  bridge for reading/writing files on slaves.
+#
+#  Built-in plugins:
+#    tvmaze  — looks up TV shows on TVMaze when a release dir is created,
+#              writes .tvmaze into the dir (shown via show_diz above)
+#    imdb    — same for movies via imdbapi.dev, writes .imdb
+#
+#  To add your own plugin:
+#    1. Create /plugins/<name>/handler.go implementing plugin.Plugin
+#    2. Add a case for it in cmd/goftpd/main.go's plugin switch
+#    3. Add an entry below with `enabled: true` and any plugin-specific keys
+#
+#  Section matching is case-insensitive substring — "TV" matches TV-1080P,
+#  TV-720P, TV-UHD, etc. Only plugins where enabled=true are loaded.
 # =============================================================================
 plugins:
-  imdb:
-    enabled: true
   tvmaze:
-    enabled: true
+    enabled:  true
+    sections: ["TV"]
+    debug:    false
+  imdb:
+    enabled:  true
+    sections: ["MOVIE", "X264", "X265", "BLURAY", "DVDR"]
+    debug:    false
 
 
 # =============================================================================

@@ -371,10 +371,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 
 		s.emitEvent(EventMKDir, targetPath, dirName, 0, 0, nil)
 
-		if s.Config.MetaLookup != nil {
-			s.Config.MetaLookup.OnMKDir(targetPath)
-		}
-
 		fmt.Fprintf(s.Conn, "257 \"%s\" created\r\n", targetPath)
 
 	case "RMD":

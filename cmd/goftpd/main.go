@@ -69,6 +69,7 @@ func main() {
 
 	// 6. MASTER MODE: Start SlaveManager and wire Bridge into config
 	var sm *master.SlaveManager
+	var masterBridge *master.Bridge // set in master block below; nil in slave mode
 	if cfg.Mode == "master" {
 		sm = master.NewSlaveManager(
 			cfg.Master["listen_host"].(string),
@@ -102,12 +103,7 @@ func main() {
 		// so the FTP session can route STOR/RETR/LIST/DELE to slaves
 		bridge := master.NewBridge(sm)
 		cfg.MasterManager = bridge
-
-		// Meta lookup: async .tvmaze/.imdb writer triggered on MKD
-		if cfg.MetaLookupEnabled {
-			cfg.MetaLookup = core.NewMetaLookup(bridge, cfg.Debug, cfg.MetaLookupTVSects, cfg.MetaLookupIMSects)
-			log.Printf("[MASTER] Meta lookup enabled (TV=%v IMDB=%v)", cfg.MetaLookupTVSects, cfg.MetaLookupIMSects)
-		}
+		masterBridge = bridge
 
 		log.Printf("[MASTER] SlaveManager listening on port %d, waiting for slaves...",
 			intFromCfg(cfg.Master, "control_port", 1099))
@@ -139,6 +135,18 @@ func main() {
 	}
 	cfg.PluginManager = core.NewPluginManager(cfg.Debug)
 
+	// Give plugins access to the master bridge + debug flag via Services.
+	// In slave mode masterBridge is nil — plugins that need it will skip
+	// their work gracefully (svc.Bridge == nil check).
+	var bridgeForPlugins plugin.MasterBridge
+	if masterBridge != nil {
+		bridgeForPlugins = masterBridge
+	}
+	cfg.PluginManager.SetServices(&plugin.Services{
+		Bridge: bridgeForPlugins,
+		Debug:  cfg.Debug,
+	})
+
 	// 7a. Dynamically load plugins from config
 	if cfg.Plugins == nil {
 		cfg.Plugins = make(map[string]map[string]interface{})
@@ -163,21 +171,14 @@ func main() {
 			pluginCfg["debug"] = cfg.Debug
 		}
 
-		// Inject the Master's FileSystem Bridge into Zipscript!
-
-
 		var p plugin.Plugin
-
 		switch pluginName {
-		// zipscript removed - handled by master VFS
 		case "tvmaze":
 			p = tvmaze.New()
 		case "imdb":
 			p = imdb.New()
 		default:
-			if cfg.Debug {
-				log.Printf("[PLUGINS] Unknown plugin: %s", pluginName)
-			}
+			log.Printf("[PLUGINS] Unknown plugin: %s (add a case in cmd/goftpd/main.go)", pluginName)
 			continue
 		}
 

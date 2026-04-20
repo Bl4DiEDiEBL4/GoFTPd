@@ -118,15 +118,7 @@ type Config struct {
 	EventFIFO       string                            `yaml:"event_fifo"`
 	EventDispatcher *EventDispatcher                  `yaml:"-"` // Set at runtime
 	MasterManager   interface{}                       `yaml:"-"` // *master.Manager for master mode
-	MetaLookup      *MetaLookup                       `yaml:"-"` // tvmaze/imdb .meta-file writer
 	RehashHook      func(*Config)                     `yaml:"-"` // called after Rehash() swaps fields
-
-	// Meta lookup (writes .tvmaze / .imdb files in release dirs on MKD).
-	// Files are shown on CWD via show_diz. Requires adding `.tvmaze: "*"`
-	// and/or `.imdb: "*"` to show_diz.
-	MetaLookupEnabled  bool     `yaml:"meta_lookup_enabled"`
-	MetaLookupTVSects  []string `yaml:"meta_lookup_tv_sections"`
-	MetaLookupIMSects  []string `yaml:"meta_lookup_imdb_sections"`
 
 	// SITE PRE — move a release from /PRE/<group>/<rel> to /<section>/<rel>
 	// and announce it. Affils are listed in `affils:`, which maps group
@@ -202,9 +194,13 @@ func LoadConfig(filePath string) (*Config, error) {
 // (listen_port, tls_*, storage_path, mode, master.control_port) are
 // intentionally NOT updated.
 //
-// Runtime pointers (PluginManager, EventDispatcher, MasterManager,
-// MetaLookup) are preserved. The reload is protected by a mutex so
-// concurrent sessions see a consistent snapshot.
+// Runtime pointers (PluginManager, EventDispatcher, MasterManager) are
+// preserved. The reload is protected by a mutex so concurrent sessions see
+// a consistent snapshot. Plugin configs are also rehashed — the
+// PluginManager.Dispatch() path stays live, and individual plugins can
+// observe new config at next event via their Init() params (if the plugin
+// itself supports live reload; stock tvmaze/imdb do not re-init on rehash
+// since their section lists live in their own struct).
 //
 // Returns the path actually reloaded, or an error.
 func (c *Config) Rehash() (string, error) {
@@ -238,12 +234,11 @@ func (c *Config) Rehash() (string, error) {
 	c.InviteChannels = fresh.InviteChannels
 	c.SitebotConfig = fresh.SitebotConfig
 
-	// Meta lookup toggles (the MetaLookup runtime object stays; only the
-	// enable flag + section lists are swapped. MetaLookup re-reads the
-	// sections from config every call.)
-	c.MetaLookupEnabled = fresh.MetaLookupEnabled
-	c.MetaLookupTVSects = fresh.MetaLookupTVSects
-	c.MetaLookupIMSects = fresh.MetaLookupIMSects
+	// Plugin config blocks — swapped in place so any plugin that re-reads
+	// c.Plugins on each Dispatch will see the new values. Stock plugins
+	// (tvmaze/imdb) snapshot their config at Init and don't re-read, but
+	// custom plugins can implement live reload by reading c.Plugins.
+	c.Plugins = fresh.Plugins
 
 	// SITE PRE
 	c.PreEnabled = fresh.PreEnabled

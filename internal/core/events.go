@@ -10,6 +10,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	pluginpkg "goftpd/internal/plugin"
 )
 
 // EventType describes a daemon event published for external consumers such as the sitebot.
@@ -272,19 +274,41 @@ func (s *Session) emitEvent(evtType EventType, eventPath, fileName string, size 
 	if fileName == "" {
 		fileName = fileNameFromPath(eventPath)
 	}
+	cleanedPath := path.Clean(eventPath)
+	section := sectionFromPath(eventPath)
+
 	evt := Event{
 		Type:      evtType,
 		Timestamp: time.Now(),
 		User:      userName,
 		Group:     groupName,
-		Section:   sectionFromPath(eventPath),
+		Section:   section,
 		Filename:  fileName,
 		Size:      size,
 		Speed:     speed,
-		Path:      path.Clean(eventPath),
+		Path:      cleanedPath,
 		Data:      data,
 	}
 	d.Emit(evt)
+
+	// Also notify registered plugins. We translate the internal EventType
+	// to the plugin.Event* constants (same string values by convention).
+	if s.Config.PluginManager != nil {
+		extra := make(map[string]interface{}, len(data))
+		for k, v := range data {
+			extra[k] = v
+		}
+		s.Config.PluginManager.Dispatch(&pluginpkg.Event{
+			Type:     string(evtType),
+			User:     s.User,
+			Path:     cleanedPath,
+			Filename: fileName,
+			Size:     size,
+			Speed:    speed,
+			Section:  section,
+			Extra:    extra,
+		})
+	}
 }
 
 // emitRaceEnd fires a sequence of discrete events for the race-end sequence —
