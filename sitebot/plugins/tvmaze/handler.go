@@ -306,6 +306,7 @@ func (p *TVMazePlugin) addSectionPalette(vars map[string]string, section string)
 		key := fmt.Sprintf("sec_c%d", i)
 		vars[key] = p.sectionColor(section, i)
 	}
+	vars["section_colored"] = "\x03" + vars["sec_c2"] + section + "\x03"
 }
 
 func (p *TVMazePlugin) sectionColor(section string, slot int) string {
