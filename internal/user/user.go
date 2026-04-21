@@ -3,6 +3,7 @@ package user
 import (
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -23,6 +24,7 @@ type User struct {
 	GID          int               `yaml:"gid"`
 	Flags        string            `yaml:"flags"`
 	Tagline      string            `yaml:"tagline"`
+	HomeRoot     string            `yaml:"home_root"`
 	HomeDir      string            `yaml:"homedir"`
 	CurrentDir   string            `yaml:"current_dir"`  // Runtime: current FTP dir
 	Added        int64             `yaml:"added"`
@@ -30,12 +32,9 @@ type User struct {
 	Expires      int64             `yaml:"expires"`
 	Credits      int64             `yaml:"credits"`
 	Ratio        int               `yaml:"ratio"`
-	LeechRatio   int               `yaml:"leech_ratio"`
-	SectRatio    map[string]int    `yaml:"sect_ratio"`
 	Groups       map[string]int    `yaml:"groups"`
 	PrimaryGroup string            `yaml:"primary_group"` // Primary group for file ownership
 	IPs          []string          `yaml:"ips"`
-	Colors       map[string]string `yaml:"colors"`
 	
 	// Throughput Stats (files, bytes, meta)
 	AllUp     StatLine          `yaml:"allup"`
@@ -50,9 +49,6 @@ type User struct {
 	// Nuke Stats
 	NukeStat  StatLine          `yaml:"nukestat"`
 	
-	// Section-specific stats (future)
-	SectStats map[string]StatLine `yaml:"sect_stats"`
-	
 	// Slot Configuration
 	UploadSlots   int `yaml:"upload_slots"`   // Max concurrent uploads
 	DownloadSlots int `yaml:"download_slots"` // Max concurrent downloads
@@ -62,6 +58,14 @@ type User struct {
 func LoadUser(name string, groupMap map[string]int) (*User, error) {
 	// Use exact case - usernames are case-sensitive like goftpd
 	path := filepath.Join("etc", "users", name)
+	return loadUserFile(name, path, groupMap)
+}
+
+func LoadTemplate(name, templatePath string, groupMap map[string]int) (*User, error) {
+	return loadUserFile(name, templatePath, groupMap)
+}
+
+func loadUserFile(name, path string, groupMap map[string]int) (*User, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -112,7 +116,7 @@ func LoadUser(name string, groupMap map[string]int) (*User, error) {
 		switch cmd {
 		case "HOMEDIR":
 			if len(parts) > 1 {
-				u.HomeDir = parts[1]
+				u.HomeRoot = parts[1]
 			}
 		case "FLAGS":
 			if len(parts) > 1 {
@@ -209,16 +213,23 @@ func LoadUser(name string, groupMap map[string]int) (*User, error) {
 				fmt.Sscanf(parts[1], "%d", &u.DownloadSlots)
 			}
 		case "TIMEFRAME":
-			if len(parts) > 1 {
-				fmt.Sscanf(parts[1], "%d", &u.Expires)
-			}
+			// Login timeframe limits are parsed from glftpd userfiles but are
+			// not enforced yet; do not treat them as account expiry.
 		}
 	}
 	
 	if u.HomeDir == "" {
 		u.HomeDir = "/"
 	}
+	if u.HomeRoot == "" {
+		u.HomeRoot = "/site"
+	}
 	u.CurrentDir = u.HomeDir
+	if u.PrimaryGroup != "" {
+		if _, ok := u.Groups[u.PrimaryGroup]; !ok {
+			u.Groups[u.PrimaryGroup] = 0
+		}
+	}
 	
 	// Set GID based on primary group
 	if groupMap != nil {
@@ -249,6 +260,23 @@ func LoadUser(name string, groupMap map[string]int) (*User, error) {
 func (u *User) Save() error {
 	// Use exact case
 	path := filepath.Join("etc", "users", u.Name)
+	if u.HomeRoot == "" {
+		u.HomeRoot = "/site"
+	}
+	if u.HomeDir == "" {
+		u.HomeDir = "/"
+	}
+	if u.Tagline == "" {
+		u.Tagline = "No Tagline Set"
+	}
+	if u.Groups == nil {
+		u.Groups = make(map[string]int)
+	}
+	if u.PrimaryGroup != "" {
+		if _, ok := u.Groups[u.PrimaryGroup]; !ok {
+			u.Groups[u.PrimaryGroup] = 0
+		}
+	}
 	
 	dir := filepath.Dir(path)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
@@ -267,11 +295,14 @@ func (u *User) Save() error {
 	fmt.Fprintf(file, "TIMEFRAME 0 0\n")
 	fmt.Fprintf(file, "FLAGS %s\n", u.Flags)
 	fmt.Fprintf(file, "TAGLINE %s\n", u.Tagline)
+	fmt.Fprintf(file, "HOMEDIR %s\n", u.HomeRoot)
 	fmt.Fprintf(file, "DIR %s\n", u.HomeDir)
 	fmt.Fprintf(file, "ADDED %d goftpd\n", u.Added)
 	fmt.Fprintf(file, "EXPIRES %d\n", u.Expires)
 	fmt.Fprintf(file, "CREDITS %d\n", u.Credits)
 	fmt.Fprintf(file, "RATIO %d\n", u.Ratio)
+	fmt.Fprintf(file, "UPLOADSLOTS %d\n", u.UploadSlots)
+	fmt.Fprintf(file, "DOWNLOADSLOTS %d\n", u.DownloadSlots)
 	fmt.Fprintf(file, "ALLUP %d %d %d\n", u.AllUp.Files, u.AllUp.Bytes, u.AllUp.Meta)
 	fmt.Fprintf(file, "ALLDN %d %d %d\n", u.AllDn.Files, u.AllDn.Bytes, u.AllDn.Meta)
 	fmt.Fprintf(file, "WKUP %d %d %d\n", u.WkUp.Files, u.WkUp.Bytes, u.WkUp.Meta)
@@ -284,14 +315,21 @@ func (u *User) Save() error {
 	fmt.Fprintf(file, "TIME %d %d 0 0\n", 0, u.LastLogin)
 
 	if u.PrimaryGroup != "" {
-		fmt.Fprintf(file, "PRIMARY %s\n", u.PrimaryGroup)
+		fmt.Fprintf(file, "PRIMARY_GROUP %s\n", u.PrimaryGroup)
 	}
 
-	for group, isAdmin := range u.Groups {
-		fmt.Fprintf(file, "GROUP %s %d\n", group, isAdmin)
+	groups := make([]string, 0, len(u.Groups))
+	for group := range u.Groups {
+		groups = append(groups, group)
+	}
+	sort.Strings(groups)
+	for _, group := range groups {
+		fmt.Fprintf(file, "GROUP %s %d\n", group, u.Groups[group])
 	}
 
-	for _, ip := range u.IPs {
+	ips := append([]string(nil), u.IPs...)
+	sort.Strings(ips)
+	for _, ip := range ips {
 		fmt.Fprintf(file, "IP %s\n", ip)
 	}
 
@@ -338,6 +376,9 @@ func (u *User) HasFlag(flag string) bool {
 }
 
 func (u *User) IsInGroup(group string) bool {
+	if u.PrimaryGroup == group {
+		return true
+	}
 	if u.Groups == nil {
 		return false
 	}
@@ -360,6 +401,25 @@ func (u *User) IsExpired() bool {
 	return u.Expires < time.Now().Unix()
 }
 
+func (u *User) IPAllowed(remoteIP string) bool {
+	if len(u.IPs) == 0 {
+		return false
+	}
+	for _, mask := range u.IPs {
+		hostMask := strings.TrimSpace(mask)
+		if strings.Contains(hostMask, "@") {
+			parts := strings.SplitN(hostMask, "@", 2)
+			hostMask = parts[1]
+		}
+		if hostMask == "*" || hostMask == remoteIP {
+			return true
+		}
+		if ok, _ := pathpkg.Match(hostMask, remoteIP); ok {
+			return true
+		}
+	}
+	return false
+}
 
 func (u *User) HasEnoughCredits(fileBytes int64) bool {
 	if u.Ratio == 0 {
@@ -373,50 +433,4 @@ func (u *User) CanDownload(section string, fileBytes int64) bool {
 		return false
 	}
 	return u.HasEnoughCredits(fileBytes)
-}
-
-// SaveUser writes the user data back to the userfile in userfile format
-func (u *User) SaveUser() error {
-	path := filepath.Join("etc", "users", u.Name)
-	
-	var buf strings.Builder
-	
-	// Write all fields in userfile format
-	buf.WriteString(fmt.Sprintf("HOMEDIR %s\n", u.HomeDir))
-	buf.WriteString(fmt.Sprintf("DIR %s\n", u.HomeDir))
-	buf.WriteString(fmt.Sprintf("FLAGS %s\n", u.Flags))
-	buf.WriteString(fmt.Sprintf("TAGLINE %s\n", u.Tagline))
-	buf.WriteString(fmt.Sprintf("RATIO %d\n", u.Ratio))
-	buf.WriteString(fmt.Sprintf("CREDITS %d\n", u.Credits))
-	buf.WriteString(fmt.Sprintf("UPLOADSLOTS %d\n", u.UploadSlots))
-	buf.WriteString(fmt.Sprintf("DOWNLOADSLOTS %d\n", u.DownloadSlots))
-	buf.WriteString(fmt.Sprintf("ADDED %d\n", u.Added))
-	buf.WriteString(fmt.Sprintf("EXPIRES %d\n", u.Expires))
-	buf.WriteString(fmt.Sprintf("TIMEFRAME %d\n", u.Expires))
-	
-	// Stats
-	buf.WriteString(fmt.Sprintf("ALLUP %d %d %d\n", u.AllUp.Files, u.AllUp.Bytes, u.AllUp.Meta))
-	buf.WriteString(fmt.Sprintf("ALLDN %d %d %d\n", u.AllDn.Files, u.AllDn.Bytes, u.AllDn.Meta))
-	buf.WriteString(fmt.Sprintf("WKUP %d %d %d\n", u.WkUp.Files, u.WkUp.Bytes, u.WkUp.Meta))
-	buf.WriteString(fmt.Sprintf("WKDN %d %d %d\n", u.WkDn.Files, u.WkDn.Bytes, u.WkDn.Meta))
-	buf.WriteString(fmt.Sprintf("DAYUP %d %d %d\n", u.DayUp.Files, u.DayUp.Bytes, u.DayUp.Meta))
-	buf.WriteString(fmt.Sprintf("DAYDN %d %d %d\n", u.DayDn.Files, u.DayDn.Bytes, u.DayDn.Meta))
-	buf.WriteString(fmt.Sprintf("MONTHUP %d %d %d\n", u.MonthUp.Files, u.MonthUp.Bytes, u.MonthUp.Meta))
-	buf.WriteString(fmt.Sprintf("MONTHDN %d %d %d\n", u.MonthDn.Files, u.MonthDn.Bytes, u.MonthDn.Meta))
-	
-	// Nuke stats
-	buf.WriteString(fmt.Sprintf("NUKE %d %d %d\n", u.NukeStat.Meta, u.NukeStat.Files, u.NukeStat.Bytes))
-	
-	// Groups
-	buf.WriteString(fmt.Sprintf("PRIMARY_GROUP %s\n", u.PrimaryGroup))
-	for group := range u.Groups {
-		buf.WriteString(fmt.Sprintf("GROUP %s %d\n", group, u.Groups[group]))
-	}
-	
-	// IPs
-	for _, ip := range u.IPs {
-		buf.WriteString(fmt.Sprintf("IP %s\n", ip))
-	}
-	
-	return os.WriteFile(path, []byte(buf.String()), 0644)
 }

@@ -2,14 +2,16 @@ package core
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-	"log"
 
 	"goftpd/internal/user"
 )
+
+const defaultUserTemplate = "etc/users/default.user"
 
 func (s *Session) HandleSiteAddUser(args []string) bool {
 	if !s.User.HasFlag("1") {
@@ -46,15 +48,33 @@ func (s *Session) HandleSiteAddUser(args []string) bool {
 		ips = []string{"*@*"}
 	}
 
-	newUser := &user.User{
-		Name:     args[0],
-		Password: hashedPass,
-		Flags:    "3",
-		Groups:   make(map[string]int),
-		Credits:  1024 * 1024 * 100,
-		Ratio:    3,
-		IPs:      ips,
-		Added:    time.Now().Unix(),
+	newUser, err := user.LoadTemplate(args[0], defaultUserTemplate, s.GroupMap)
+	if err != nil {
+		newUser = &user.User{
+			Name:         args[0],
+			Flags:        "3",
+			Tagline:      "No Tagline Set",
+			HomeRoot:     "/site",
+			HomeDir:      "/",
+			Groups:       map[string]int{"NoGroup": 0},
+			PrimaryGroup: "NoGroup",
+			Credits:      15000,
+			Ratio:        3,
+			UploadSlots:   6,
+			DownloadSlots: 3,
+		}
+	}
+	newUser.Name = args[0]
+	newUser.Password = hashedPass
+	newUser.IPs = ips
+	newUser.Added = time.Now().Unix()
+	if newUser.Groups == nil {
+		newUser.Groups = make(map[string]int)
+	}
+	if newUser.PrimaryGroup != "" {
+		if _, ok := newUser.Groups[newUser.PrimaryGroup]; !ok {
+			newUser.Groups[newUser.PrimaryGroup] = 0
+		}
 	}
 	newUser.Save()
 

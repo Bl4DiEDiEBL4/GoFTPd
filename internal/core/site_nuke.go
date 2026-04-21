@@ -104,7 +104,7 @@ func (s *Session) HandleSiteNuke(args []string) bool {
 		u.NukeStat.Bytes += bytes // Total bytes nuked
 
 		// Save user
-		if err := u.SaveUser(); err == nil && s.Config.Debug {
+		if err := u.Save(); err == nil && s.Config.Debug {
 			fmt.Printf("[NUKE] Updated %s: -%d credits (ratio %d), %d times nuked\n",
 				username, nukedCredits, u.Ratio, u.NukeStat.Files)
 		}
@@ -200,7 +200,7 @@ func (s *Session) HandleSiteUnnuke(args []string) bool {
 		// Update NUKE stats - clear them
 		u.NukeStat = user.StatLine{}
 
-		if err := u.SaveUser(); err == nil && s.Config.Debug {
+		if err := u.Save(); err == nil && s.Config.Debug {
 			fmt.Printf("[UNNUKE] Restored %s: +%d credits (ratio %d)\n", username, nukedCredits, u.Ratio)
 		}
 
