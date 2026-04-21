@@ -549,7 +549,21 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		if s.Config.Passthrough && s.Config.Mode == "master" && s.MasterManager != nil {
 			if s.PretCmd == "STOR" || s.PretCmd == "RETR" {
 				if bridge, ok := s.MasterManager.(MasterBridge); ok {
-					slaveIP, port, xferIdx, slaveName, err := bridge.SlaveListenForPassthrough(s.CurrentDir)
+					targetPath := s.CurrentDir
+					if strings.TrimSpace(s.PretArg) != "" {
+						targetPath = path.Join(s.CurrentDir, s.PretArg)
+					}
+
+					var slaveIP string
+					var port int
+					var xferIdx int32
+					var slaveName string
+					var err error
+					if s.PretCmd == "RETR" {
+						slaveIP, port, xferIdx, slaveName, err = bridge.SlaveListenForDownloadPassthrough(targetPath)
+					} else {
+						slaveIP, port, xferIdx, slaveName, err = bridge.SlaveListenForPassthrough(targetPath)
+					}
 					if err != nil {
 						log.Printf("[PASV] Passthrough slave listen failed: %v", err)
 						fmt.Fprintf(s.Conn, "421 No available slave for passthrough.\r\n")
@@ -591,6 +605,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		}
 		s.DataListen = l
 		s.PassthruSlave = nil 
+		s.PassthruXferIdx = 0
 		ip := strings.ReplaceAll(s.Config.PublicIP, ".", ",")
 		response := fmt.Sprintf("227 Entering Passive Mode (%s,%d,%d)\r\n", ip, port/256, port%256)
 		if s.Config.Debug {
@@ -1173,6 +1188,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					fileSize, checksum, xferMs, err = bridge.SlaveReceivePassthrough(filePath, s.PassthruXferIdx, slaveName, s.User.Name, s.User.PrimaryGroup)
 					s.PassthruSlave = nil
 					s.PretCmd = ""
+					s.PretArg = ""
 
 					if err != nil {
 						log.Printf("[Passthrough] Upload failed: %v", err)
@@ -1341,6 +1357,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					err := bridge.SlaveSendPassthrough(filePath, s.PassthruXferIdx, slaveName)
 					s.PassthruSlave = nil
 					s.PretCmd = ""
+					s.PretArg = ""
 
 					if err != nil {
 						log.Printf("[Passthrough] Download failed: %v", err)
@@ -1350,7 +1367,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						if fileSize > 0 {
 							s.User.UpdateStats(fileSize, false)
 						}
-						s.emitEvent(EventDownload, filePath, args[0], fileSize, 0, nil)
 						s.emitEvent(EventDownload, filePath, args[0], fileSize, 0, nil)
 					}
 				} else {
@@ -1367,6 +1383,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					}
 					err = bridge.DownloadFile(filePath, dataConn)
 					dataConn.Close()
+					s.PretCmd = ""
+					s.PretArg = ""
 					if err != nil {
 						log.Printf("[MASTER] Download failed: %v", err)
 						fmt.Fprintf(s.Conn, "550 Download failed: %v\r\n", err)

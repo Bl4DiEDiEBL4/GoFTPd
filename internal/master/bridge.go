@@ -782,6 +782,32 @@ func (b *Bridge) SlaveListenForPassthrough(uploadPath string) (string, int, int3
 	return slave.GetPASVIP(), transferResp.Info.Port, transferResp.Info.TransferIndex, slave.Name(), nil
 }
 
+// SlaveListenForDownloadPassthrough asks the slave that owns filePath to open
+// a listener for direct client download.
+func (b *Bridge) SlaveListenForDownloadPassthrough(filePath string) (string, int, int32, string, error) {
+	slave := b.sm.SelectSlaveForDownload(filePath)
+	if slave == nil {
+		return "", 0, 0, "", fmt.Errorf("file not found on any available slave: %s", filePath)
+	}
+
+	listenIdx, err := IssueListen(slave, false, false)
+	if err != nil {
+		return "", 0, 0, "", fmt.Errorf("issue listen to %s: %w", slave.Name(), err)
+	}
+
+	resp, err := slave.FetchResponse(listenIdx, 60*time.Second)
+	if err != nil {
+		return "", 0, 0, "", fmt.Errorf("slave %s listen failed: %w", slave.Name(), err)
+	}
+
+	transferResp, ok := resp.(*protocol.AsyncResponseTransfer)
+	if !ok {
+		return "", 0, 0, "", fmt.Errorf("unexpected response from slave")
+	}
+
+	return slave.GetPASVIP(), transferResp.Info.Port, transferResp.Info.TransferIndex, slave.Name(), nil
+}
+
 // SlaveReceivePassthrough tells a slave to receive a file (client already connected directly).
 // Waits for the slave to finish and returns size, checksum, duration.
 func (b *Bridge) SlaveReceivePassthrough(filePath string, transferIdx int32, slaveName string, owner, group string) (int64, uint32, int64, error) {
