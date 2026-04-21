@@ -35,6 +35,7 @@ type Slave struct {
 	roots         []string // local filesystem roots (1, slave.root.2)
 	pasvPortMin   int
 	pasvPortMax   int
+	pasvNext       uint32
 	tlsEnabled    bool
 	tlsCert       string
 	tlsKey        string
@@ -1099,8 +1100,11 @@ func (s *Slave) getDirForUpload(relPath string) (string, error) {
 }
 
 func (s *Slave) listenOnPortRange() (net.Listener, error) {
-	if s.pasvPortMin > 0 && s.pasvPortMax > s.pasvPortMin {
-		for port := s.pasvPortMin; port <= s.pasvPortMax; port++ {
+	if s.pasvPortMin > 0 && s.pasvPortMax >= s.pasvPortMin {
+		span := s.pasvPortMax - s.pasvPortMin + 1
+		start := int(atomic.AddUint32(&s.pasvNext, 1)-1) % span
+		for i := 0; i < span; i++ {
+			port := s.pasvPortMin + ((start + i) % span)
 			bindAddr := fmt.Sprintf("%s:%d", s.bindIP, port)
 			l, err := net.Listen("tcp", bindAddr)
 			if err == nil {
