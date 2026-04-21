@@ -314,6 +314,9 @@ func (rs *RemoteSlave) Run(masterSlaveManager *SlaveManager) {
 		case *protocol.AsyncResponseFileContent:
 			rs.routeResponse(resp.Index, obj)
 
+		case *protocol.AsyncResponseMediaInfo:
+			rs.routeResponse(resp.Index, obj)
+
 		default:
 			log.Printf("[Master] Unknown response type from slave %s: %T", rs.name, obj)
 		}
