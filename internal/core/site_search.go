@@ -29,8 +29,13 @@ func (s *Session) HandleSiteSearch(args []string) bool {
 	results := make([]VFSSearchResult, 0, len(rawResults))
 	for _, result := range rawResults {
 		aclPath := path.Join(s.Config.ACLBasePath, result.Path)
-		if s.ACLEngine != nil && !s.ACLEngine.CanPerform(s.User, "LIST", aclPath) {
-			continue
+		if s.ACLEngine != nil {
+			if !s.ACLEngine.CanPerform(s.User, "DIRLOG", aclPath) {
+				continue
+			}
+			if !s.ACLEngine.CanPerform(s.User, "LIST", aclPath) {
+				continue
+			}
 		}
 		results = append(results, result)
 	}

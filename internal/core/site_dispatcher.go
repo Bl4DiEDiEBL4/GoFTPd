@@ -111,6 +111,13 @@ func (c pluginSiteContext) UserName() string {
 	return c.s.User.Name
 }
 
+func (c pluginSiteContext) UserFlags() string {
+	if c.s == nil || c.s.User == nil {
+		return ""
+	}
+	return c.s.User.Flags
+}
+
 func (c pluginSiteContext) UserPrimaryGroup() string {
 	if c.s == nil || c.s.User == nil {
 		return ""

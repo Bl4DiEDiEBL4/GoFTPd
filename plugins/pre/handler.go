@@ -3,29 +3,53 @@ package pre
 import (
 	"fmt"
 	"log"
+	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"goftpd/internal/plugin"
+	"gopkg.in/yaml.v3"
 )
 
 type Plugin struct {
-	svc           *plugin.Services
-	base          string
-	sections      []string
-	datedSections []string
-	bwDuration    int
-	bwIntervalMs  int
-	affils        []AffilRule
-	debug         bool
+	svc             *plugin.Services
+	base            string
+	sections        []string
+	datedSections   []string
+	bwDuration      int
+	bwIntervalMs    int
+	affils          []AffilRule
+	affilsFile      string
+	permissionsFile string
+	groupFile       string
+	aclBase         string
+	adminFlags      string
+	debug           bool
 }
 
 type AffilRule struct {
-	Group  string
-	Predir string
+	Group       string                 `yaml:"group"`
+	Predir      string                 `yaml:"predir"`
+	Permissions map[string]interface{} `yaml:"permissions"`
+}
+
+type affilsFileConfig struct {
+	Base   string      `yaml:"base"`
+	Groups []AffilRule `yaml:"groups"`
+}
+
+type permissionsFileConfig struct {
+	Rules []permissionRule `yaml:"rules"`
+}
+
+type permissionRule struct {
+	Type     string `yaml:"type"`
+	Path     string `yaml:"path"`
+	Required string `yaml:"required"`
 }
 
 type userSnapshot struct {
@@ -35,9 +59,14 @@ type userSnapshot struct {
 
 func New() *Plugin {
 	return &Plugin{
-		base:         "/PRE",
-		bwDuration:   30,
-		bwIntervalMs: 500,
+		base:            "/PRE",
+		bwDuration:      30,
+		bwIntervalMs:    500,
+		affilsFile:      "etc/affils.yml",
+		permissionsFile: "etc/permissions.yml",
+		groupFile:       "etc/group",
+		aclBase:         "/site",
+		adminFlags:      "1",
 	}
 }
 
@@ -47,6 +76,21 @@ func (p *Plugin) Init(svc *plugin.Services, cfg map[string]interface{}) error {
 	p.svc = svc
 	if s := stringConfig(cfg, "base", ""); strings.TrimSpace(s) != "" {
 		p.base = cleanAbs(s)
+	}
+	if s := stringConfig(cfg, "affils_file", ""); strings.TrimSpace(s) != "" {
+		p.affilsFile = strings.TrimSpace(s)
+	}
+	if s := stringConfig(cfg, "permissions_file", ""); strings.TrimSpace(s) != "" {
+		p.permissionsFile = strings.TrimSpace(s)
+	}
+	if s := stringConfig(cfg, "group_file", ""); strings.TrimSpace(s) != "" {
+		p.groupFile = strings.TrimSpace(s)
+	}
+	if s := stringConfig(cfg, "acl_base_path", ""); strings.TrimSpace(s) != "" {
+		p.aclBase = cleanAbs(s)
+	}
+	if s := stringConfig(cfg, "admin_flags", ""); strings.TrimSpace(s) != "" {
+		p.adminFlags = strings.TrimSpace(s)
 	}
 	p.sections = stringSliceConfig(cfg["sections"])
 	p.datedSections = stringSliceConfig(cfg["dated_sections"])
@@ -59,13 +103,7 @@ func (p *Plugin) Init(svc *plugin.Services, cfg map[string]interface{}) error {
 	if b, ok := cfg["debug"].(bool); ok {
 		p.debug = b
 	}
-	p.affils = affilRulesConfig(cfg["affils"])
-	for i := range p.affils {
-		if strings.TrimSpace(p.affils[i].Predir) == "" && strings.TrimSpace(p.affils[i].Group) != "" {
-			p.affils[i].Predir = path.Join(p.base, p.affils[i].Group)
-		}
-		p.affils[i].Predir = cleanAbs(p.affils[i].Predir)
-	}
+	p.affils = normalizeAffils(affilRulesConfig(cfg["affils"]), p.base)
 	return nil
 }
 
@@ -73,12 +111,20 @@ func (p *Plugin) OnEvent(evt *plugin.Event) error { return nil }
 
 func (p *Plugin) Stop() error { return nil }
 
-func (p *Plugin) SiteCommands() []string { return []string{"PRE"} }
+func (p *Plugin) SiteCommands() []string { return []string{"PRE", "ADDAFFIL", "DELAFFIL", "AFFILS"} }
 
 func (p *Plugin) HandleSiteCommand(ctx plugin.SiteContext, command string, args []string) bool {
 	if p.svc == nil || p.svc.Bridge == nil {
 		ctx.Reply("451 Master bridge unavailable.\r\n")
 		return true
+	}
+	switch strings.ToUpper(strings.TrimSpace(command)) {
+	case "ADDAFFIL":
+		return p.handleAddAffil(ctx, args)
+	case "DELAFFIL":
+		return p.handleDelAffil(ctx, args)
+	case "AFFILS":
+		return p.handleAffils(ctx)
 	}
 	if len(args) < 2 {
 		ctx.Reply("501 Usage: SITE PRE <releasename> <section>\r\n")
@@ -143,23 +189,202 @@ func (p *Plugin) HandleSiteCommand(ctx plugin.SiteContext, command string, args 
 	return true
 }
 
+func (p *Plugin) handleAffils(ctx plugin.SiteContext) bool {
+	affils := p.currentAffils()
+	if len(affils) == 0 {
+		ctx.Reply("200 No affils configured.\r\n")
+		return true
+	}
+	names := make([]string, 0, len(affils))
+	for _, affil := range affils {
+		names = append(names, affil.Group)
+	}
+	sort.Strings(names)
+	ctx.Reply("200 Affils: %s\r\n", strings.Join(names, ", "))
+	return true
+}
+
+func (p *Plugin) handleAddAffil(ctx plugin.SiteContext, args []string) bool {
+	if !p.canAdmin(ctx) {
+		ctx.Reply("550 Permission denied.\r\n")
+		return true
+	}
+	if len(args) < 1 || strings.TrimSpace(args[0]) == "" {
+		ctx.Reply("501 Usage: SITE ADDAFFIL <group> [predir]\r\n")
+		return true
+	}
+	group := strings.TrimSpace(args[0])
+	if !validAffilGroup(group) {
+		ctx.Reply("501 Invalid affil group name.\r\n")
+		return true
+	}
+
+	cfg := p.currentAffilsFileConfig()
+	base := p.base
+	if strings.TrimSpace(cfg.Base) != "" {
+		base = cleanAbs(cfg.Base)
+	} else {
+		cfg.Base = base
+	}
+	predir := ""
+	if len(args) > 1 && strings.TrimSpace(args[1]) != "" {
+		predir = cleanAbs(args[1])
+	} else {
+		predir = path.Join(base, group)
+	}
+
+	for _, affil := range cfg.Groups {
+		if strings.EqualFold(affil.Group, group) {
+			ctx.Reply("550 Affil %s already exists.\r\n", group)
+			return true
+		}
+	}
+
+	cfg.Groups = append(cfg.Groups, AffilRule{
+		Group:  group,
+		Predir: predir,
+		Permissions: map[string]interface{}{
+			"privpath":    p.aclPath(predir),
+			"owner_group": group,
+			"mode":        "0777",
+		},
+	})
+	sort.Slice(cfg.Groups, func(i, j int) bool {
+		return strings.ToLower(cfg.Groups[i].Group) < strings.ToLower(cfg.Groups[j].Group)
+	})
+
+	if err := saveAffilsFile(p.affilsFile, cfg); err != nil {
+		ctx.Reply("451 Could not update %s: %v\r\n", p.affilsFile, err)
+		return true
+	}
+
+	parent := path.Dir(predir)
+	if !p.dirExists(parent) {
+		p.svc.Bridge.MakeDir(parent, ctx.UserName(), ctx.UserPrimaryGroup())
+	}
+	p.svc.Bridge.MakeDir(predir, ctx.UserName(), group)
+	_ = p.svc.Bridge.Chmod(predir, 0777)
+
+	if err := ensureGroupFile(p.groupFile, group); err != nil {
+		ctx.Reply("200- Affil %s added with predir %s\r\n", group, predir)
+		ctx.Reply("200- WARNING: could not update %s: %v\r\n", p.groupFile, err)
+		ctx.Reply("200 Continue checking permissions update.\r\n")
+	}
+
+	if err := ensureAffilPermissions(p.permissionsFile, p.aclPath(predir), group); err != nil {
+		ctx.Reply("200- Affil %s added with predir %s\r\n", group, predir)
+		ctx.Reply("200- WARNING: could not update %s: %v\r\n", p.permissionsFile, err)
+		ctx.Reply("200 Run SITE REHASH or restart sessions that need new ACL state.\r\n")
+		return true
+	}
+
+	ctx.Reply("200- Affil %s added with predir %s\r\n", group, predir)
+	ctx.Reply("200 Updated %s, %s, and %s. Run SITE REHASH or restart sessions that need new ACL state.\r\n", p.affilsFile, p.permissionsFile, p.groupFile)
+	return true
+}
+
+func (p *Plugin) handleDelAffil(ctx plugin.SiteContext, args []string) bool {
+	if !p.canAdmin(ctx) {
+		ctx.Reply("550 Permission denied.\r\n")
+		return true
+	}
+	if len(args) < 1 || strings.TrimSpace(args[0]) == "" {
+		ctx.Reply("501 Usage: SITE DELAFFIL <group>\r\n")
+		return true
+	}
+	group := strings.TrimSpace(args[0])
+
+	cfg := p.currentAffilsFileConfig()
+	kept := make([]AffilRule, 0, len(cfg.Groups))
+	var removed *AffilRule
+	for _, affil := range cfg.Groups {
+		if strings.EqualFold(affil.Group, group) {
+			copy := affil
+			removed = &copy
+			continue
+		}
+		kept = append(kept, affil)
+	}
+	if removed == nil {
+		ctx.Reply("550 Affil %s not found.\r\n", group)
+		return true
+	}
+	cfg.Groups = kept
+	if err := saveAffilsFile(p.affilsFile, cfg); err != nil {
+		ctx.Reply("451 Could not update %s: %v\r\n", p.affilsFile, err)
+		return true
+	}
+	if err := removeAffilPermissions(p.permissionsFile, p.aclPath(removed.Predir), removed.Group); err != nil {
+		ctx.Reply("200- Affil %s removed from %s\r\n", removed.Group, p.affilsFile)
+		ctx.Reply("200- WARNING: could not update %s: %v\r\n", p.permissionsFile, err)
+		ctx.Reply("200 Predir %s was left on disk.\r\n", removed.Predir)
+		return true
+	}
+	ctx.Reply("200 Affil %s removed. Predir %s was left on disk.\r\n", removed.Group, removed.Predir)
+	return true
+}
+
+func (p *Plugin) canAdmin(ctx plugin.SiteContext) bool {
+	flags := ctx.UserFlags()
+	for _, required := range p.adminFlags {
+		if required <= 32 {
+			continue
+		}
+		if strings.ContainsRune(flags, required) {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *Plugin) aclPath(vpath string) string {
+	vpath = cleanAbs(vpath)
+	base := cleanAbs(p.aclBase)
+	if strings.EqualFold(base, "/") {
+		return vpath
+	}
+	if strings.HasPrefix(strings.ToLower(vpath), strings.ToLower(base)+"/") || strings.EqualFold(vpath, base) {
+		return vpath
+	}
+	return path.Join(base, vpath)
+}
+
 func (p *Plugin) findUserAffil(userGroups []string) *AffilRule {
 	if len(userGroups) == 0 {
 		return nil
 	}
+	affils := p.currentAffils()
 	groupSet := map[string]bool{}
 	for _, group := range userGroups {
 		groupSet[strings.ToLower(strings.TrimSpace(group))] = true
 	}
-	for i := range p.affils {
-		if strings.TrimSpace(p.affils[i].Group) == "" || strings.TrimSpace(p.affils[i].Predir) == "" {
+	for i := range affils {
+		if strings.TrimSpace(affils[i].Group) == "" || strings.TrimSpace(affils[i].Predir) == "" {
 			continue
 		}
-		if groupSet[strings.ToLower(p.affils[i].Group)] {
-			return &p.affils[i]
+		if groupSet[strings.ToLower(affils[i].Group)] {
+			return &affils[i]
 		}
 	}
 	return nil
+}
+
+func (p *Plugin) currentAffils() []AffilRule {
+	cfg, err := loadAffilsFile(p.affilsFile)
+	if err != nil {
+		if p.debug && strings.TrimSpace(p.affilsFile) != "" {
+			p.logf("could not read %s: %v", p.affilsFile, err)
+		}
+		return append([]AffilRule(nil), p.affils...)
+	}
+	base := p.base
+	if strings.TrimSpace(cfg.Base) != "" {
+		base = cleanAbs(cfg.Base)
+	}
+	if len(cfg.Groups) == 0 {
+		return append([]AffilRule(nil), p.affils...)
+	}
+	return normalizeAffils(cfg.Groups, base)
 }
 
 func (p *Plugin) dirExists(dirPath string) bool {
@@ -505,4 +730,206 @@ func affilRulesConfig(raw interface{}) []AffilRule {
 		out = append(out, AffilRule{Group: group, Predir: predir})
 	}
 	return out
+}
+
+func normalizeAffils(in []AffilRule, base string) []AffilRule {
+	out := make([]AffilRule, 0, len(in))
+	for _, affil := range in {
+		affil.Group = strings.TrimSpace(affil.Group)
+		affil.Predir = strings.TrimSpace(affil.Predir)
+		if affil.Group == "" {
+			continue
+		}
+		if affil.Predir == "" {
+			affil.Predir = path.Join(base, affil.Group)
+		}
+		affil.Predir = cleanAbs(affil.Predir)
+		out = append(out, affil)
+	}
+	return out
+}
+
+func loadAffilsFile(filePath string) (affilsFileConfig, error) {
+	var cfg affilsFileConfig
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return cfg, fmt.Errorf("empty affils file path")
+	}
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return cfg, err
+	}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return cfg, err
+	}
+	return cfg, nil
+}
+
+func saveAffilsFile(filePath string, cfg affilsFileConfig) error {
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return fmt.Errorf("empty affils file path")
+	}
+	if strings.TrimSpace(cfg.Base) == "" {
+		cfg.Base = "/PRE"
+	}
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(filePath, data, 0644)
+}
+
+func (p *Plugin) currentAffilsFileConfig() affilsFileConfig {
+	cfg, err := loadAffilsFile(p.affilsFile)
+	if err == nil {
+		if strings.TrimSpace(cfg.Base) == "" {
+			cfg.Base = p.base
+		}
+		cfg.Groups = normalizeAffils(cfg.Groups, cleanAbs(cfg.Base))
+		return cfg
+	}
+	return affilsFileConfig{
+		Base:   p.base,
+		Groups: normalizeAffils(append([]AffilRule(nil), p.affils...), p.base),
+	}
+}
+
+func validAffilGroup(group string) bool {
+	if group == "" || strings.ContainsAny(group, `/\:*?"<>|`) {
+		return false
+	}
+	for _, r := range group {
+		if r <= 32 {
+			return false
+		}
+	}
+	return true
+}
+
+func ensureAffilPermissions(filePath, aclPredir, group string) error {
+	cfg, err := loadPermissionsFile(filePath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	required := "="+group
+	rules := []permissionRule{
+		{Type: "privpath", Path: aclPredir, Required: required},
+		{Type: "upload", Path: path.Join(aclPredir, "*"), Required: required},
+		{Type: "resume", Path: path.Join(aclPredir, "*"), Required: required},
+		{Type: "download", Path: path.Join(aclPredir, "*"), Required: required},
+		{Type: "makedir", Path: path.Join(aclPredir, "*"), Required: required},
+		{Type: "delete", Path: path.Join(aclPredir, "*"), Required: required},
+		{Type: "rename", Path: path.Join(aclPredir, "*"), Required: required},
+		{Type: "dirlog", Path: path.Join(aclPredir, "*"), Required: required},
+		{Type: "nodupecheck", Path: path.Join(aclPredir, "*"), Required: required},
+	}
+	for _, rule := range rules {
+		if !hasPermissionRule(cfg.Rules, rule) {
+			cfg.Rules = append([]permissionRule{rule}, cfg.Rules...)
+		}
+	}
+	return savePermissionsFile(filePath, cfg)
+}
+
+func removeAffilPermissions(filePath, aclPredir, group string) error {
+	cfg, err := loadPermissionsFile(filePath)
+	if err != nil {
+		return err
+	}
+	required := "=" + group
+	kept := make([]permissionRule, 0, len(cfg.Rules))
+	for _, rule := range cfg.Rules {
+		if strings.EqualFold(strings.TrimSpace(rule.Required), required) &&
+			(strings.EqualFold(rule.Path, aclPredir) || strings.HasPrefix(strings.ToLower(rule.Path), strings.ToLower(aclPredir)+"/")) {
+			continue
+		}
+		kept = append(kept, rule)
+	}
+	cfg.Rules = kept
+	return savePermissionsFile(filePath, cfg)
+}
+
+func loadPermissionsFile(filePath string) (permissionsFileConfig, error) {
+	var cfg permissionsFileConfig
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return cfg, fmt.Errorf("empty permissions file path")
+	}
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return cfg, err
+	}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return cfg, err
+	}
+	return cfg, nil
+}
+
+func savePermissionsFile(filePath string, cfg permissionsFileConfig) error {
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return fmt.Errorf("empty permissions file path")
+	}
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(filePath, data, 0644)
+}
+
+func hasPermissionRule(rules []permissionRule, needle permissionRule) bool {
+	for _, rule := range rules {
+		if strings.EqualFold(rule.Type, needle.Type) &&
+			strings.EqualFold(rule.Path, needle.Path) &&
+			strings.EqualFold(strings.TrimSpace(rule.Required), strings.TrimSpace(needle.Required)) {
+			return true
+		}
+	}
+	return false
+}
+
+func ensureGroupFile(filePath, group string) error {
+	filePath = strings.TrimSpace(filePath)
+	group = strings.TrimSpace(group)
+	if filePath == "" || group == "" {
+		return fmt.Errorf("missing group file or group")
+	}
+	data, err := os.ReadFile(filePath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	lines := strings.Split(string(data), "\n")
+	maxGID := 999
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.Split(line, ":")
+		if len(parts) >= 1 && strings.EqualFold(parts[0], group) {
+			return nil
+		}
+		if len(parts) >= 3 {
+			if gid, err := strconv.Atoi(strings.TrimSpace(parts[2])); err == nil && gid > maxGID {
+				maxGID = gid
+			}
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = fmt.Fprintf(f, "%s:%s:%d:\n", group, group, maxGID+1)
+	return err
 }

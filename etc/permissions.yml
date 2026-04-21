@@ -1,46 +1,90 @@
-# GoFTPd goftpd-compatible ACL Rules
-# Format: type path [required_flags]
-# Types: privpath, upload, download, makedir, delete, rename, nuke, unnuke, dirlog, resume, deleteown, renameown, filemove, nodupecheck
+# GoFTPd ACL rules.
+#
+# required:
+#   "*"       = everyone
+#   "1"       = user flag 1
+#   "=Admin"  = member of group Admin
+#   "1 =SiteOP" = flag 1 and member of group SiteOP
+#
+# A trailing slash keeps wildcard matches to directory levels, glftpd-style:
+#   /site/series/*/ matches /site/series/Release/
+#   but not /site/series/Release/Sample/
+rules:
+  - type: privpath
+    path: /site/LINKS
+    required: "1 =SiteOP"
+  - type: privpath
+    path: /site/PRE/SiteOP
+    required: "1 =SiteOP"
+  - type: privpath
+    path: /site/PRE/TEST-GRP
+    required: "1 =SiteOP"
+  - type: privpath
+    path: /site/ARCHiVE/backup
+    required: "1 =SiteOP"
+  - type: privpath
+    path: /site/ARCHiVE/COMPLETE
+    required: "1 =SiteOP"
 
-# Private sections
-privpath		/site/LINKS 						       1 =SiteOP
-privpath		/site/PRE/SiteOP 					       1 =SiteOP
-privpath		/site/PRE/TEST-GRP 					       1 =SiteOP
-privpath		/site/ARCHiVE/backup 					1 =SiteOP
-privpath		/site/ARCHiVE/COMPLETE 					1 =SiteOP
+  - type: upload
+    path: /site/*
+    required: "*"
 
-# Upload permissions
-upload			/site/*							*
+  - type: resume
+    path: /site/*
+    required: "*"
+  - type: download
+    path: /site/*
+    required: "*"
 
-# Resume/Download
-resume			/site/*							*
-download		/site/*							*
+  - type: makedir
+    path: /site/REQUESTS/*
+    required: "1"
+  - type: makedir
+    path: /site/*
+    required: "1"
 
-# Directory operations
-makedir			/site/REQUESTS/*					1
-makedir			/site/*						1
+  - type: dirlog
+    path: /site/PRE/*
+    required: "1"
+  - type: dirlog
+    path: /site/*
+    required: "*"
 
-# Logging/Visibility
-dirlog			/site/PRE/*						       1
-dirlog			/site/*							*
+  - type: rename
+    path: /site/*
+    required: "1"
+  - type: renameown
+    path: /site/*
+    required: "1"
 
-# Rename operations
-rename			/site/*							1
-renameown		/site/*							1
+  - type: nuke
+    path: /site/*
+    required: "1 A =NUKERS"
+  - type: unnuke
+    path: /site/*
+    required: "1 B =NUKERS"
 
-# Nuke/Unnuke
-nuke			/site/*							1 A =NUKERS
-unnuke			/site/*							1 B =NUKERS
+  - type: delete
+    path: /site/PRE/*/*
+    required: "1"
+  - type: delete
+    path: /site/*
+    required: "1"
+  - type: deleteown
+    path: /site/*
+    required: "1"
 
-# Delete operations
-delete			/site/PRE/*/*						       1
-delete			/site/*							1
-deleteown		/site/*							1
+  - type: filemove
+    path: /site/*
+    required: "=Admin"
 
-# Move operations
-filemove		/site/*							=Admin
-
-# Dupe check bypass
-nodupecheck		/site/PRE/*						       1
-nodupecheck		/site/REQUESTS/*					       1
-nodupecheck		/site/SPEEDTEST/*					       1
+  - type: nodupecheck
+    path: /site/PRE/*
+    required: "1"
+  - type: nodupecheck
+    path: /site/REQUESTS/*
+    required: "1"
+  - type: nodupecheck
+    path: /site/SPEEDTEST/*
+    required: "1"

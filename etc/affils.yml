@@ -1,0 +1,22 @@
+# Shared affil config for daemon PRE and sitebot !affils.
+#
+# The daemon pre plugin reads this for SITE PRE ownership.
+# The sitebot affils plugin reads this for !affils output.
+#
+# SITE ADDAFFIL / SITE DELAFFIL keep this file and permissions.yml in sync.
+base: "/PRE"
+
+groups:
+  - group: "GoFTPd"
+    predir: "/PRE/GoFTPd"
+    permissions:
+      privpath: "/site/PRE/GoFTPd"
+      owner_group: "GoFTPd"
+      mode: "0777"
+
+  - group: "GRPTST"
+    predir: "/PRE/GRPTST"
+    permissions:
+      privpath: "/site/PRE/GRPTST"
+      owner_group: "GRPTST"
+      mode: "0777"

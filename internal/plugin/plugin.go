@@ -79,6 +79,7 @@ type Services struct {
 type SiteContext interface {
 	Reply(format string, args ...interface{})
 	UserName() string
+	UserFlags() string
 	UserPrimaryGroup() string
 	UserGroups() []string
 }

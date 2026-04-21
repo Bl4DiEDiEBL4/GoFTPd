@@ -25,6 +25,7 @@ import (
 	"goftpd/plugins/mediainfo"
 	"goftpd/plugins/pre"
 	"goftpd/plugins/tvmaze"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -460,6 +461,25 @@ func protectedVFSDirs(cfg *core.Config) []string {
 		if base, ok := preCfg["base"].(string); ok {
 			add(base)
 		}
+		affilsFile := "etc/affils.yml"
+		if filePath, ok := preCfg["affils_file"].(string); ok && strings.TrimSpace(filePath) != "" {
+			affilsFile = strings.TrimSpace(filePath)
+		}
+		if affilsCfg, err := loadAffilsProtectionConfig(affilsFile); err == nil {
+			for _, affil := range affilsCfg.Groups {
+				if strings.TrimSpace(affil.Predir) != "" {
+					add(affil.Predir)
+					continue
+				}
+				if strings.TrimSpace(affil.Group) != "" {
+					base := affilsCfg.Base
+					if strings.TrimSpace(base) == "" {
+						base = "/PRE"
+					}
+					add(path.Join(base, affil.Group))
+				}
+			}
+		}
 		if affils, ok := preCfg["affils"].([]interface{}); ok {
 			for _, raw := range affils {
 				item, ok := raw.(map[string]interface{})
@@ -485,4 +505,26 @@ func protectedVFSDirs(cfg *core.Config) []string {
 		out = append(out, p)
 	}
 	return out
+}
+
+type affilsProtectionConfig struct {
+	Base   string                  `yaml:"base"`
+	Groups []affilsProtectionGroup `yaml:"groups"`
+}
+
+type affilsProtectionGroup struct {
+	Group  string `yaml:"group"`
+	Predir string `yaml:"predir"`
+}
+
+func loadAffilsProtectionConfig(filePath string) (affilsProtectionConfig, error) {
+	var cfg affilsProtectionConfig
+	data, err := os.ReadFile(strings.TrimSpace(filePath))
+	if err != nil {
+		return cfg, err
+	}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return cfg, err
+	}
+	return cfg, nil
 }

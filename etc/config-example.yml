@@ -183,6 +183,12 @@ plugins:
     debug: false
   pre:
     enabled: true
+    # Shared affil file used by the daemon PRE plugin and the sitebot Affils plugin.
+    affils_file: "etc/affils.yml"
+    permissions_file: "etc/permissions.yml"
+    group_file: "etc/group"
+    acl_base_path: "/site"
+    admin_flags: "1"
     base: "/PRE"
     bw_duration: 30
     bw_interval_ms: 500
@@ -200,11 +206,6 @@ plugins:
       - MP3
       - FLAC
       - 0DAY
-    affils:
-      - group:  "GoFTPd"
-        predir: "/PRE/GoFTPd"
-      - group:  "GRPTST"
-        predir: "/PRE/GRPTST"
 
 
 # =============================================================================
