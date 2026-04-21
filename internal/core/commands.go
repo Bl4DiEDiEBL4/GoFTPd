@@ -109,7 +109,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 
 		if s.Config.Passthrough && s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
-				slaveIP, port, xferIdx, slaveName, err := bridge.SlaveListenForPassthrough(s.CurrentDir)
+				slaveIP, port, xferIdx, slaveName, err := bridge.SlaveListenForPassthrough(s.CurrentDir, s.DataTLS)
 				if err != nil {
 					log.Printf("[CPSV] Passthrough slave listen failed: %v", err)
 					fmt.Fprintf(s.Conn, "421 No available slave for passthrough.\r\n")
@@ -560,9 +560,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					var slaveName string
 					var err error
 					if s.PretCmd == "RETR" {
-						slaveIP, port, xferIdx, slaveName, err = bridge.SlaveListenForDownloadPassthrough(targetPath)
+						slaveIP, port, xferIdx, slaveName, err = bridge.SlaveListenForDownloadPassthrough(targetPath, s.DataTLS)
 					} else {
-						slaveIP, port, xferIdx, slaveName, err = bridge.SlaveListenForPassthrough(targetPath)
+						slaveIP, port, xferIdx, slaveName, err = bridge.SlaveListenForPassthrough(targetPath, s.DataTLS)
 					}
 					if err != nil {
 						log.Printf("[PASV] Passthrough slave listen failed: %v", err)

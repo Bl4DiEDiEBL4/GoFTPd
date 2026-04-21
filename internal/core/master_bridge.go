@@ -83,10 +83,10 @@ type MasterBridge interface {
 	SlaveConnectAndReceive(filePath, remoteAddr, owner, group string) (int64, uint32, int64, error)
 
 	// Passthrough: ask a slave to listen and return its IP:port + transfer index
-	SlaveListenForPassthrough(uploadPath string) (slaveIP string, port int, transferIdx int32, slaveName string, err error)
+	SlaveListenForPassthrough(uploadPath string, encrypted bool) (slaveIP string, port int, transferIdx int32, slaveName string, err error)
 
 	// Passthrough: ask the slave that owns filePath to listen for a download
-	SlaveListenForDownloadPassthrough(filePath string) (slaveIP string, port int, transferIdx int32, slaveName string, err error)
+	SlaveListenForDownloadPassthrough(filePath string, encrypted bool) (slaveIP string, port int, transferIdx int32, slaveName string, err error)
 
 	// Passthrough: tell slave to receive a file, wait for completion, return size/checksum
 	SlaveReceivePassthrough(filePath string, transferIdx int32, slaveName string, owner, group string) (int64, uint32, int64, error)

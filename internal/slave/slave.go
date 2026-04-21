@@ -451,6 +451,16 @@ func (s *Slave) handleListen(ac *protocol.AsyncCommand) interface{} {
 		return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("listen failed: %v", err)}
 	}
 
+	encrypted, _ := parseListenFlags(ac.Args)
+	if encrypted {
+		cert, err := tls.LoadX509KeyPair(s.tlsCert, s.tlsKey)
+		if err != nil {
+			listener.Close()
+			return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("load TLS cert: %v", err)}
+		}
+		listener = tls.NewListener(listener, &tls.Config{Certificates: []tls.Certificate{cert}})
+	}
+
 	idx := atomic.AddInt32(&s.nextTransferIdx, 1)
 	t := NewTransfer(listener, nil, idx, s)
 	s.transfers.Store(idx, t)
@@ -464,6 +474,18 @@ func (s *Slave) handleListen(ac *protocol.AsyncCommand) interface{} {
 			TransferIndex: idx,
 		},
 	}
+}
+
+func parseListenFlags(args []string) (encrypted bool, sslClientMode bool) {
+	if len(args) == 0 {
+		return false, false
+	}
+	parts := strings.SplitN(args[0], ":", 2)
+	encrypted, _ = strconv.ParseBool(parts[0])
+	if len(parts) > 1 {
+		sslClientMode, _ = strconv.ParseBool(parts[1])
+	}
+	return encrypted, sslClientMode
 }
 
 // handleConnect - slave connects out to a given address (active mode).
