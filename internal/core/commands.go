@@ -280,11 +280,16 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		s.CurrentDir = path.Clean(target)
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
-				for _, e := range bridge.ListDir(path.Dir(s.CurrentDir)) {
-					if e.Name == path.Base(s.CurrentDir) && e.IsSymlink && e.LinkTarget != "" {
+				parent := path.Dir(s.CurrentDir)
+				name := path.Base(s.CurrentDir)
+				for _, e := range bridge.ListDir(parent) {
+					if e.Name == name && e.IsSymlink && e.LinkTarget != "" {
 						s.CurrentDir = path.Clean(e.LinkTarget)
 						break
 					}
+				}
+				if resolved := resolveIncompleteMarkerTarget(bridge, s.Config.IncompleteIndicator, parent, name); resolved != "" {
+					s.CurrentDir = resolved
 				}
 			}
 		}
@@ -743,11 +748,12 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					}
 					nowTs := timeutil.FTPMachine(time.Now())
 					output.WriteString(fmt.Sprintf("Modify=%s;Perm=el;Type=dir; %s\r\n", nowTs, statusName))
-					if present < total {
-						if marker := incompleteMarkerName(s.Config.IncompleteIndicator, present, total); marker != "" {
-							output.WriteString(fmt.Sprintf("Modify=%s;Perm=el;Type=dir; %s\r\n", nowTs, marker))
-						}
-					}
+				}
+
+				for _, marker := range incompleteMarkerEntries(bridge, s.Config.IncompleteIndicator, s.CurrentDir, entries) {
+					ts := timeutil.FTPMachineUnix(marker.ModTime)
+					output.WriteString(fmt.Sprintf("Modify=%s;Perm=el;Type=%s; %s\r\n",
+						ts, mlsdSymlinkType(marker), marker.Name))
 				}
 
 				for _, e := range entries {
@@ -903,12 +909,13 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					}
 					output.WriteString(fmt.Sprintf("drwxr-xr-x   1 %-8s %-8s %10s %s %s\r\n",
 						"GoFTPd", "GoFTPd", "4096", now, statusName))
-					if present < total {
-						if marker := incompleteMarkerName(s.Config.IncompleteIndicator, present, total); marker != "" {
-							output.WriteString(fmt.Sprintf("drwxr-xr-x   1 %-8s %-8s %10s %s %s\r\n",
-								"GoFTPd", "GoFTPd", "4096", now, marker))
-						}
-					}
+				}
+
+				for _, marker := range incompleteMarkerEntries(bridge, s.Config.IncompleteIndicator, s.CurrentDir, entries) {
+					ts := timeutil.Unix(marker.ModTime).Format("Jan _2 15:04")
+					name := fmt.Sprintf("%s -> %s", marker.Name, marker.LinkTarget)
+					output.WriteString(fmt.Sprintf("%s   1 %-8s %-8s %10s %s %s\r\n",
+						ftpListMode(marker), marker.Owner, marker.Group, "0", ts, name))
 				}
 
 				for _, e := range entries {
@@ -1427,6 +1434,11 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
 				entries := bridge.ListDir(target)
+				for _, marker := range incompleteMarkerEntries(bridge, s.Config.IncompleteIndicator, target, entries) {
+					ts := timeutil.Unix(marker.ModTime).Format("Jan _2 15:04")
+					fmt.Fprintf(s.Conn, " %s   1 %-8s %-8s %10s %s %s -> %s\r\n",
+						ftpListMode(marker), marker.Owner, marker.Group, "0", ts, marker.Name, marker.LinkTarget)
+				}
 				for _, e := range entries {
 					if strings.HasPrefix(e.Name, ".") {
 						continue
@@ -1519,12 +1531,16 @@ func mlsdSymlinkType(e MasterFileEntry) string {
 	return "OS.unix=slink:" + target
 }
 
-func incompleteMarkerName(pattern string, present, total int) string {
+func incompleteMarkerName(pattern, relname string) string {
 	pattern = strings.TrimSpace(pattern)
-	if pattern == "" || total <= 0 || present >= total {
+	relname = strings.TrimSpace(relname)
+	if pattern == "" || relname == "" {
 		return ""
 	}
-	return strings.ReplaceAll(pattern, "%0", progressBar(present, total, 20))
+	if strings.Contains(pattern, "%0") {
+		return strings.ReplaceAll(pattern, "%0", relname)
+	}
+	return pattern
 }
 
 func isIncompleteMarkerName(pattern, name string) bool {
@@ -1537,6 +1553,50 @@ func isIncompleteMarkerName(pattern, name string) bool {
 		return prefix != "" && strings.HasPrefix(name, prefix)
 	}
 	return name == pattern
+}
+
+func incompleteMarkerEntries(bridge MasterBridge, pattern, dirPath string, entries []MasterFileEntry) []MasterFileEntry {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" {
+		return nil
+	}
+	existing := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		existing[e.Name] = true
+	}
+	out := []MasterFileEntry{}
+	for _, e := range entries {
+		if !e.IsDir || e.IsSymlink || strings.HasPrefix(e.Name, ".") || isIncompleteMarkerName(pattern, e.Name) {
+			continue
+		}
+		releasePath := path.Join(dirPath, e.Name)
+		_, _, _, present, total := bridge.GetVFSRaceStats(releasePath)
+		if total <= 0 || present >= total {
+			continue
+		}
+		marker := incompleteMarkerName(pattern, e.Name)
+		if marker == "" || existing[marker] {
+			continue
+		}
+		out = append(out, MasterFileEntry{
+			Name:       marker,
+			IsSymlink:  true,
+			LinkTarget: releasePath,
+			ModTime:    e.ModTime,
+			Owner:      "GoFTPd",
+			Group:      "GoFTPd",
+		})
+	}
+	return out
+}
+
+func resolveIncompleteMarkerTarget(bridge MasterBridge, pattern, parent, name string) string {
+	for _, marker := range incompleteMarkerEntries(bridge, pattern, parent, bridge.ListDir(parent)) {
+		if marker.Name == name && marker.LinkTarget != "" {
+			return path.Clean(marker.LinkTarget)
+		}
+	}
+	return ""
 }
 
 func progressBar(present, total, width int) string {
