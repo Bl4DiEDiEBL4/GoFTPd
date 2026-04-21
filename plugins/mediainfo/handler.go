@@ -1,8 +1,10 @@
 package mediainfo
 
 import (
+	"fmt"
 	"log"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +22,8 @@ type Handler struct {
 	audioExtensions map[string]bool
 	videoExtensions map[string]bool
 	sampleOnly      bool
+	mu              sync.Mutex
+	seen            map[string]time.Time
 	jobs            chan job
 	stopCh          chan struct{}
 	stopOnce        sync.Once
@@ -39,6 +43,7 @@ type job struct {
 func New() *Handler {
 	return &Handler{
 		jobs:   make(chan job, 128),
+		seen:   map[string]time.Time{},
 		stopCh: make(chan struct{}),
 	}
 }
@@ -108,6 +113,12 @@ func (h *Handler) OnEvent(evt *plugin.Event) error {
 	}
 
 	relPath := releasePath(evt.Path)
+	if !h.markReleaseQueued(eventType, relPath) {
+		if h.debug {
+			log.Printf("[MEDIAINFO] skipping %s: %s already queued for %s", evt.Path, eventType, relPath)
+		}
+		return nil
+	}
 	j := job{
 		eventType: eventType,
 		filePath:  evt.Path,
@@ -124,6 +135,7 @@ func (h *Handler) OnEvent(evt *plugin.Event) error {
 			log.Printf("[MEDIAINFO] queued %s for %s", eventType, evt.Path)
 		}
 	default:
+		h.unmarkReleaseQueued(eventType, relPath)
 		log.Printf("[MEDIAINFO] job queue full, dropping %s", evt.Path)
 	}
 	return nil
@@ -164,6 +176,7 @@ func (h *Handler) probe(j job) {
 		log.Printf("[MEDIAINFO] %s failed: %v", j.filePath, err)
 		return
 	}
+	normalizeFields(fields)
 	fields["filename"] = j.fileName
 	fields["filepath"] = j.filePath
 	fields["path"] = j.relPath
@@ -173,6 +186,30 @@ func (h *Handler) probe(j job) {
 		log.Printf("[MEDIAINFO] emitting %s for %s (%d fields)", j.eventType, j.filePath, len(fields))
 	}
 	h.svc.EmitEvent(j.eventType, j.relPath, j.relName, j.section, j.size, j.speed, fields)
+}
+
+func (h *Handler) markReleaseQueued(eventType, relPath string) bool {
+	now := time.Now()
+	key := eventType + "|" + path.Clean(relPath)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for k, seenAt := range h.seen {
+		if now.Sub(seenAt) > 24*time.Hour {
+			delete(h.seen, k)
+		}
+	}
+	if h.seen[key].IsZero() {
+		h.seen[key] = now
+		return true
+	}
+	return false
+}
+
+func (h *Handler) unmarkReleaseQueued(eventType, relPath string) {
+	key := eventType + "|" + path.Clean(relPath)
+	h.mu.Lock()
+	delete(h.seen, key)
+	h.mu.Unlock()
 }
 
 func releasePath(filePath string) string {
@@ -198,6 +235,91 @@ func matchSection(section string, patterns []string) bool {
 		}
 	}
 	return false
+}
+
+func normalizeFields(fields map[string]string) {
+	if fields == nil {
+		return
+	}
+	fields["year"] = normalizeYear(fields["year"])
+	fields["bitrate"] = normalizeBitrate(fields["bitrate"])
+	fields["sample_rate"] = normalizeSampleRate(fields["sample_rate"])
+	fields["channels"] = normalizeChannels(fields["channels"])
+	fields["duration"] = normalizeDuration(fields["duration"])
+}
+
+func normalizeYear(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 4 {
+		year := s[:4]
+		if _, err := strconv.Atoi(year); err == nil {
+			return year
+		}
+	}
+	return s
+}
+
+func normalizeBitrate(s string) string {
+	raw := strings.TrimSpace(s)
+	if raw == "" {
+		return raw
+	}
+	lower := strings.ToLower(raw)
+	if strings.Contains(lower, "kb") || strings.Contains(lower, "mb") {
+		return raw
+	}
+	digits := strings.NewReplacer(" ", "", ",", "", ".", "").Replace(raw)
+	if n, err := strconv.Atoi(digits); err == nil && n > 0 {
+		if n >= 1000 {
+			return fmt.Sprintf("%dkbps", n/1000)
+		}
+		return fmt.Sprintf("%dbps", n)
+	}
+	return raw
+}
+
+func normalizeSampleRate(s string) string {
+	raw := strings.TrimSpace(s)
+	lower := strings.ToLower(raw)
+	if strings.Contains(lower, "hz") {
+		return strings.TrimSuffix(strings.TrimSuffix(lower, " hz"), "hz")
+	}
+	return raw
+}
+
+func normalizeChannels(s string) string {
+	switch strings.TrimSpace(s) {
+	case "1":
+		return "Mono"
+	case "2":
+		return "Stereo"
+	case "6":
+		return "5.1"
+	case "8":
+		return "7.1"
+	default:
+		return strings.TrimSpace(s)
+	}
+}
+
+func normalizeDuration(s string) string {
+	raw := strings.TrimSpace(s)
+	if raw == "" {
+		return raw
+	}
+	lower := strings.ToLower(raw)
+	if strings.Contains(lower, "min") || strings.Contains(raw, ":") {
+		return raw
+	}
+	if seconds, err := strconv.ParseFloat(raw, 64); err == nil && seconds > 0 {
+		min := int(seconds) / 60
+		sec := int(seconds) % 60
+		if min > 0 {
+			return fmt.Sprintf("%dm%02ds", min, sec)
+		}
+		return fmt.Sprintf("%ds", sec)
+	}
+	return raw
 }
 
 func extensionSet(exts []string) map[string]bool {
