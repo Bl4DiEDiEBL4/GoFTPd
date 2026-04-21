@@ -141,6 +141,8 @@ type Config struct {
 	PreBWIntervalMs int        `yaml:"pre_bw_interval_ms"` // polling interval
 	Affils         []AffilRule `yaml:"affils"`
 
+	DatedDirs DatedDirsConfig `yaml:"dated_dirs"`
+
 	// Debug
 	Debug bool `yaml:"debug"`
 
@@ -181,6 +183,16 @@ type SlavePolicyConfig struct {
 type AffilRule struct {
 	Group  string `yaml:"group"`
 	Predir string `yaml:"predir"`
+}
+
+type DatedDirsConfig struct {
+	Enabled              bool     `yaml:"enabled"`
+	Sections             []string `yaml:"sections"`
+	Format               string   `yaml:"format"`
+	CreateTomorrow       bool     `yaml:"create_tomorrow"`
+	TodaySymlink         bool     `yaml:"today_symlink"`
+	SymlinkPrefix        string   `yaml:"symlink_prefix"`
+	ReadOnlyAfterMinutes int      `yaml:"readonly_after_minutes"`
 }
 
 func LoadConfig(filePath string) (*Config, error) {
@@ -255,6 +267,7 @@ func (c *Config) Rehash() (string, error) {
 	c.PreBWDuration = fresh.PreBWDuration
 	c.PreBWIntervalMs = fresh.PreBWIntervalMs
 	c.Affils = fresh.Affils
+	c.DatedDirs = fresh.DatedDirs
 
 	// Slaves policy
 	c.Slaves = fresh.Slaves

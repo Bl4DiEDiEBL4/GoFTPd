@@ -223,6 +223,20 @@ pre_dated_sections:
 # Map of affil groups → their staging dir. Only users whose primary or
 # secondary group matches one of these can SITE PRE, and only from the
 # corresponding predir.
+dated_dirs:
+  enabled: true
+  sections:
+    - EBOOKS
+    - MP3
+    - FLAC
+    - 0DAY
+    - XXX-0DAY
+  format: "0102"
+  create_tomorrow: true
+  today_symlink: true
+  symlink_prefix: "!Today_"
+  readonly_after_minutes: 60
+
 affils:
   - group:  "GoFTPd"
     predir: "/PRE/GoFTPd"

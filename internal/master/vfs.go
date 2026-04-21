@@ -17,6 +17,9 @@ type VFSFile struct {
 	Path         string
 	Size         int64
 	IsDir        bool
+	IsSymlink    bool
+	LinkTarget   string
+	Mode         uint32
 	LastModified int64
 	SlaveName    string
 	Owner        string
@@ -74,6 +77,8 @@ func (vfs *VirtualFileSystem) AddFile(path string, file VFSFile) {
 	}
 	if vfs.protectedDirs[path] {
 		file.IsDir = true
+		file.IsSymlink = false
+		file.LinkTarget = ""
 		file.Seen = true
 		file.SlaveName = ""
 	}
@@ -98,7 +103,32 @@ func (vfs *VirtualFileSystem) AddFile(path string, file VFSFile) {
 	}
 }
 
-// [ADDED] Sync methods for Slave Remerge
+func (vfs *VirtualFileSystem) AddSymlink(linkPath, targetPath string) {
+	vfs.mu.Lock()
+	defer vfs.mu.Unlock()
+
+	linkPath = cleanVFSPath(linkPath)
+	targetPath = cleanVFSPath(targetPath)
+	vfs.files[linkPath] = &VFSFile{
+		Path:         linkPath,
+		IsSymlink:    true,
+		LinkTarget:   targetPath,
+		Mode:         0777,
+		LastModified: time.Now().Unix(),
+		Seen:         true,
+	}
+}
+
+func (vfs *VirtualFileSystem) Chmod(path string, mode uint32) {
+	vfs.mu.Lock()
+	defer vfs.mu.Unlock()
+
+	path = cleanVFSPath(path)
+	if f := vfs.files[path]; f != nil {
+		f.Mode = mode
+		f.LastModified = time.Now().Unix()
+	}
+}
 
 // MarkAllUnseen flags all files for a specific slave as unseen before a remerge.
 func (vfs *VirtualFileSystem) MarkAllUnseen(slaveName string) {

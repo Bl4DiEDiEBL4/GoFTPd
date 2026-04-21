@@ -285,6 +285,16 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			target = path.Join(s.CurrentDir, target)
 		}
 		s.CurrentDir = path.Clean(target)
+		if s.Config.Mode == "master" && s.MasterManager != nil {
+			if bridge, ok := s.MasterManager.(MasterBridge); ok {
+				for _, e := range bridge.ListDir(path.Dir(s.CurrentDir)) {
+					if e.Name == path.Base(s.CurrentDir) && e.IsSymlink && e.LinkTarget != "" {
+						s.CurrentDir = path.Clean(e.LinkTarget)
+						break
+					}
+				}
+			}
+		}
 
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
@@ -629,10 +639,20 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						if e.Name == name {
 							ts := time.Unix(e.ModTime, 0).Format("20060102150405")
 							var parts []string
-							if e.IsDir {
+							if e.IsSymlink {
 								parts = []string{
 									fmt.Sprintf("Modify=%s", ts),
-									"Perm=elcmp",
+									"Perm=el",
+									"Type=OS.unix=symlink",
+								}
+							} else if e.IsDir {
+								perm := "elcmp"
+								if e.Mode == 0555 {
+									perm = "el"
+								}
+								parts = []string{
+									fmt.Sprintf("Modify=%s", ts),
+									"Perm=" + perm,
 									"Type=dir",
 								}
 							} else {
@@ -728,8 +748,18 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					ts := time.Unix(e.ModTime, 0).Format("20060102150405")
 					var perm string
 					var facts []string
-					if e.IsDir {
+					if e.IsSymlink {
+						perm = "el"
+						facts = []string{
+							fmt.Sprintf("Modify=%s", ts),
+							"Perm=" + perm,
+							"Type=OS.unix=symlink",
+						}
+					} else if e.IsDir {
 						perm = "elcmp" // enter, list, create, mkdir, purge
+						if e.Mode == 0555 {
+							perm = "el"
+						}
 						facts = []string{
 							fmt.Sprintf("Modify=%s", ts),
 							"Perm=" + perm,
@@ -881,17 +911,20 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						continue
 					}
 
-					mode := "-rw-r--r--"
+					mode := ftpListMode(e)
 					size := fmt.Sprintf("%d", e.Size)
-					if e.IsDir {
-						mode = "drwxr-xr-x"
+					name := e.Name
+					if e.IsSymlink {
+						size = "0"
+						name = fmt.Sprintf("%s -> %s", e.Name, e.LinkTarget)
+					} else if e.IsDir {
 						size = "4096"
 					}
 					ts := time.Unix(e.ModTime, 0).Format("Jan _2 15:04")
 					owner := "GoFTPd"
 					group := "GoFTPd"
 					output.WriteString(fmt.Sprintf("%s   1 %-8s %-8s %10s %s %s\r\n",
-						mode, owner, group, size, ts, e.Name))
+						mode, owner, group, size, ts, name))
 				}
 
 				if total > 0 && present < total {
@@ -1423,6 +1456,24 @@ func (s *Session) showGlobalStats(code string, final bool) {
 }
 
 func mbString(size int64) string { return fmt.Sprintf("%.0fMB", float64(size)/1024.0/1024.0) }
+
+func ftpListMode(e MasterFileEntry) string {
+	switch {
+	case e.IsSymlink:
+		return "lrwxrwxrwx"
+	case e.IsDir:
+		if e.Mode == 0555 {
+			return "dr-xr-xr-x"
+		}
+		return "drwxr-xr-x"
+	default:
+		if e.Mode == 0444 {
+			return "-r--r--r--"
+		}
+		return "-rw-r--r--"
+	}
+}
+
 func max64(a, b int64) int64 {
 	if a > b {
 		return a

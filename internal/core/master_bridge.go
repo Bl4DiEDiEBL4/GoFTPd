@@ -31,6 +31,12 @@ type MasterBridge interface {
 	// MakeDir creates a directory in the VFS.
 	MakeDir(dirPath, owner, group string)
 
+	// Symlink creates or replaces a symbolic link in VFS/slaves.
+	Symlink(linkPath, targetPath string) error
+
+	// Chmod changes permissions in VFS/slaves.
+	Chmod(path string, mode uint32) error
+
 	// GetFileSize returns file size from VFS, or -1 if not found.
 	GetFileSize(filePath string) int64
 
@@ -91,6 +97,9 @@ type MasterFileEntry struct {
 	Name    string
 	Size    int64
 	IsDir   bool
+	IsSymlink bool
+	LinkTarget string
+	Mode    uint32
 	ModTime int64
 	Owner   string
 	Group   string

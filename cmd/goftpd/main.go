@@ -128,6 +128,7 @@ func main() {
 			sm.PublishAllDiskStatuses()
 			log.Printf("[MASTER] Applied routing policies for %d slave(s)", len(policies))
 		}
+		sm.StartDatedDirs(masterDatedDirsConfig(cfg))
 
 		// Create Bridge (implements core.MasterBridge) and inject into config
 		// so the FTP session can route STOR/RETR/LIST/DELE to slaves
@@ -156,6 +157,7 @@ func main() {
 			}
 			sm.SetSlavePolicies(policies)
 			sm.SetProtectedDirs(protectedVFSDirs(c))
+			sm.StartDatedDirs(masterDatedDirsConfig(c))
 			sm.PublishAllDiskStatuses()
 			log.Printf("[REHASH] reapplied %d slave policies", len(policies))
 		}
@@ -405,6 +407,9 @@ func protectedVFSDirs(cfg *core.Config) []string {
 	for _, section := range cfg.PreSections {
 		add(section)
 	}
+	for _, section := range cfg.DatedDirs.Sections {
+		add(section)
+	}
 	if cfg.PreBase != "" {
 		add(cfg.PreBase)
 	}
@@ -416,4 +421,19 @@ func protectedVFSDirs(cfg *core.Config) []string {
 		out = append(out, p)
 	}
 	return out
+}
+
+func masterDatedDirsConfig(cfg *core.Config) master.DatedDirsConfig {
+	if cfg == nil {
+		return master.DatedDirsConfig{}
+	}
+	return master.DatedDirsConfig{
+		Enabled:              cfg.DatedDirs.Enabled,
+		Sections:             cfg.DatedDirs.Sections,
+		Format:               cfg.DatedDirs.Format,
+		CreateTomorrow:       cfg.DatedDirs.CreateTomorrow,
+		TodaySymlink:         cfg.DatedDirs.TodaySymlink,
+		SymlinkPrefix:        cfg.DatedDirs.SymlinkPrefix,
+		ReadOnlyAfterMinutes: cfg.DatedDirs.ReadOnlyAfterMinutes,
+	}
 }

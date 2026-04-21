@@ -47,13 +47,16 @@ func (b *Bridge) ListDir(dirPath string) []core.MasterFileEntry {
 	entries := make([]core.MasterFileEntry, 0, len(vfsFiles))
 	for _, f := range vfsFiles {
 		entries = append(entries, core.MasterFileEntry{
-			Name:    filepath.Base(f.Path),
-			Size:    f.Size,
-			IsDir:   f.IsDir,
-			ModTime: f.LastModified,
-			Owner:   f.Owner,
-			Group:   f.Group,
-			Slave:   f.SlaveName,
+			Name:       filepath.Base(f.Path),
+			Size:       f.Size,
+			IsDir:      f.IsDir,
+			IsSymlink:  f.IsSymlink,
+			LinkTarget: f.LinkTarget,
+			Mode:       f.Mode,
+			ModTime:    f.LastModified,
+			Owner:      f.Owner,
+			Group:      f.Group,
+			Slave:      f.SlaveName,
 		})
 	}
 	return entries
@@ -272,6 +275,39 @@ func (b *Bridge) MakeDir(dirPath, owner, group string) {
 			Args:  []string{dirPath},
 		})
 	}
+}
+
+func (b *Bridge) Symlink(linkPath, targetPath string) error {
+	b.sm.GetVFS().AddSymlink(linkPath, targetPath)
+	var lastErr error
+	for _, slave := range b.sm.GetAvailableSlaves() {
+		targetArg := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(targetPath)), "/")
+		index, err := IssueSymlink(slave, linkPath, targetArg)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if _, err := slave.FetchResponse(index, 30*time.Second); err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+func (b *Bridge) Chmod(path string, mode uint32) error {
+	b.sm.GetVFS().Chmod(path, mode)
+	var lastErr error
+	for _, slave := range b.sm.GetAvailableSlaves() {
+		index, err := IssueChmod(slave, path, mode)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if _, err := slave.FetchResponse(index, 30*time.Second); err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
 }
 
 // GetFileSize returns file size, or -1 if not found.
@@ -522,7 +558,7 @@ func (v *VFSAdapter) MkdirAll(dirPath string, perm os.FileMode) error {
 }
 
 func (v *VFSAdapter) Symlink(oldname, newname string) error {
-	return nil
+	return v.b.Symlink(newname, oldname)
 }
 
 // --- Virtual File Info & DirEntry Structs ---

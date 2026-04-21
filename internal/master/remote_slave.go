@@ -193,7 +193,7 @@ func (rs *RemoteSlave) FetchResponse(index string, timeout time.Duration) (inter
 	}()
 
 	select {
-	case resp, open := <-ch: // [Modified] Check if channel is open to avoid nil panics
+	case resp, open := <-ch:
 		if !open || resp == nil {
 			return nil, fmt.Errorf("connection closed during request")
 		}
@@ -332,7 +332,7 @@ func (rs *RemoteSlave) routeResponse(index string, obj interface{}) {
 }
 
 func (rs *RemoteSlave) SetOffline(reason string) {
-	// [Modified] CompareAndSwap guarantees atomic closure, preventing crash on double-disconnects
+	// CompareAndSwap guarantees atomic closure and prevents double-disconnect races.
 	if !rs.online.CompareAndSwap(true, false) {
 		return // already offline
 	}

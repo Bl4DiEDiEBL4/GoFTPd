@@ -38,8 +38,11 @@ type SlaveManager struct {
 	vfs        *VirtualFileSystem
 
 	listener   net.Listener
-	running    atomic.Bool // Changed to atomic to prevent data races
+	running    atomic.Bool
 	diskStatusHook func(name string, status protocol.DiskStatus, online, available bool, sections []string)
+	datedMu        sync.Mutex
+	datedConfig    DatedDirsConfig
+	datedStarted   bool
 }
 
 // SlaveRoutePolicy is the runtime form of SlavePolicy from config.
@@ -253,7 +256,7 @@ func (sm *SlaveManager) initializeSlaveAfterConnect(rs *RemoteSlave) {
 	sm.publishDiskStatus(rs)
 	log.Printf("[SlaveManager] Slave %s is now AVAILABLE (remerge running in background)", rs.name)
 
-	// [ADDED] Mark all current files as unseen before the remerge starts
+	// Mark current files unseen before remerge so stale entries can be purged.
 	sm.vfs.MarkAllUnseen(rs.name)
 
 	index, err := IssueRemerge(rs, "/", false, 0, time.Now().UnixMilli(), false)
@@ -272,11 +275,11 @@ func (sm *SlaveManager) initializeSlaveAfterConnect(rs *RemoteSlave) {
 	} else {
 		log.Printf("[SlaveManager] Remerge complete for slave %s", rs.name)
 		
-		// [ADDED] Purge any files that were physically deleted from the slave
+		// Purge files that were physically deleted from the slave.
 		sm.vfs.PurgeUnseen(rs.name)
 		log.Printf("[SlaveManager] Ghost files purged for %s", rs.name)
 
-		// [CRITICAL FIX] Instantly hard-save the VFS to disk now that the remerge and purge is complete!
+		// Persist the VFS after remerge and purge complete.
 		if err := sm.vfs.SaveToDisk(vfsFilePath); err != nil {
 			log.Printf("[SlaveManager] Error saving VFS after remerge: %v", err)
 		}
@@ -297,7 +300,7 @@ func (sm *SlaveManager) ProcessRemerge(rs *RemoteSlave, resp *protocol.AsyncResp
 			path = resp.Path + "/" + inode.Name
 		}
 
-		// [ADDED] Protect Owner/Group metadata from being overwritten by the Slave
+		// Keep trusted FTP owner/group metadata instead of replacing it with OS ownership.
 		owner := inode.Owner
 		group := inode.Group
 		if existingFile := sm.vfs.GetFile(path); existingFile != nil {
@@ -313,11 +316,13 @@ func (sm *SlaveManager) ProcessRemerge(rs *RemoteSlave, resp *protocol.AsyncResp
 			Path:         path,
 			Size:         inode.Size,
 			IsDir:        inode.IsDir,
+			IsSymlink:    inode.IsSymlink,
+			LinkTarget:   inode.LinkTarget,
 			LastModified: inode.LastModified,
 			SlaveName:    rs.name,
 			Owner:        owner,
 			Group:        group,
-			Seen:         true, // [ADDED] Mark as seen so it survives the purge
+			Seen:         true,
 		})
 	}
 }
@@ -550,8 +555,7 @@ func (sm *SlaveManager) Stop() {
 
 // vfsPersistLoop saves the VFS to disk.
 func (sm *SlaveManager) vfsPersistLoop() {
-	// [CRITICAL FIX] Reduced from 5 minutes to 10 seconds. 
-	// This acts as real-time durability so if you crash or restart, your uploaded owners (N0pe) survive.
+	// Save frequently so owner/group metadata and recent VFS changes survive restarts.
 	ticker := time.NewTicker(10 * time.Second) 
 	defer ticker.Stop()
 

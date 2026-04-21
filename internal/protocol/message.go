@@ -114,6 +114,8 @@ func (ar *AsyncResponseRemerge) GetIndex() string { return "Remerge" }
 type LightRemoteInode struct {
 	Name         string
 	IsDir        bool
+	IsSymlink    bool
+	LinkTarget   string
 	Size         int64
 	LastModified int64
 	Owner        string
@@ -210,4 +212,3 @@ type AsyncResponseFileContent struct {
 }
 
 func (ar *AsyncResponseFileContent) GetIndex() string { return ar.Index }
-

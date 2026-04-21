@@ -228,6 +228,12 @@ func (s *Slave) handleCommand(ac *protocol.AsyncCommand) interface{} {
 	case "rename":
 		return s.handleRename(ac)
 
+	case "chmod":
+		return s.handleChmod(ac)
+
+	case "symlink":
+		return s.handleSymlink(ac)
+
 	case "checksum":
 		return s.handleChecksum(ac)
 
@@ -258,7 +264,6 @@ func (s *Slave) handleCommand(ac *protocol.AsyncCommand) interface{} {
 	case "writeFile":
 		return s.handleWriteFile(ac)
 		
-	// [ADDED] Added handler for makedir so empty folders exist on disk and survive remerge!
 	case "makedir":
 		return s.handleMakeDir(ac)
 
@@ -340,7 +345,53 @@ func (s *Slave) handleRename(ac *protocol.AsyncCommand) interface{} {
 	return &protocol.AsyncResponse{Index: ac.Index}
 }
 
-// [ADDED] handleMakeDir physically creates empty directories on the slave disk.
+func (s *Slave) handleChmod(ac *protocol.AsyncCommand) interface{} {
+	if len(ac.Args) < 2 {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "chmod: need path and mode"}
+	}
+	mode64, err := strconv.ParseUint(ac.Args[1], 8, 32)
+	if err != nil {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "chmod: invalid mode"}
+	}
+	changed := false
+	for _, root := range s.roots {
+		fullPath := filepath.Join(root, ac.Args[0])
+		if _, err := os.Lstat(fullPath); err != nil {
+			continue
+		}
+		if err := os.Chmod(fullPath, os.FileMode(mode64)); err != nil {
+			return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("chmod failed: %v", err)}
+		}
+		changed = true
+	}
+	if !changed {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "chmod: path not found"}
+	}
+	return &protocol.AsyncResponse{Index: ac.Index}
+}
+
+func (s *Slave) handleSymlink(ac *protocol.AsyncCommand) interface{} {
+	if len(ac.Args) < 2 {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "symlink: need link and target"}
+	}
+	linkPath := ac.Args[0]
+	targetPath := ac.Args[1]
+	for _, root := range s.roots {
+		fullLink := filepath.Join(root, linkPath)
+		fullTarget := filepath.Join(root, targetPath)
+		if _, err := os.Stat(fullTarget); err != nil {
+			continue
+		}
+		_ = os.Remove(fullLink)
+		if err := os.Symlink(targetPath, fullLink); err != nil {
+			return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("symlink failed: %v", err)}
+		}
+		return &protocol.AsyncResponse{Index: ac.Index}
+	}
+	return &protocol.AsyncResponseError{Index: ac.Index, Message: "symlink: target not found"}
+}
+
+// handleMakeDir physically creates empty directories on the slave disk.
 func (s *Slave) handleMakeDir(ac *protocol.AsyncCommand) interface{} {
 	if len(ac.Args) < 1 {
 		return &protocol.AsyncResponseError{Index: ac.Index, Message: "makedir: missing path"}
@@ -620,11 +671,17 @@ func (s *Slave) handleRemerge(ac *protocol.AsyncCommand) interface{} {
 			currentFiles = append(currentFiles, protocol.LightRemoteInode{
 				Name:         info.Name(),
 				IsDir:        info.IsDir(),
+				IsSymlink:    info.Mode()&os.ModeSymlink != 0,
 				Size:         info.Size(),
 				LastModified: info.ModTime().Unix(),
 				Owner:        getFileOwner(info),
 				Group:        getFileGroup(info),
 			})
+			if info.Mode()&os.ModeSymlink != 0 {
+				if target, err := os.Readlink(fullPath); err == nil {
+					currentFiles[len(currentFiles)-1].LinkTarget = filepath.ToSlash(target)
+				}
+			}
 
 			if info.IsDir() {
 				totalDirs++
