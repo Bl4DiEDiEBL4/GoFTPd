@@ -84,6 +84,7 @@ plugins:
     IMDB: true
     News: true
     Free: true
+    Affils: true
   config:
     debug: true
 
@@ -101,11 +102,26 @@ plugins:
       default_shown: 5
       max_shown: 20
       search_default: 4
+      # reply_target controls where command replies go:
+      #   "channel"  = reply in the channel where the command was used
+      #   "notice"   = reply as a private NOTICE to the user
+      #   "#channel" = always reply in that fixed IRC channel
       reply_target: "channel"
       channels: ["#goftpd"]
       staff_channels: ["#goftpd-staff"]
       staff_hosts: []
 
     free:
+      # reply_target supports "channel", "notice", or a fixed "#channel".
       reply_target: "#goftpd"
       stale_after_seconds: 600
+
+    affils:
+      # reply_target supports "channel", "notice", or a fixed "#channel".
+      reply_target: "channel"
+      show_predirs: false
+      groups:
+        - group: "GoFTPd"
+          predir: "/PRE/GoFTPd"
+        - group: "GRPTST"
+          predir: "/PRE/GRPTST"

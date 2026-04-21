@@ -14,6 +14,7 @@ import (
 	"goftpd/sitebot/internal/event"
 	"goftpd/sitebot/internal/irc"
 	"goftpd/sitebot/internal/plugin"
+	affilsplugin "goftpd/sitebot/plugins/affils"
 	announceplugin "goftpd/sitebot/plugins/announce"
 	freeplugin "goftpd/sitebot/plugins/free"
 	imdbplugin "goftpd/sitebot/plugins/imdb"
@@ -147,6 +148,19 @@ func (b *Bot) initializePlugins() error {
 			return err
 		}
 		if err := b.Plugins.Register(free); err != nil {
+			return err
+		}
+	}
+	if enabled, ok := b.Config.Plugins.Enabled["Affils"]; ok && enabled {
+		affils := affilsplugin.New()
+		cfg := map[string]interface{}{"debug": b.Debug}
+		for k, v := range b.Config.Plugins.Config {
+			cfg[k] = v
+		}
+		if err := affils.Initialize(cfg); err != nil {
+			return err
+		}
+		if err := b.Plugins.Register(affils); err != nil {
 			return err
 		}
 	}
