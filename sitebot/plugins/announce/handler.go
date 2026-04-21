@@ -113,8 +113,40 @@ func (p *AnnouncePlugin) vars(evt *event.Event) map[string]string {
 	if v["reldir"] == "" {
 		v["reldir"] = v["relname"]
 	}
+	p.addSectionPalette(v, v["section"])
 	return v
 }
+
+func (p *AnnouncePlugin) addSectionPalette(vars map[string]string, section string) {
+	for i := 1; i <= 5; i++ {
+		key := fmt.Sprintf("sec_c%d", i)
+		vars[key] = p.sectionColor(section, i)
+	}
+	vars["section_colored"] = "\x03" + vars["sec_c2"] + section + "\x03"
+}
+
+func (p *AnnouncePlugin) sectionColor(section string, slot int) string {
+	fallback := "02"
+	if p.theme != nil {
+		keys := []string{
+			fmt.Sprintf("COLOR_%s_%d", strings.ToUpper(section), slot),
+			fmt.Sprintf("section_color.%s.%d", section, slot),
+			fmt.Sprintf("section_color.%s.%d", strings.ToUpper(section), slot),
+			fmt.Sprintf("COLOR_DEFAULT_%d", slot),
+			fmt.Sprintf("section_color.default.%d", slot),
+			"section_color." + section,
+			"section_color." + strings.ToUpper(section),
+			"section_color.default",
+		}
+		for _, key := range keys {
+			if c := strings.TrimSpace(p.theme.Vars[key]); c != "" {
+				return strings.TrimLeft(c, "cC")
+			}
+		}
+	}
+	return fallback
+}
+
 func (p *AnnouncePlugin) render(key string, vars map[string]string, fallback string) string {
 	if p.theme != nil {
 		if raw, ok := p.theme.Announces[key]; ok && raw != "" {
@@ -153,9 +185,16 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 			fallback = fmt.Sprintf("NEW DAY: -%s- A new day has come! %s has been created.", section, vars["date"])
 		}
 		outs = append(outs, plugin.Output{Type: "NEWDAY", Text: p.render("NEWDAY", vars, fallback)})
+	case event.EventAudioInfo:
+		fallback := fmt.Sprintf("AUDIO-INFO: [%s] %s Get ready for some %s from %s at %sHz in %s %s (%s).",
+			section, rel, vars["genre"], vars["year"], vars["sample_rate"], vars["channels"], vars["bitrate"], vars["bitrate_mode"])
+		outs = append(outs, plugin.Output{Type: "AUDIOINFO", Text: p.render("AUDIOINFO", vars, fallback)})
+	case event.EventMediaInfo:
+		fallback := fmt.Sprintf("MEDIA-INFO: [%s] %s %sx%s %s %s %s.",
+			section, rel, vars["width"], vars["height"], vars["video_format"], vars["audio_format"], vars["duration"])
+		outs = append(outs, plugin.Output{Type: "MEDIAINFO", Text: p.render("MEDIAINFO", vars, fallback)})
 	case event.EventMKDir:
-		// only top-level release dirs
-		if path.Base(path.Dir(path.Clean(evt.Path))) == strings.ToUpper(section) || strings.EqualFold(path.Dir(path.Clean(evt.Path)), "/"+section) {
+		if isReleaseDir(evt.Path, section) {
 			if !st.Created {
 				st.Created = true
 				outs = append(outs, plugin.Output{Type: "NEW", Text: p.render("NEWDIR", vars, fmt.Sprintf("NEW : [%s] %s by %s", section, rel, evt.User))})
@@ -271,4 +310,31 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 		outs = append(outs, plugin.Output{Type: "PREBW", Text: p.render("PREBWUSER", vars, fallback)})
 	}
 	return outs, nil
+}
+
+func isReleaseDir(eventPath, section string) bool {
+	clean := path.Clean(eventPath)
+	parent := path.Dir(clean)
+	sectionPath := "/" + strings.Trim(section, "/")
+	if strings.EqualFold(parent, sectionPath) {
+		return true
+	}
+
+	datedParent := path.Base(parent)
+	if !isDateDir(datedParent) {
+		return false
+	}
+	return strings.EqualFold(path.Dir(parent), sectionPath)
+}
+
+func isDateDir(name string) bool {
+	if len(name) != 4 {
+		return false
+	}
+	for _, r := range name {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }

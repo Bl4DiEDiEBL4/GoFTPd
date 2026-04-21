@@ -192,14 +192,12 @@ func (vfs *VirtualFileSystem) SetProtectedDirs(paths []string) {
 		}
 		vfs.protectedDirs[p] = true
 		f := vfs.files[p]
-		if f == nil {
-			f = &VFSFile{Path: p, IsDir: true}
-			vfs.files[p] = f
+		if f != nil {
+			f.Path = p
+			f.IsDir = true
+			f.Seen = true
+			f.SlaveName = ""
 		}
-		f.Path = p
-		f.IsDir = true
-		f.Seen = true
-		f.SlaveName = ""
 	}
 }
 

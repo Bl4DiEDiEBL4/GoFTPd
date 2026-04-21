@@ -20,7 +20,10 @@ import (
 	"goftpd/internal/plugin"
 	"goftpd/internal/protocol"
 	"goftpd/internal/slave"
+	"goftpd/plugins/dateddirs"
 	"goftpd/plugins/imdb"
+	"goftpd/plugins/mediainfo"
+	"goftpd/plugins/pre"
 	"goftpd/plugins/tvmaze"
 )
 
@@ -105,21 +108,6 @@ func main() {
 				},
 			})
 		})
-		sm.SetDatedDirHook(func(section, date, dirPath, linkPath string, symlink bool) {
-			core.PublishEvent(cfg, core.Event{
-				Type:      core.EventNewDay,
-				Timestamp: time.Now(),
-				Section:   section,
-				Filename:  date,
-				Path:      dirPath,
-				Data: map[string]string{
-					"date":     date,
-					"dirpath":  dirPath,
-					"linkpath": linkPath,
-					"symlink":  fmt.Sprintf("%t", symlink),
-				},
-			})
-		})
 		sm.SetProtectedDirs(protectedVFSDirs(cfg))
 		if err := sm.Start(); err != nil {
 			log.Fatalf("SlaveManager failed: %v", err)
@@ -143,8 +131,6 @@ func main() {
 			sm.PublishAllDiskStatuses()
 			log.Printf("[MASTER] Applied routing policies for %d slave(s)", len(policies))
 		}
-		sm.StartDatedDirs(masterDatedDirsConfig(cfg))
-
 		// Create Bridge (implements core.MasterBridge) and inject into config
 		// so the FTP session can route STOR/RETR/LIST/DELE to slaves
 		bridge := master.NewBridge(sm)
@@ -172,7 +158,6 @@ func main() {
 			}
 			sm.SetSlavePolicies(policies)
 			sm.SetProtectedDirs(protectedVFSDirs(c))
-			sm.StartDatedDirs(masterDatedDirsConfig(c))
 			sm.PublishAllDiskStatuses()
 			log.Printf("[REHASH] reapplied %d slave policies", len(policies))
 		}
@@ -194,6 +179,18 @@ func main() {
 	cfg.PluginManager.SetServices(&plugin.Services{
 		Bridge: bridgeForPlugins,
 		Debug:  cfg.Debug,
+		EmitEvent: func(eventType, eventPath, filename, section string, size int64, speed float64, data map[string]string) {
+			core.PublishEvent(cfg, core.Event{
+				Type:      core.EventType(eventType),
+				Timestamp: time.Now(),
+				Section:   section,
+				Filename:  filename,
+				Path:      path.Clean(eventPath),
+				Size:      size,
+				Speed:     speed,
+				Data:      data,
+			})
+		},
 	})
 
 	// 7a. Dynamically load plugins from config
@@ -222,10 +219,16 @@ func main() {
 
 		var p plugin.Plugin
 		switch pluginName {
+		case "dateddirs":
+			p = dateddirs.New()
 		case "tvmaze":
 			p = tvmaze.New()
 		case "imdb":
 			p = imdb.New()
+		case "mediainfo":
+			p = mediainfo.New()
+		case "pre":
+			p = pre.New()
 		default:
 			log.Printf("[PLUGINS] Unknown plugin: %s (add a case in cmd/goftpd/main.go)", pluginName)
 			continue
@@ -386,6 +389,32 @@ func intFromCfg(m map[string]interface{}, key string, def int) int {
 	}
 }
 
+func stringSliceFromPluginConfig(raw interface{}) []string {
+	switch v := raw.(type) {
+	case []string:
+		return append([]string(nil), v...)
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+				out = append(out, strings.TrimSpace(s))
+			}
+		}
+		return out
+	case string:
+		parts := strings.Split(v, ",")
+		out := make([]string, 0, len(parts))
+		for _, part := range parts {
+			if part = strings.TrimSpace(part); part != "" {
+				out = append(out, part)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
 func protectedVFSDirs(cfg *core.Config) []string {
 	if cfg == nil {
 		return nil
@@ -419,35 +448,41 @@ func protectedVFSDirs(cfg *core.Config) []string {
 			}
 		}
 	}
-	for _, section := range cfg.PreSections {
-		add(section)
+	if datedCfg := cfg.Plugins["dateddirs"]; datedCfg != nil {
+		for _, section := range stringSliceFromPluginConfig(datedCfg["sections"]) {
+			add(section)
+		}
 	}
-	for _, section := range cfg.DatedDirs.Sections {
-		add(section)
-	}
-	if cfg.PreBase != "" {
-		add(cfg.PreBase)
-	}
-	for _, affil := range cfg.Affils {
-		add(affil.Predir)
+	if preCfg := cfg.Plugins["pre"]; preCfg != nil {
+		for _, section := range stringSliceFromPluginConfig(preCfg["sections"]) {
+			add(section)
+		}
+		if base, ok := preCfg["base"].(string); ok {
+			add(base)
+		}
+		if affils, ok := preCfg["affils"].([]interface{}); ok {
+			for _, raw := range affils {
+				item, ok := raw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if predir, ok := item["predir"].(string); ok && strings.TrimSpace(predir) != "" {
+					add(predir)
+					continue
+				}
+				if group, ok := item["group"].(string); ok && strings.TrimSpace(group) != "" {
+					base := "/PRE"
+					if configuredBase, ok := preCfg["base"].(string); ok && strings.TrimSpace(configuredBase) != "" {
+						base = configuredBase
+					}
+					add(path.Join(base, group))
+				}
+			}
+		}
 	}
 	out := make([]string, 0, len(seen))
 	for p := range seen {
 		out = append(out, p)
 	}
 	return out
-}
-
-func masterDatedDirsConfig(cfg *core.Config) master.DatedDirsConfig {
-	if cfg == nil {
-		return master.DatedDirsConfig{}
-	}
-	return master.DatedDirsConfig{
-		Enabled:              cfg.DatedDirs.Enabled,
-		Sections:             cfg.DatedDirs.Sections,
-		Format:               cfg.DatedDirs.Format,
-		TodaySymlink:         cfg.DatedDirs.TodaySymlink,
-		SymlinkPrefix:        cfg.DatedDirs.SymlinkPrefix,
-		ReadOnlyAfterMinutes: cfg.DatedDirs.ReadOnlyAfterMinutes,
-	}
 }

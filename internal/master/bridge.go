@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"goftpd/internal/core"
+	"goftpd/internal/plugin"
 	"goftpd/internal/protocol"
 )
 // Bridge implements core.MasterBridge by wrapping a SlaveManager.
@@ -39,6 +40,7 @@ func NewBridge(sm *SlaveManager) *Bridge {
 
 // Ensure Bridge implements MasterBridge at compile time.
 var _ core.MasterBridge = (*Bridge)(nil)
+var _ plugin.MasterBridge = (*Bridge)(nil)
 
 // ListDir returns directory entries from the master's VFS.
 func (b *Bridge) ListDir(dirPath string) []core.MasterFileEntry {
@@ -57,6 +59,26 @@ func (b *Bridge) ListDir(dirPath string) []core.MasterFileEntry {
 			Owner:      f.Owner,
 			Group:      f.Group,
 			Slave:      f.SlaveName,
+		})
+	}
+	return entries
+}
+
+func (b *Bridge) PluginListDir(dirPath string) []plugin.FileEntry {
+	coreEntries := b.ListDir(dirPath)
+	entries := make([]plugin.FileEntry, 0, len(coreEntries))
+	for _, e := range coreEntries {
+		entries = append(entries, plugin.FileEntry{
+			Name:       e.Name,
+			Size:       e.Size,
+			IsDir:      e.IsDir,
+			IsSymlink:  e.IsSymlink,
+			LinkTarget: e.LinkTarget,
+			Mode:       e.Mode,
+			ModTime:    e.ModTime,
+			Owner:      e.Owner,
+			Group:      e.Group,
+			Slave:      e.Slave,
 		})
 	}
 	return entries
@@ -268,12 +290,10 @@ func (b *Bridge) MakeDir(dirPath, owner, group string) {
 	}
 
 	if slave != nil {
-		// Fire and forget directory creation command to the slave
-		_ = slave.SendCommand(&protocol.AsyncCommand{
-			Index: "none",
-			Name:  "makedir",
-			Args:  []string{dirPath},
-		})
+		index, err := IssueMakeDir(slave, dirPath)
+		if err == nil {
+			_, _ = slave.FetchResponse(index, 30*time.Second)
+		}
 	}
 }
 
@@ -346,6 +366,40 @@ func (b *Bridge) ReadFile(filePath string) ([]byte, error) {
 	}
 
 	return nil, fmt.Errorf("unexpected response type: %T", resp)
+}
+
+func (b *Bridge) ProbeMediaInfo(filePath, binary string, timeoutSeconds int) (map[string]string, error) {
+	if strings.TrimSpace(binary) == "" {
+		binary = "mediainfo"
+	}
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 20
+	}
+	var lastErr error
+	for _, slave := range b.candidateSlavesForPath(filePath) {
+		index, err := IssueMediaInfo(slave, filePath, binary, timeoutSeconds)
+		if err != nil {
+			lastErr = fmt.Errorf("issue mediainfo to %s: %w", slave.Name(), err)
+			continue
+		}
+		resp, err := slave.FetchResponse(index, time.Duration(timeoutSeconds+5)*time.Second)
+		if err != nil {
+			lastErr = fmt.Errorf("%s: %w", slave.Name(), err)
+			continue
+		}
+		if errResp, ok := resp.(*protocol.AsyncResponseError); ok {
+			lastErr = fmt.Errorf("%s: %s", slave.Name(), errResp.Message)
+			continue
+		}
+		if mi, ok := resp.(*protocol.AsyncResponseMediaInfo); ok {
+			return mi.Fields, nil
+		}
+		lastErr = fmt.Errorf("%s: unexpected response type: %T", slave.Name(), resp)
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("file not found: %s", filePath)
 }
 
 // GetSFVInfo asks a slave to parse an SFV file and return the entries.
@@ -639,6 +693,32 @@ func (b *Bridge) GetVFSRaceStats(dirPath string) ([]core.VFSRaceUser, []core.VFS
 	}
 
 	return coreUsers, coreGroups, totalBytes, present, total
+}
+
+func (b *Bridge) PluginGetVFSRaceStats(dirPath string) ([]plugin.RaceUser, []plugin.RaceGroup, int64, int, int) {
+	coreUsers, coreGroups, totalBytes, present, total := b.GetVFSRaceStats(dirPath)
+	users := make([]plugin.RaceUser, 0, len(coreUsers))
+	for _, u := range coreUsers {
+		users = append(users, plugin.RaceUser{
+			Name:    u.Name,
+			Group:   u.Group,
+			Files:   u.Files,
+			Bytes:   u.Bytes,
+			Speed:   u.Speed,
+			Percent: u.Percent,
+		})
+	}
+	groups := make([]plugin.RaceGroup, 0, len(coreGroups))
+	for _, g := range coreGroups {
+		groups = append(groups, plugin.RaceGroup{
+			Name:    g.Name,
+			Files:   g.Files,
+			Bytes:   g.Bytes,
+			Speed:   g.Speed,
+			Percent: g.Percent,
+		})
+	}
+	return users, groups, totalBytes, present, total
 }
 
 // GetRaceWallClockSeconds returns wall-clock race duration (first file start

@@ -33,7 +33,6 @@ const (
 	EventUnnuke       EventType = "UNNUKE"
 	EventInvite       EventType = "INVITE"
 	EventDiskStatus   EventType = "DISKSTATUS"
-	EventNewDay       EventType = "NEWDAY"
 	EventPre           EventType = "PRE"              // release pre'd — relname, section, group, files, mbytes
 	EventPreBW         EventType = "PREBW"            // race-bw totals after pre
 	EventPreBWUser     EventType = "PREBWUSER"        // per-user race-bw after pre

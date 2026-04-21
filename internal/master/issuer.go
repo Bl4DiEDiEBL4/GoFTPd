@@ -69,6 +69,18 @@ func IssueChecksum(rs *RemoteSlave, path string) (string, error) {
 	return index, rs.SendCommand(&protocol.AsyncCommand{Index: index, Name: "checksum", Args: []string{path}})
 }
 
+func IssueMediaInfo(rs *RemoteSlave, path, binary string, timeoutSeconds int) (string, error) {
+	index, err := rs.FetchIndex()
+	if err != nil {
+		return "", err
+	}
+	return index, rs.SendCommand(&protocol.AsyncCommand{
+		Index: index,
+		Name:  "mediainfo",
+		Args:  []string{path, binary, fmt.Sprintf("%d", timeoutSeconds)},
+	})
+}
+
 // IssueListen tells the slave to open a passive data port.
 // ().
 func IssueListen(rs *RemoteSlave, encrypted bool, sslClientMode bool) (string, error) {

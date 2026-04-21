@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"strings"
+
+	"goftpd/internal/plugin"
 )
 
 // DispatchSiteCommand routes SITE sub-commands to their specific handlers.
@@ -18,8 +20,8 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 	remainingArgs := args[1:]
 
 	if s.Config.Debug {
-	  log.Printf("[SITE] siteCmd=%q remainingArgs=%q", siteCmd, remainingArgs)
-       }
+		log.Printf("[SITE] siteCmd=%q remainingArgs=%q", siteCmd, remainingArgs)
+	}
 
 	switch siteCmd {
 	// Informational Commands (site_info.go)
@@ -61,8 +63,6 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 		return s.HandleSiteNuke(remainingArgs)
 	case "UNNUKE":
 		return s.HandleSiteUnnuke(remainingArgs)
-	case "PRE":
-		return s.HandleSitePre(remainingArgs)
 	case "REHASH":
 		return s.HandleSiteRehash(remainingArgs)
 
@@ -81,7 +81,64 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 		return s.HandleSiteGrp(remainingArgs)
 
 	default:
+		if s.Config != nil && s.Config.PluginManager != nil {
+			if s.Config.PluginManager.DispatchSiteCommand(pluginSiteContext{s: s}, siteCmd, remainingArgs) {
+				return false
+			}
+		}
 		fmt.Fprintf(s.Conn, "504 Unknown SITE command.\r\n")
+	}
+	return false
+}
+
+type pluginSiteContext struct {
+	s *Session
+}
+
+var _ plugin.SiteContext = pluginSiteContext{}
+
+func (c pluginSiteContext) Reply(format string, args ...interface{}) {
+	if c.s == nil || c.s.Conn == nil {
+		return
+	}
+	fmt.Fprintf(c.s.Conn, format, args...)
+}
+
+func (c pluginSiteContext) UserName() string {
+	if c.s == nil || c.s.User == nil {
+		return ""
+	}
+	return c.s.User.Name
+}
+
+func (c pluginSiteContext) UserPrimaryGroup() string {
+	if c.s == nil || c.s.User == nil {
+		return ""
+	}
+	return c.s.User.PrimaryGroup
+}
+
+func (c pluginSiteContext) UserGroups() []string {
+	if c.s == nil || c.s.User == nil {
+		return nil
+	}
+	groups := make([]string, 0, len(c.s.User.Groups)+1)
+	if c.s.User.PrimaryGroup != "" {
+		groups = append(groups, c.s.User.PrimaryGroup)
+	}
+	for group := range c.s.User.Groups {
+		if !containsStringFold(groups, group) {
+			groups = append(groups, group)
+		}
+	}
+	return groups
+}
+
+func containsStringFold(values []string, needle string) bool {
+	for _, value := range values {
+		if strings.EqualFold(value, needle) {
+			return true
+		}
 	}
 	return false
 }

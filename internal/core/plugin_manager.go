@@ -109,6 +109,34 @@ func (pm *PluginManager) Dispatch(evt *plugin.Event) {
 	}
 }
 
+func (pm *PluginManager) DispatchSiteCommand(ctx plugin.SiteContext, command string, args []string) bool {
+	if pm == nil || ctx == nil {
+		return false
+	}
+	command = strings.ToUpper(strings.TrimSpace(command))
+	if command == "" {
+		return false
+	}
+
+	pm.mu.RLock()
+	plugins := make([]plugin.Plugin, len(pm.plugins))
+	copy(plugins, pm.plugins)
+	pm.mu.RUnlock()
+
+	for _, p := range plugins {
+		h, ok := p.(plugin.SiteCommandHandler)
+		if !ok {
+			continue
+		}
+		for _, handled := range h.SiteCommands() {
+			if strings.EqualFold(command, handled) {
+				return h.HandleSiteCommand(ctx, command, args)
+			}
+		}
+	}
+	return false
+}
+
 // StopAll calls Stop() on every registered plugin. Called at shutdown.
 func (pm *PluginManager) StopAll() error {
 	pm.mu.RLock()

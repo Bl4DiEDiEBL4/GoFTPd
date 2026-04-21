@@ -1,13 +1,16 @@
 package slave
 
 import (
+	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"io"
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -260,6 +263,9 @@ func (s *Slave) handleCommand(ac *protocol.AsyncCommand) interface{} {
 
 	case "readFile":
 		return s.handleReadFile(ac)
+
+	case "mediainfo":
+		return s.handleMediaInfo(ac)
 
 	case "writeFile":
 		return s.handleWriteFile(ac)
@@ -786,6 +792,148 @@ func (s *Slave) handleReadFile(ac *protocol.AsyncCommand) interface{} {
 	}
 
 	return &protocol.AsyncResponseError{Index: ac.Index, Message: "file not found: " + filePath}
+}
+
+func (s *Slave) handleMediaInfo(ac *protocol.AsyncCommand) interface{} {
+	if len(ac.Args) < 1 {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "mediainfo: missing path"}
+	}
+	filePath := ac.Args[0]
+	binary := "mediainfo"
+	if len(ac.Args) > 1 && strings.TrimSpace(ac.Args[1]) != "" {
+		binary = strings.TrimSpace(ac.Args[1])
+	}
+	timeout := 20 * time.Second
+	if len(ac.Args) > 2 {
+		if n, err := strconv.Atoi(strings.TrimSpace(ac.Args[2])); err == nil && n > 0 {
+			timeout = time.Duration(n) * time.Second
+		}
+	}
+
+	for _, root := range s.roots {
+		fullPath := filepath.Join(root, filePath)
+		info, err := os.Stat(fullPath)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		cmd := exec.CommandContext(ctx, binary, "--Output=JSON", fullPath)
+		out, err := cmd.Output()
+		cancel()
+		if ctx.Err() == context.DeadlineExceeded {
+			return &protocol.AsyncResponseError{Index: ac.Index, Message: "mediainfo: timeout"}
+		}
+		if err != nil {
+			return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("mediainfo failed: %v", err)}
+		}
+		fields, err := flattenMediaInfo(out)
+		if err != nil {
+			return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("mediainfo parse failed: %v", err)}
+		}
+		return &protocol.AsyncResponseMediaInfo{Index: ac.Index, Fields: fields}
+	}
+	return &protocol.AsyncResponseError{Index: ac.Index, Message: "file not found: " + filePath}
+}
+
+func flattenMediaInfo(data []byte) (map[string]string, error) {
+	var root map[string]interface{}
+	if err := json.Unmarshal(data, &root); err != nil {
+		return nil, err
+	}
+	fields := map[string]string{}
+	media, _ := root["media"].(map[string]interface{})
+	tracks, _ := media["track"].([]interface{})
+	for _, rawTrack := range tracks {
+		track, _ := rawTrack.(map[string]interface{})
+		kind := mediaTrackKind(track)
+		if kind == "" {
+			continue
+		}
+		prefix := string(kind[0]) + "_"
+		for key, val := range track {
+			value := stringifyMediaValue(val)
+			if value == "" {
+				continue
+			}
+			fields[prefix+mediaKey(key)] = value
+		}
+	}
+	deriveMediaInfoFields(fields)
+	return fields, nil
+}
+
+func mediaTrackKind(track map[string]interface{}) string {
+	raw, _ := track["@type"].(string)
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "general":
+		return "general"
+	case "video":
+		return "video"
+	case "audio":
+		return "audio"
+	case "text":
+		return "subtitle"
+	default:
+		return ""
+	}
+}
+
+func mediaKey(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	lastUnderscore := false
+	for _, r := range s {
+		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if ok {
+			b.WriteRune(r)
+			lastUnderscore = false
+		} else if !lastUnderscore {
+			b.WriteByte('_')
+			lastUnderscore = true
+		}
+	}
+	return strings.Trim(b.String(), "_")
+}
+
+func stringifyMediaValue(v interface{}) string {
+	switch x := v.(type) {
+	case string:
+		return strings.TrimSpace(x)
+	case float64:
+		return strconv.FormatFloat(x, 'f', -1, 64)
+	case bool:
+		return strconv.FormatBool(x)
+	default:
+		return ""
+	}
+}
+
+func deriveMediaInfoFields(f map[string]string) {
+	copyFirst := func(dst string, srcs ...string) {
+		if f[dst] != "" {
+			return
+		}
+		for _, src := range srcs {
+			if val := f[src]; val != "" {
+				f[dst] = val
+				return
+			}
+		}
+	}
+	copyFirst("title", "g_title", "g_album", "g_completename", "g_complete_name")
+	copyFirst("genre", "g_genre")
+	copyFirst("year", "g_recordeddate", "g_recorded_date", "g_originalreleaseddate", "g_original_released_date", "g_encodeddate", "g_encoded_date")
+	copyFirst("format", "g_format")
+	copyFirst("audio_format", "a_format", "a_commercialname", "a_commercial_name")
+	copyFirst("bitrate", "a_bitrate_string", "a_bitrate", "a_bit_rate", "g_overallbitrate_string", "g_overallbitrate", "g_overall_bit_rate")
+	copyFirst("bitrate_mode", "a_bitrate_mode", "a_bitratemode", "a_bit_rate_mode", "g_overallbitrate_mode", "g_overall_bit_rate_mode")
+	copyFirst("sample_rate", "a_samplingrate_string", "a_samplingrate", "a_sampling_rate")
+	copyFirst("channels", "a_channels_string", "a_channel_s_string", "a_channels", "a_channel_s_")
+	copyFirst("video_format", "v_format", "v_commercialname", "v_commercial_name")
+	copyFirst("width", "v_width")
+	copyFirst("height", "v_height")
+	copyFirst("frame_rate", "v_framerate", "v_frame_rate")
+	copyFirst("duration", "g_duration", "v_duration", "a_duration")
 }
 
 // handleWriteFile - master writes a small file to slave (e.g. .message).

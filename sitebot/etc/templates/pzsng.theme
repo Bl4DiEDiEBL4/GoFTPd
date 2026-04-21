@@ -12,25 +12,59 @@
 #          c11 (light cyan), c14/15 (greys)                 #
 ############################################################
 
-announce.NEWDIR = "%b{%c03{NEW :}} %c01{[}%c02{%section}%c01{]} %c06{%b{%relname}} %c01{by} %c04{%u_name}"
+COLOR_DEFAULT_1 = "03"
+COLOR_DEFAULT_2 = "02"
+COLOR_DEFAULT_3 = "06"
+COLOR_DEFAULT_4 = "04"
+COLOR_DEFAULT_5 = "05"
 
-announce.NEWDAY = "%b{%c03{NEW DAY:}} %c01{-}%c02{%section}%c01{- A new day has come!} %c05{%date} %c01{has been created along with its symlink.}"
+COLOR_0DAY_1 = "14"
+COLOR_0DAY_2 = "02"
+COLOR_0DAY_3 = "14"
+COLOR_0DAY_4 = "02"
+COLOR_0DAY_5 = "07"
 
-announce.SFV_RAR = "%b{%c10{RACE:}} %c01{[}%c02{%section}%c01{]} Got SFV for %c06{%b{%relname}} %c01{uploaded by} %c04{%u_name}%c01{. Now expecting} %c05{%b{%t_filecount}} %c01{rar file(s).}"
+COLOR_EBOOKS_1 = "14"
+COLOR_EBOOKS_2 = "02"
+COLOR_EBOOKS_3 = "14"
+COLOR_EBOOKS_4 = "02"
+COLOR_EBOOKS_5 = "07"
 
-announce.UPDATE_RAR = "%b{%c10{RACE:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%relname}} %c01{got its first rar file from} %c04{%u_name} %c01{at} %c05{%u_speed}%c01{. Now expecting} %c05{%b{%t_mbytes}}%c01{.}"
+COLOR_MP3_1 = "03"
+COLOR_MP3_2 = "05"
+COLOR_MP3_3 = "06"
+COLOR_MP3_4 = "04"
+COLOR_MP3_5 = "10"
 
-announce.RACE_RAR = "%b{%c10{RACE:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%relname}} %c01{-} %c04{%u_name} joined the race %c01{at} %c05{%u_speed}%c01{.}"
+COLOR_FLAC_1 = "10"
+COLOR_FLAC_2 = "05"
+COLOR_FLAC_3 = "06"
+COLOR_FLAC_4 = "04"
+COLOR_FLAC_5 = "03"
 
-announce.NEWLEADER = "%b{%c04{NEW LEADER:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%relname}} %c01{-} %c04{%leader_name} %c01{takes the lead -} %c05{%{leader_mb}MB}%c01{/}%c05{%{leader_files}F}%c01{/}%c05{%{leader_pct}%}%c01{/}%c05{%leader_speed}"
+announce.NEWDIR = "%b{%c%sec_c1{NEW :}} %c01{[}%c%sec_c2{%section}%c01{]} %c%sec_c3{%b{%relname}} %c01{by} %c%sec_c4{%u_name}"
 
-announce.HALFWAY = "%b{%c13{HALFWAY:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%relname}} %c01{- leader:} %c04{%leader_name} %c01{[}%c05{%{leader_mb}MB}%c01{/}%c05{%{leader_files}F}%c01{/}%c05{%{leader_pct}%}%c01{/}%c05{%leader_speed}%c01{] -} %c05{%t_filesleft} %c01{files left.}"
+announce.NEWDAY = "%b{%c%sec_c1{NEW DAY:}} %c01{-}%c%sec_c2{%section}%c01{- A new day has come!} %c%sec_c5{%date} %c01{has been created along with its symlink.}"
 
-announce.TVINFO = "%b{%c03{TV-INFO:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%relname}} %c01{Genre:} %c05{%genre} %c01{- Type:} %c05{%b{%type}} %c01{- Link:} %c05{%link} %c01{- Network:} %c05{%b{%network}} %c01{- Rating:} %b{%c05{%rating}} %c01{- Language:} %c05{%language}"
+announce.AUDIOINFO = "%b{%c%sec_c1{AUDIO-INFO:}} %c01{[}%c%sec_c2{%section}%c01{]} %c%sec_c3{%b{%relname}} %c01{Get ready for some} %c%sec_c5{%genre} %c01{from} %c%sec_c5{%year} %c01{at} %c%sec_c5{%sample_rate}Hz %c01{in} %c%sec_c5{%channels} %c%sec_c5{%bitrate} %c01{(}%c%sec_c5{%bitrate_mode}%c01{).}"
 
-announce.MOVIEINFO = "%b{%c03{MOVIE-INFO:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%title}} %c01{(}%c05{%year}%c01{)} %c01{-} %c05{%genre} %c01{-} %b{%c05{%rating}}/10 %c01{(}%c05{%votes} votes%c01{) - Metacritic:} %c05{%metacritic} %c01{-} %c05{%runtime} %c01{-} %c05{%language} %c01{-} %c05{%link}\n%b{%c03{MOVIE-INFO:}} %c01{[}%c02{%section}%c01{]} %c01{Director:} %c04{%director} %c01{- Stars:} %c04{%stars}"
+announce.MEDIAINFO = "%b{%c%sec_c1{MEDIA-INFO:}} %c01{[}%c%sec_c2{%section}%c01{]} %c%sec_c3{%b{%relname}} %c01{Video:} %c%sec_c5{%video_format} %c01{%width}x%height %c01{- Audio:} %c%sec_c5{%audio_format} %c01{%channels} %c01{- Duration:} %c%sec_c5{%duration}"
 
-announce.COMPLETE = "%b{%c03{COMPLETE:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%relname}} %c01{by} %c05{%u_count} %c01{racers -} %c05{%t_mbytes}%c01{/}%c05{%t_files}%c01{/}%c05{%t_avgspeed}%c01{/}%c05{%t_duration}"
+announce.SFV_RAR = "%b{%c10{RACE:}} %c01{[}%c%sec_c2{%section}%c01{]} Got SFV for %c06{%b{%relname}} %c01{uploaded by} %c04{%u_name}%c01{. Now expecting} %c05{%b{%t_filecount}} %c01{rar file(s).}"
+
+announce.UPDATE_RAR = "%b{%c10{RACE:}} %c01{[}%c%sec_c2{%section}%c01{]} %c06{%b{%relname}} %c01{got its first rar file from} %c04{%u_name} %c01{at} %c05{%u_speed}%c01{. Now expecting} %c05{%b{%t_mbytes}}%c01{.}"
+
+announce.RACE_RAR = "%b{%c10{RACE:}} %c01{[}%c%sec_c2{%section}%c01{]} %c06{%b{%relname}} %c01{-} %c04{%u_name} joined the race %c01{at} %c05{%u_speed}%c01{.}"
+
+announce.NEWLEADER = "%b{%c04{NEW LEADER:}} %c01{[}%c%sec_c2{%section}%c01{]} %c06{%b{%relname}} %c01{-} %c04{%leader_name} %c01{takes the lead -} %c05{%{leader_mb}MB}%c01{/}%c05{%{leader_files}F}%c01{/}%c05{%{leader_pct}%}%c01{/}%c05{%leader_speed}"
+
+announce.HALFWAY = "%b{%c13{HALFWAY:}} %c01{[}%c%sec_c2{%section}%c01{]} %c06{%b{%relname}} %c01{- leader:} %c04{%leader_name} %c01{[}%c05{%{leader_mb}MB}%c01{/}%c05{%{leader_files}F}%c01{/}%c05{%{leader_pct}%}%c01{/}%c05{%leader_speed}%c01{] -} %c05{%t_filesleft} %c01{files left.}"
+
+announce.TVINFO = "%b{%c03{TV-INFO:}} %c01{[}%c%sec_c2{%section}%c01{]} %c06{%b{%relname}} %c01{Genre:} %c05{%genre} %c01{- Type:} %c05{%b{%type}} %c01{- Link:} %c05{%link} %c01{- Network:} %c05{%b{%network}} %c01{- Rating:} %b{%c05{%rating}} %c01{- Language:} %c05{%language}"
+
+announce.MOVIEINFO = "%b{%c03{MOVIE-INFO:}} %c01{[}%c%sec_c2{%section}%c01{]} %c06{%b{%title}} %c01{(}%c05{%year}%c01{)} %c01{-} %c05{%genre} %c01{-} %b{%c05{%rating}}/10 %c01{(}%c05{%votes} votes%c01{) - Metacritic:} %c05{%metacritic} %c01{-} %c05{%runtime} %c01{-} %c05{%language} %c01{-} %c05{%link}\n%b{%c03{MOVIE-INFO:}} %c01{[}%c%sec_c2{%section}%c01{]} %c01{Director:} %c04{%director} %c01{- Stars:} %c04{%stars}"
+
+announce.COMPLETE = "%b{%c03{COMPLETE:}} %c01{[}%c%sec_c2{%section}%c01{]} %c06{%b{%relname}} %c01{by} %c05{%u_count} %c01{racers -} %c05{%t_mbytes}%c01{/}%c05{%t_files}%c01{/}%c05{%t_avgspeed}%c01{/}%c05{%t_duration}"
 
 announce.STATS_HOF = "%b{%c02{STATS:}} ▂▃▅▇█▓▒░۩۞۩  %c03{Users Hall Of Fame} ۩۞۩░▒▓█▇▅▃▂"
 
@@ -40,17 +74,17 @@ announce.STATS_USER = "%b{%c02{STATS:}} %c01{[}%c03{%u_rank}%c01{]} %c04{%u_name
 
 announce.STATS_END = "%b{%c02{STATS:}} -----------====>>>>           %c03{END}           <<<<====-----------"
 
-announce.NUKE = "%b{%c04{NUKE:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%relname}} %c01{by} %c04{%u_name}"
+announce.NUKE = "%b{%c04{NUKE:}} %c01{[}%c%sec_c2{%section}%c01{]} %c06{%b{%relname}} %c01{by} %c04{%u_name}"
 
-announce.UNNUKE = "%b{%c03{UNNUKE:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%relname}} %c01{by} %c04{%u_name}"
+announce.UNNUKE = "%b{%c03{UNNUKE:}} %c01{[}%c%sec_c2{%section}%c01{]} %c06{%b{%relname}} %c01{by} %c04{%u_name}"
 
-announce.PRE = "%b{%c04{PRE:}} %c01{[}%c02{%section}%c01{]} %c06{%b{%relname}} %c01{by} %c04{%b{%group}} %c01{(}%c04{%user}%c01{)} %c01{-} %c05{%t_mbytes}%c01{/}%c05{%t_files}"
+announce.PRE = "%b{%c04{PRE:}} %c01{[}%c%sec_c2{%section}%c01{]} %c06{%b{%relname}} %c01{by} %c04{%b{%group}} %c01{(}%c04{%user}%c01{)} %c01{-} %c05{%t_mbytes}%c01{/}%c05{%t_files}"
 
-announce.PREBW = "%b{%c02{PREBW:}} %c01{[}%c02{%section}%c01{]} %c01{::} %c06{%b{%relname}} %c01{::} %c03{%b{%traffic_val}}%c01{%traffic_unit} %c01{@} %c03{%b{%avg_val}}%c01{%avg_unit} %c01{:: Highest} %c03{%b{%peak_val}}%c01{%peak_unit}"
+announce.PREBW = "%b{%c02{PREBW:}} %c01{[}%c%sec_c2{%section}%c01{]} %c01{::} %c06{%b{%relname}} %c01{::} %c03{%b{%traffic_val}}%c01{%traffic_unit} %c01{@} %c03{%b{%avg_val}}%c01{%avg_unit} %c01{:: Highest} %c03{%b{%peak_val}}%c01{%peak_unit}"
 
-announce.PREBWINTERVAL = "%b{%c02{PREBW:}} %c01{[}%c02{%section}%c01{]} %c01{::} %c03{%b{%b1}}%c01{%u1 @} %c03{%t1}%c01{s ::} %c03{%b{%b2}}%c01{%u2 @} %c03{%t2}%c01{s ::} %c03{%b{%b3}}%c01{%u3 @} %c03{%t3}%c01{s ::} %c03{%b{%b4}}%c01{%u4 @} %c03{%t4}%c01{s ::} %c03{%b{%b5}}%c01{%u5 @} %c03{%t5}%c01{s :: Highest} %c03{%b{%peak_val}}%c01{%peak_unit}"
+announce.PREBWINTERVAL = "%b{%c02{PREBW:}} %c01{[}%c%sec_c2{%section}%c01{]} %c01{::} %c03{%b{%b1}}%c01{%u1 @} %c03{%t1}%c01{s ::} %c03{%b{%b2}}%c01{%u2 @} %c03{%t2}%c01{s ::} %c03{%b{%b3}}%c01{%u3 @} %c03{%t3}%c01{s ::} %c03{%b{%b4}}%c01{%u4 @} %c03{%t4}%c01{s ::} %c03{%b{%b5}}%c01{%u5 @} %c03{%t5}%c01{s :: Highest} %c03{%b{%peak_val}}%c01{%peak_unit}"
 
-announce.PREBWUSER = "%b{%c02{PREBW:}} %c01{[}%c02{%section}%c01{]} %c01{::} %c04{%b{%user}} %c01{::} %c03{%b{%size_val}}%c01{%size_unit}%c01{/}%c03{%b{%cnt_files}}%c01{F @} %c03{%b{%avg_val_user}}%c01{%avg_unit_user} %c01{:: Highest} %c03{%b{%peak_val_user}}%c01{%peak_unit_user}"
+announce.PREBWUSER = "%b{%c02{PREBW:}} %c01{[}%c%sec_c2{%section}%c01{]} %c01{::} %c04{%b{%user}} %c01{::} %c03{%b{%size_val}}%c01{%size_unit}%c01{/}%c03{%b{%cnt_files}}%c01{F @} %c03{%b{%avg_val_user}}%c01{%avg_unit_user} %c01{:: Highest} %c03{%b{%peak_val_user}}%c01{%peak_unit_user}"
 
 announce.DF_SLAVE = "%b{%c02{DF:}} %c06{%b{%slave}} %c01{-} %c03{%free} %c01{free /} %c05{%total} %c01{total (}%c03{%{free_pct}%}%c01{ free) [}%c04{%state}%c01{]}"
 

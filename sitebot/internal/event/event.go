@@ -22,6 +22,8 @@ const (
 	EventCommand       EventType = "COMMAND"
 	EventDiskStatus    EventType = "DISKSTATUS"
 	EventNewDay        EventType = "NEWDAY"
+	EventAudioInfo     EventType = "AUDIOINFO"
+	EventMediaInfo     EventType = "MEDIAINFO"
 	EventPre           EventType = "PRE"
 	EventPreBW         EventType = "PREBW"
 	EventPreBWUser     EventType = "PREBWUSER"

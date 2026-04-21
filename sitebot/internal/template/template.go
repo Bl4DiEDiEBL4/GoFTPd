@@ -84,11 +84,24 @@ func renderExpr(s string, vars map[string]string) string {
 			}
 		case 'c':
 			j := i + 2
-			for j < len(s) && s[j] >= '0' && s[j] <= '9' {
-				j++
+			colorCode := ""
+			if j < len(s) && s[j] == '%' {
+				k := j + 1
+				for k < len(s) && isVarChar(rune(s[k])) {
+					k++
+				}
+				if k > j+1 {
+					key := s[j+1 : k]
+					colorCode = strings.TrimLeft(strings.TrimSpace(vars[key]), "cC")
+					j = k
+				}
+			} else {
+				for j < len(s) && s[j] >= '0' && s[j] <= '9' {
+					j++
+				}
+				colorCode = s[i+2 : j]
 			}
-			if j < len(s) && s[j] == '{' {
-				colorCode := s[i+2 : j]
+			if colorCode != "" && j < len(s) && s[j] == '{' {
 				if body, next, ok := parseBodyFrom(s, j); ok {
 					b.WriteByte(0x03) // mIRC color
 					b.WriteString(colorCode)

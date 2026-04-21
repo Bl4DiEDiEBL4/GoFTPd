@@ -55,6 +55,10 @@ announce:
       - "#goftpd-nuke"
     NEWDAY:
       - "#goftpd"
+    AUDIOINFO:
+      - "#goftpd"
+    MEDIAINFO:
+      - "#goftpd"
 
 sections:
   - name: "DEFAULT"

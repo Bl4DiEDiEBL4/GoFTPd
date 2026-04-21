@@ -138,9 +138,14 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 #  bridge for reading/writing files on slaves.
 #
 #  Built-in plugins:
+#    dateddirs - creates daily race dirs, !Today_<SECTION> symlinks,
+#                read-only old date dirs, and NEWDAY events
 #    tvmaze  — looks up TV shows on TVMaze when a release dir is created,
 #              writes .tvmaze into the dir (shown via show_diz above)
 #    imdb    — same for movies via imdbapi.dev, writes .imdb
+#    mediainfo - runs mediainfo on uploaded audio/sample files and emits
+#                AUDIOINFO / MEDIAINFO events for the sitebot
+#    pre     - handles SITE PRE for affil staging dirs and PREBW announces
 #
 #  To add your own plugin:
 #    1. Create /plugins/<name>/handler.go implementing plugin.Plugin
@@ -151,6 +156,14 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 #  TV-720P, TV-UHD, etc. Only plugins where enabled=true are loaded.
 # =============================================================================
 plugins:
+  dateddirs:
+    enabled: true
+    sections: ["EBOOKS", "MP3", "FLAC", "0DAY", "XXX-0DAY"]
+    format: "0102"
+    today_symlink: true
+    symlink_prefix: "!Today_"
+    readonly_after_minutes: 60
+    debug: false
   tvmaze:
     enabled:  true
     sections: ["TV"]
@@ -159,6 +172,39 @@ plugins:
     enabled:  true
     sections: ["MOVIE", "X264", "X265", "BLURAY", "DVDR"]
     debug:    false
+  mediainfo:
+    enabled: false
+    binary: "mediainfo"
+    timeout_seconds: 20
+    sections: ["FLAC", "MP3", "TV", "MOVIE", "X264", "X265", "BLURAY"]
+    audio_extensions: ["flac", "mp3", "m4a", "wav"]
+    video_extensions: ["mkv", "mp4", "avi", "m2ts"]
+    sample_only: true
+    debug: false
+  pre:
+    enabled: true
+    base: "/PRE"
+    bw_duration: 30
+    bw_interval_ms: 500
+    sections:
+      - TV-1080P
+      - TV-720P
+      - MOVIE
+      - X264
+      - X265
+      - BLURAY
+      - MP3
+      - FLAC
+      - 0DAY
+    dated_sections:
+      - MP3
+      - FLAC
+      - 0DAY
+    affils:
+      - group:  "GoFTPd"
+        predir: "/PRE/GoFTPd"
+      - group:  "GRPTST"
+        predir: "/PRE/GRPTST"
 
 
 # =============================================================================
@@ -177,81 +223,6 @@ sitebot_config: "/GoFTPd/sitebot/etc/config.yml"
 # =============================================================================
 xdupe_enabled: true
 xdupe_db_path: "./logs/xdupe.db"
-
-
-# =============================================================================
-#  SITE PRE — affil pre-releases.
-#
-#  Usage:  SITE PRE <releasename> <section>
-#
-#  Flow:
-#    1. User must be in an affil group (see `affils:` below).
-#    2. The release dir must exist under that group's predir.
-#    3. Section must be in pre_sections whitelist.
-#    4. Release moves from <predir>/<rel> → /<section>/<rel>
-#       (or /<section>/<MMDD>/<rel> for dated sections).
-#    5. A PRE event announces in IRC via the sitebot.
-#    6. Daemon samples race bandwidth for pre_bw_duration seconds and emits
-#       PREBW / PREBWINTERVAL / PREBWUSER announces.
-# =============================================================================
-pre_enabled:        true
-pre_base:           "/PRE"       # Root of all affil staging dirs (cosmetic, not enforced)
-pre_bw_duration:    30           # Seconds to measure bandwidth after the pre
-pre_bw_interval_ms: 500          # Polling interval (ms) — finer = more accurate peaks
-
-pre_sections:
-  - TV-1080P
-  - TV-720P
-  - MOVIE
-  - X264
-  - X265
-  - BLURAY
-  - MP3
-  - FLAC
-  - 0DAY
-
-# PRE target sections that place releases below the current dated directory.
-# This only controls SITE PRE destination paths, for example /MP3/0419/Release.Name.
-# Daily creation of /MP3/0419 and !Today_MP3 is handled by dated_dirs below.
-pre_dated_sections:
-  - MP3
-  - FLAC
-  - 0DAY
-
-# Map of affil groups to their staging dir. Only users whose primary or
-# secondary group matches one of these can SITE PRE, and only from the
-# corresponding predir.
-affils:
-  - group:  "GoFTPd"
-    predir: "/PRE/GoFTPd"
-  - group:  "GRPTST"
-    predir: "/PRE/GRPTST"
-
-
-# =============================================================================
-#  DATED DIRS - daily race directories.
-#
-#  This is site maintenance, not SITE PRE. It creates daily upload/race
-#  directories at midnight, maintains !Today_<SECTION> symlinks, and makes
-#  the previous dated dir read-only after the configured delay.
-#
-#  Example:
-#    /MP3/0419
-#    /FLAC/0419
-#    /!Today_MP3 -> /MP3/0419
-# =============================================================================
-dated_dirs:
-  enabled: true
-  sections:
-    - EBOOKS
-    - MP3
-    - FLAC
-    - 0DAY
-    - XXX-0DAY
-  format: "0102"
-  today_symlink: true
-  symlink_prefix: "!Today_"
-  readonly_after_minutes: 60
 
 
 # =============================================================================

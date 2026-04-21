@@ -70,18 +70,68 @@ type Event struct {
 // the PluginManager when it calls Init(). Plugins should store the pointer
 // and use it in OnEvent callbacks.
 type Services struct {
-	Bridge MasterBridge // VFS/slave access — WriteFile, ReadFile, ListDir, etc.
+	Bridge MasterBridge // VFS/slave access — WriteFile, ReadFile, PluginListDir, etc.
 	Debug  bool         // Global debug flag
 	Logger *log.Logger  // Optional logger (may be nil — fall back to log.Printf)
+	EmitEvent func(eventType, path, filename, section string, size int64, speed float64, data map[string]string)
+}
+
+type SiteContext interface {
+	Reply(format string, args ...interface{})
+	UserName() string
+	UserPrimaryGroup() string
+	UserGroups() []string
+}
+
+type SiteCommandHandler interface {
+	SiteCommands() []string
+	HandleSiteCommand(ctx SiteContext, command string, args []string) bool
+}
+
+type RaceUser struct {
+	Name    string
+	Group   string
+	Files   int
+	Bytes   int64
+	Speed   float64
+	Percent int
+}
+
+type RaceGroup struct {
+	Name    string
+	Files   int
+	Bytes   int64
+	Speed   float64
+	Percent int
+}
+
+type FileEntry struct {
+	Name       string
+	Size       int64
+	IsDir      bool
+	IsSymlink  bool
+	LinkTarget string
+	Mode       uint32
+	ModTime    int64
+	Owner      string
+	Group      string
+	Slave      string
 }
 
 // MasterBridge exposes the subset of the master's bridge that plugins need.
 // This is a minimal surface — we can add methods as plugins require them.
 type MasterBridge interface {
+	PluginListDir(path string) []FileEntry
+	MakeDir(path, owner, group string)
+	Symlink(linkPath, targetPath string) error
+	Chmod(path string, mode uint32) error
+	RenameFile(from, toDir, toName string)
 	WriteFile(path string, content []byte) error
 	ReadFile(path string) ([]byte, error)
+	ProbeMediaInfo(path, binary string, timeoutSeconds int) (map[string]string, error)
 	FileExists(path string) bool
 	GetFileSize(path string) int64
+	PluginGetVFSRaceStats(dirPath string) (users []RaceUser, groups []RaceGroup, totalBytes int64, present int, total int)
 }
 
 // Plugin is the interface every goftpd plugin must implement.

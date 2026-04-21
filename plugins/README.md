@@ -118,10 +118,12 @@ type Services struct {
 }
 
 type MasterBridge interface {
+    PluginListDir(path string) []FileEntry
     WriteFile(path string, content []byte) error
     ReadFile(path string) ([]byte, error)
     FileExists(path string) bool
     GetFileSize(path string) int64
+    PluginGetVFSRaceStats(path string) (users []RaceUser, groups []RaceGroup, totalBytes int64, present int, total int)
 }
 ```
 
