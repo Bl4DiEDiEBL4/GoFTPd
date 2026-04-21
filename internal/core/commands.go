@@ -215,18 +215,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				return false
 			}
 
-			allowed := false
-			for _, mask := range s.User.IPs {
-				cleanMask := mask
-				if strings.Contains(mask, "@") {
-					cleanMask = strings.Split(mask, "@")[1]
-				}
-				if cleanMask == "*" || cleanMask == remoteIP {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
+			if !s.User.IPAllowed(remoteIP) {
 				fmt.Fprintf(s.Conn, "530 IP not allowed.\r\n")
 				return false
 			}
@@ -248,6 +237,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			}
 
 			s.IsLogged = true
+			if strings.TrimSpace(s.User.CurrentDir) != "" {
+				s.CurrentDir = path.Clean(s.User.CurrentDir)
+			}
 			s.User.LastLogin = time.Now().Unix()
 			s.User.Save()
 			fmt.Fprintf(s.Conn, "230-Welcome to GoFTPd, %s!\r\n", s.User.Name)
@@ -1346,6 +1338,10 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				fileSize := bridge.GetFileSize(filePath)
 				if fileSize < 0 {
 					fmt.Fprintf(s.Conn, "550 File not found on any slave.\r\n")
+					return false
+				}
+				if !s.User.CanDownload("", fileSize) {
+					fmt.Fprintf(s.Conn, "550 Not enough credits.\r\n")
 					return false
 				}
 
