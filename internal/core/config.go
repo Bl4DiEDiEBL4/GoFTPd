@@ -190,7 +190,6 @@ type DatedDirsConfig struct {
 	Enabled              bool     `yaml:"enabled"`
 	Sections             []string `yaml:"sections"`
 	Format               string   `yaml:"format"`
-	CreateTomorrow       bool     `yaml:"create_tomorrow"`
 	TodaySymlink         bool     `yaml:"today_symlink"`
 	SymlinkPrefix        string   `yaml:"symlink_prefix"`
 	ReadOnlyAfterMinutes int      `yaml:"readonly_after_minutes"`

@@ -431,7 +431,6 @@ func masterDatedDirsConfig(cfg *core.Config) master.DatedDirsConfig {
 		Enabled:              cfg.DatedDirs.Enabled,
 		Sections:             cfg.DatedDirs.Sections,
 		Format:               cfg.DatedDirs.Format,
-		CreateTomorrow:       cfg.DatedDirs.CreateTomorrow,
 		TodaySymlink:         cfg.DatedDirs.TodaySymlink,
 		SymlinkPrefix:        cfg.DatedDirs.SymlinkPrefix,
 		ReadOnlyAfterMinutes: cfg.DatedDirs.ReadOnlyAfterMinutes,

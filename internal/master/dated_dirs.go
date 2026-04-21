@@ -11,7 +11,6 @@ type DatedDirsConfig struct {
 	Enabled              bool
 	Sections             []string
 	Format               string
-	CreateTomorrow       bool
 	TodaySymlink         bool
 	SymlinkPrefix        string
 	ReadOnlyAfterMinutes int
@@ -50,7 +49,6 @@ func (sm *SlaveManager) applyDatedDirs(now time.Time) {
 	}
 
 	today := now.Format(cfg.Format)
-	tomorrow := now.AddDate(0, 0, 1).Format(cfg.Format)
 	yesterday := now.AddDate(0, 0, -1).Format(cfg.Format)
 
 	for _, section := range cfg.Sections {
@@ -61,9 +59,6 @@ func (sm *SlaveManager) applyDatedDirs(now time.Time) {
 
 		todayPath := "/" + section + "/" + today
 		sm.ensureDatedDir(todayPath, 0777)
-		if cfg.CreateTomorrow {
-			sm.ensureDatedDir("/"+section+"/"+tomorrow, 0777)
-		}
 		if cfg.TodaySymlink {
 			linkPath := "/" + cfg.SymlinkPrefix + section
 			if err := sm.ensureSymlink(linkPath, todayPath); err != nil {

@@ -249,7 +249,6 @@ dated_dirs:
     - 0DAY
     - XXX-0DAY
   format: "0102"
-  create_tomorrow: true
   today_symlink: true
   symlink_prefix: "!Today_"
   readonly_after_minutes: 60

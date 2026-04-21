@@ -643,7 +643,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 								parts = []string{
 									fmt.Sprintf("Modify=%s", ts),
 									"Perm=el",
-									"Type=OS.unix=symlink",
+									"Type=dir",
 								}
 							} else if e.IsDir {
 								perm := "elcmp"
@@ -753,7 +753,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						facts = []string{
 							fmt.Sprintf("Modify=%s", ts),
 							"Perm=" + perm,
-							"Type=OS.unix=symlink",
+							"Type=dir",
 						}
 					} else if e.IsDir {
 						perm = "elcmp" // enter, list, create, mkdir, purge

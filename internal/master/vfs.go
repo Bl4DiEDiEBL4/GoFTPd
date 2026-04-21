@@ -111,6 +111,7 @@ func (vfs *VirtualFileSystem) AddSymlink(linkPath, targetPath string) {
 	targetPath = cleanVFSPath(targetPath)
 	vfs.files[linkPath] = &VFSFile{
 		Path:         linkPath,
+		IsDir:        true,
 		IsSymlink:    true,
 		LinkTarget:   targetPath,
 		Mode:         0777,
