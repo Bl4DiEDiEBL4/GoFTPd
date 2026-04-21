@@ -56,6 +56,8 @@ announce.UPDATE_RAR = "%b{%c10{RACE:}} %c01{[}%section_colored%c01{]} %c06{%b{%r
 
 announce.UPDATE_RAR_UNKNOWN = "%b{%c10{RACE:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{got its first rar file from} %c04{%u_name} %c01{at} %c05{%u_speed}%c01{.}"
 
+announce.UPDATE_TRACK = "%b{%c10{RACE:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{got first track from} %c04{%u_name} %c01{at} %c05{%u_speed}%c01{.}"
+
 announce.RACE_RAR = "%b{%c10{RACE:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{-} %c04{%u_name} joined the race %c01{at} %c05{%u_speed}%c01{.}"
 
 announce.NEWLEADER = "%b{%c04{NEW LEADER:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{-} %c04{%leader_name} %c01{takes the lead -} %c05{%{leader_mb}MB}%c01{/}%c05{%{leader_files}F}%c01{/}%c05{%{leader_pct}%}%c01{/}%c05{%leader_speed}"
