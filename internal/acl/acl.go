@@ -150,7 +150,10 @@ func checkRequired(required string, u *user.User) bool {
 
 	var flags []string
 	var groups []string
+	var users []string
 	var denyFlags []string
+	var denyGroups []string
+	var denyUsers []string
 	allowAll := false
 	for _, token := range strings.Fields(required) {
 		token = strings.TrimSpace(token)
@@ -164,10 +167,31 @@ func checkRequired(required string, u *user.User) bool {
 		if token == "!*" {
 			return false
 		}
+		if strings.HasPrefix(token, "!@") {
+			name := strings.TrimSpace(strings.TrimPrefix(token, "!@"))
+			if name != "" {
+				denyUsers = append(denyUsers, name)
+			}
+			continue
+		}
+		if strings.HasPrefix(token, "!=") {
+			group := strings.TrimSpace(strings.TrimPrefix(token, "!="))
+			if group != "" {
+				denyGroups = append(denyGroups, group)
+			}
+			continue
+		}
 		if strings.HasPrefix(token, "!") {
 			flag := strings.TrimSpace(strings.TrimPrefix(token, "!"))
 			if flag != "" {
 				denyFlags = append(denyFlags, flag)
+			}
+			continue
+		}
+		if strings.HasPrefix(token, "@") {
+			name := strings.TrimSpace(strings.TrimPrefix(token, "@"))
+			if name != "" {
+				users = append(users, name)
 			}
 			continue
 		}
@@ -186,11 +210,29 @@ func checkRequired(required string, u *user.User) bool {
 			return false
 		}
 	}
+	for _, group := range denyGroups {
+		if u.IsInGroup(group) {
+			return false
+		}
+	}
+	for _, name := range denyUsers {
+		if strings.EqualFold(u.Name, name) {
+			return false
+		}
+	}
 	if !hasAllFlags(u, flags) {
 		return false
 	}
+	if len(users) > 0 {
+		for _, name := range users {
+			if strings.EqualFold(u.Name, name) {
+				return true
+			}
+		}
+		return false
+	}
 	if len(groups) == 0 {
-		return allowAll || len(flags) > 0 || len(denyFlags) > 0
+		return allowAll || len(flags) > 0 || len(denyFlags) > 0 || len(denyGroups) > 0 || len(denyUsers) > 0
 	}
 	for _, group := range groups {
 		if u.IsInGroup(group) {

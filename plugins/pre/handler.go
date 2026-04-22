@@ -935,8 +935,11 @@ func renderPermissionsFile(cfg permissionsFileConfig) string {
 #   "1"           user must have flag 1
 #   "A"           user must have flag A
 #   "=Admin"      user must be a member of group Admin
+#   "@Nick"       user must be FTP user Nick
 #   "=GROUP =SiteOP" user must be in GROUP OR SiteOP
 #   "!4"          user must NOT have flag 4
+#   "!=Group"     user must NOT be in group Group
+#   "!@Nick"      user must NOT be FTP user Nick
 #   "!*"          nobody; explicit deny
 #   "1 =SiteOP"   user must have flag 1 AND be in group SiteOP
 #   "1 A =NUKERS" user must have flags 1 and A AND be in group NUKERS
