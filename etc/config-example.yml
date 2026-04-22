@@ -148,7 +148,7 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 #    mediainfo - runs mediainfo on uploaded audio/sample files and emits
 #                AUDIOINFO / MEDIAINFO events for the sitebot
 #    pre     - handles SITE PRE for affil staging dirs and PREBW announces
-#    speedtest - creates /SPEEDTEST/100MB.dat, 500MB.dat, 1000MB.dat and
+#    speedtest - creates /SPEEDTEST/100MB, 500MB, 1000MB and
 #                emits SPEEDTEST announces without applying credits
 #
 #  To add your own plugin:
