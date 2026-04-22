@@ -132,7 +132,8 @@ func (p *Plugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 		return p.reply(evt, p.render("ADMINCMD_BLOCKED", map[string]string{"command": siteCommand}, fmt.Sprintf("ADMIN: SITE %s is not allowed.", siteCommand))), nil
 	}
 
-	response, err := p.runSITE(siteArgs)
+	responseLines, err := p.runSITE(siteArgs)
+	response := responseText(responseLines)
 	vars := map[string]string{
 		"command":  siteArgs,
 		"response": response,
@@ -148,14 +149,14 @@ func (p *Plugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 		vars["response"] = response
 		return p.reply(evt, p.render("ADMINCMD_ERROR", vars, "ADMIN: SITE "+siteArgs+" failed: "+response)), nil
 	}
-	return p.reply(evt, p.render("ADMINCMD_OK", vars, "ADMIN: SITE "+siteArgs+" -> "+response)), nil
+	return p.commandResponse(evt, siteArgs, responseLines), nil
 }
 
-func (p *Plugin) runSITE(siteArgs string) (string, error) {
+func (p *Plugin) runSITE(siteArgs string) ([]string, error) {
 	addr := net.JoinHostPort(p.host, strconv.Itoa(p.port))
 	rawConn, err := net.DialTimeout("tcp", addr, p.timeout)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer rawConn.Close()
 	_ = rawConn.SetDeadline(time.Now().Add(p.timeout))
@@ -163,61 +164,63 @@ func (p *Plugin) runSITE(siteArgs string) (string, error) {
 	conn := rawConn
 	reader := bufio.NewReader(conn)
 	if _, _, err := readFTPResponse(reader); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if p.useTLS {
 		if err := writeFTPCommand(conn, "AUTH TLS"); err != nil {
-			return "", err
+			return nil, err
 		}
 		code, lines, err := readFTPResponse(reader)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		if code < 200 || code >= 400 {
-			return responseText(lines), fmt.Errorf("AUTH TLS failed: %s", responseText(lines))
+			clean := responseLines(lines)
+			return clean, fmt.Errorf("AUTH TLS failed: %s", responseText(clean))
 		}
 		tlsConn := tls.Client(conn, &tls.Config{ServerName: p.host, InsecureSkipVerify: p.insecure})
 		if err := tlsConn.Handshake(); err != nil {
-			return "", err
+			return nil, err
 		}
 		conn = tlsConn
 		reader = bufio.NewReader(conn)
 	}
 
 	if err := writeFTPCommand(conn, "USER "+p.user); err != nil {
-		return "", err
+		return nil, err
 	}
 	code, lines, err := readFTPResponse(reader)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	if code == 331 {
 		if err := writeFTPCommand(conn, "PASS "+p.password); err != nil {
-			return "", err
+			return nil, err
 		}
 		code, lines, err = readFTPResponse(reader)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 	}
 	if code < 200 || code >= 300 {
-		return responseText(lines), fmt.Errorf("login failed: %s", responseText(lines))
+		clean := responseLines(lines)
+		return clean, fmt.Errorf("login failed: %s", responseText(clean))
 	}
 
 	if err := writeFTPCommand(conn, "SITE "+siteArgs); err != nil {
-		return "", err
+		return nil, err
 	}
 	code, lines, err = readFTPResponse(reader)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	_ = writeFTPCommand(conn, "QUIT")
-	text := responseText(lines)
+	clean := responseLines(lines)
 	if code >= 400 {
-		return text, errors.New(text)
+		return clean, errors.New(responseText(clean))
 	}
-	return text, nil
+	return clean, nil
 }
 
 func readFTPResponse(r *bufio.Reader) (int, []string, error) {
@@ -263,17 +266,21 @@ func writeFTPCommand(conn net.Conn, command string) error {
 }
 
 func responseText(lines []string) string {
+	return strings.Join(lines, " | ")
+}
+
+func responseLines(lines []string) []string {
 	parts := make([]string, 0, len(lines))
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if len(line) > 4 && isFTPCodePrefix(line) {
+		if len(line) >= 4 && isFTPCodePrefix(line) {
 			line = strings.TrimSpace(line[4:])
 		}
 		if line != "" {
 			parts = append(parts, line)
 		}
 	}
-	return strings.Join(parts, " | ")
+	return parts
 }
 
 func isFTPCodePrefix(line string) bool {
@@ -405,6 +412,30 @@ func (p *Plugin) replies(evt *event.Event, lines ...string) []plugin.Output {
 
 func (p *Plugin) reply(evt *event.Event, text string) []plugin.Output {
 	return p.replies(evt, text)
+}
+
+func (p *Plugin) commandResponse(evt *event.Event, command string, lines []string) []plugin.Output {
+	if len(lines) <= 1 {
+		response := responseText(lines)
+		vars := map[string]string{"command": command, "response": response, "user": evt.User, "channel": evt.Data["channel"]}
+		return p.reply(evt, p.render("ADMINCMD_OK", vars, "ADMIN: SITE "+command+" -> "+response))
+	}
+	out := make([]string, 0, len(lines))
+	for i, line := range lines {
+		vars := map[string]string{
+			"command":  command,
+			"response": line,
+			"line":     line,
+			"user":     evt.User,
+			"channel":  evt.Data["channel"],
+		}
+		if i == 0 {
+			out = append(out, p.render("ADMINCMD_OK", vars, "ADMIN: SITE "+command+" -> "+line))
+			continue
+		}
+		out = append(out, p.render("ADMINCMD_LINE", vars, "ADMIN: "+line))
+	}
+	return p.replies(evt, out...)
 }
 
 func (p *Plugin) render(key string, vars map[string]string, fallback string) string {

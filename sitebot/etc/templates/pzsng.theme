@@ -381,6 +381,7 @@ announce.AFFILS_EMPTY = "%b{%c02{AFFILS:}} %c04{No affils configured.}"
 announce.AFFILS_PRE_HELP = "%b{%c02{PRE:}} %c01{use} %c05{SITE PRE <releasename> <section>} %c01{in FTP.}"
 
 announce.ADMINCMD_OK = "%b{%c02{ADMIN:}} %c03{SITE %command} %c01{->} %c05{%response}"
+announce.ADMINCMD_LINE = "%b{%c02{ADMIN:}} %c05{%line}"
 announce.ADMINCMD_ERROR = "%b{%c02{ADMIN:}} %c04{SITE %command failed:} %c05{%response}"
 announce.ADMINCMD_DENIED = "%b{%c02{ADMIN:}} %c04{Staff command only.}"
 announce.ADMINCMD_BLOCKED = "%b{%c02{ADMIN:}} %c04{SITE %command is not allowed.}"
