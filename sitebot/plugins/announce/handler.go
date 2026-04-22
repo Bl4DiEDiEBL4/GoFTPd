@@ -210,6 +210,25 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 		fallback := fmt.Sprintf("MEDIA-INFO: [%s] %s %sx%s %s %s %s.",
 			section, rel, vars["width"], vars["height"], vars["video_format"], vars["audio_format"], vars["duration"])
 		outs = append(outs, plugin.Output{Type: "MEDIAINFO", Text: p.render("MEDIAINFO", vars, fallback)})
+	case event.EventSpeedtest:
+		nick := vars["nick"]
+		if nick == "" {
+			nick = evt.User
+		}
+		action := vars["action"]
+		if action == "" {
+			action = "transferred"
+		}
+		sizeMB := vars["size_mb"]
+		if sizeMB == "" {
+			sizeMB = strings.TrimSuffix(mb(evt.Size), "MB")
+		}
+		speed := vars["speed_mbs"]
+		if speed == "" {
+			speed = speedMB(evt)
+		}
+		fallback := fmt.Sprintf("SPEEDTEST: %s %s a %sMB file with %s", nick, action, sizeMB, speed)
+		outs = append(outs, plugin.Output{Type: "SPEEDTEST", Text: p.render("SPEEDTEST", vars, fallback)})
 	case event.EventMKDir:
 		if isReleaseDir(evt.Path, section) {
 			if !st.Created {

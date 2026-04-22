@@ -126,6 +126,7 @@ type MasterBridge interface {
 	MakeDir(path, owner, group string)
 	Symlink(linkPath, targetPath string) error
 	Chmod(path string, mode uint32) error
+	CreateSparseFile(path string, size int64, owner, group string) error
 	RenameFile(from, toDir, toName string)
 	WriteFile(path string, content []byte) error
 	ReadFile(path string) ([]byte, error)

@@ -270,6 +270,9 @@ func (s *Slave) handleCommand(ac *protocol.AsyncCommand) interface{} {
 
 	case "writeFile":
 		return s.handleWriteFile(ac)
+
+	case "createSparseFile":
+		return s.handleCreateSparseFile(ac)
 		
 	case "makedir":
 		return s.handleMakeDir(ac)
@@ -1068,6 +1071,41 @@ func (s *Slave) handleWriteFile(ac *protocol.AsyncCommand) interface{} {
 	}
 
 	log.Printf("[Slave] Wrote file %s (%d bytes)", filePath, len(content))
+	return &protocol.AsyncResponse{Index: ac.Index}
+}
+
+func (s *Slave) handleCreateSparseFile(ac *protocol.AsyncCommand) interface{} {
+	if len(ac.Args) < 2 {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "createSparseFile: missing path or size"}
+	}
+	filePath := ac.Args[0]
+	size, err := strconv.ParseInt(strings.TrimSpace(ac.Args[1]), 10, 64)
+	if err != nil || size < 0 {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "createSparseFile: invalid size"}
+	}
+	if len(s.roots) == 0 {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "no roots"}
+	}
+
+	fullPath := filepath.Join(s.roots[0], filePath)
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("mkdir error: %v", err)}
+	}
+	f, err := os.OpenFile(fullPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
+	if err != nil {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("create error: %v", err)}
+	}
+	if err := f.Truncate(size); err != nil {
+		_ = f.Close()
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("truncate error: %v", err)}
+	}
+	if err := f.Close(); err != nil {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("close error: %v", err)}
+	}
+
+	ds := s.getDiskStatus()
+	s.writeObject(&protocol.AsyncResponseDiskStatus{Status: ds})
+	log.Printf("[Slave] Created sparse file %s (%d bytes)", filePath, size)
 	return &protocol.AsyncResponse{Index: ac.Index}
 }
 

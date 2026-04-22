@@ -470,6 +470,38 @@ func (b *Bridge) WriteFile(filePath string, content []byte) error {
 	return nil
 }
 
+func (b *Bridge) CreateSparseFile(filePath string, size int64, owner, group string) error {
+	if size < 0 {
+		return fmt.Errorf("invalid sparse file size: %d", size)
+	}
+	slave := b.sm.SelectSlaveForDownload(filePath)
+	if slave == nil {
+		slave = b.sm.SelectSlaveForUpload(filePath)
+	}
+	if slave == nil {
+		return fmt.Errorf("no available slave")
+	}
+
+	index, err := IssueCreateSparseFile(slave, filePath, size)
+	if err != nil {
+		return fmt.Errorf("issue createSparseFile: %w", err)
+	}
+	if _, err := slave.FetchResponse(index, 30*time.Second); err != nil {
+		return err
+	}
+
+	b.sm.GetVFS().AddFile(filePath, VFSFile{
+		Path:         filePath,
+		Size:         size,
+		IsDir:        false,
+		LastModified: time.Now().Unix(),
+		SlaveName:    slave.Name(),
+		Owner:        owner,
+		Group:        group,
+	})
+	return nil
+}
+
 func (b *Bridge) ChecksumFile(filePath string) (uint32, error) {
 	var lastErr error
 	for _, slave := range b.candidateSlavesForPath(filePath) {

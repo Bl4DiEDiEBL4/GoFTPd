@@ -224,3 +224,15 @@ func IssueWriteFile(rs *RemoteSlave, path string, content string) (string, error
 	}
 	return index, rs.SendCommand(&protocol.AsyncCommand{Index: index, Name: "writeFile", Args: []string{path, content}})
 }
+
+func IssueCreateSparseFile(rs *RemoteSlave, path string, size int64) (string, error) {
+	index, err := rs.FetchIndex()
+	if err != nil {
+		return "", err
+	}
+	return index, rs.SendCommand(&protocol.AsyncCommand{
+		Index: index,
+		Name:  "createSparseFile",
+		Args:  []string{path, fmt.Sprintf("%d", size)},
+	})
+}

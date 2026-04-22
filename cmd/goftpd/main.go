@@ -25,6 +25,7 @@ import (
 	"goftpd/plugins/imdb"
 	"goftpd/plugins/mediainfo"
 	"goftpd/plugins/pre"
+	"goftpd/plugins/speedtest"
 	"goftpd/plugins/tvmaze"
 	"gopkg.in/yaml.v3"
 )
@@ -240,6 +241,8 @@ func main() {
 			p = mediainfo.New()
 		case "pre":
 			p = pre.New()
+		case "speedtest":
+			p = speedtest.New()
 		default:
 			log.Printf("[PLUGINS] Unknown plugin: %s (add a case in cmd/goftpd/main.go)", pluginName)
 			continue
