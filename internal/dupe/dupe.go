@@ -133,9 +133,12 @@ func (d *DupeChecker) Clear(releaseName string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	_, err := d.db.Exec("DELETE FROM dupes WHERE release_name = ?", releaseName)
+	res, err := d.db.Exec("DELETE FROM dupes WHERE release_name = ?", releaseName)
 	if err != nil {
 		return err
+	}
+	if rows, err := res.RowsAffected(); err == nil && rows == 0 {
+		return sql.ErrNoRows
 	}
 
 	if d.debug {

@@ -14,6 +14,7 @@ import (
 
 // Session represents an active FTP client connection and its state.
 type Session struct {
+	ID              uint64
 	Conn            net.Conn
 	User            *user.User
 	Config          *Config
@@ -29,6 +30,7 @@ type Session struct {
 	IsTLS           bool        // Control channel encryption state
 	DataTLS         bool        // Data channel encryption state (PROT P)
 	GroupMap        map[string]int // groupname -> GID mapping
+	StartedAt       time.Time
 
 	// Passthrough transfer state (drftpd-style direct client→slave)
 	PretCmd         string      // "STOR", "RETR", or "" — set by PRET
@@ -71,7 +73,10 @@ func HandleSession(conn net.Conn, tlsConfig *tls.Config, cfg *Config, aclEngine 
 		MasterManager: cfg.MasterManager,
 		CurrentDir:    "/",
 		GroupMap:      LoadGroupFile("etc/group"),
+		StartedAt:     time.Now(),
 	}
+	session.ID = registerSession(session)
+	defer unregisterSession(session.ID)
 	defer session.Conn.Close()
 
 	// Initial Banner

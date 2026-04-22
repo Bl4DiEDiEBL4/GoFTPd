@@ -1,4 +1,4 @@
-package admincommander
+package request
 
 import (
 	"bufio"
@@ -17,18 +17,17 @@ import (
 )
 
 type Plugin struct {
-	host       string
-	port       int
-	user       string
-	password   string
-	useTLS     bool
-	insecure   bool
-	timeout    time.Duration
-	replyTarget string
-
+	host          string
+	port          int
+	user          string
+	password      string
+	useTLS        bool
+	insecure      bool
+	timeout       time.Duration
+	replyTarget   string
+	channels      []string
 	staffChannels []string
 	staffHosts    []string
-	allowed       map[string]bool
 	theme         *tmpl.Theme
 }
 
@@ -41,12 +40,12 @@ func New() *Plugin {
 		insecure:      true,
 		timeout:       10 * time.Second,
 		replyTarget:   "channel",
+		channels:      []string{},
 		staffChannels: []string{"#goftpd-staff"},
-		allowed:       allowedSet(defaultAllowedCommands()),
 	}
 }
 
-func (p *Plugin) Name() string { return "AdminCommander" }
+func (p *Plugin) Name() string { return "Request" }
 
 func (p *Plugin) Initialize(config map[string]interface{}) error {
 	if themeFile, ok := config["theme_file"].(string); ok && strings.TrimSpace(themeFile) != "" {
@@ -56,38 +55,38 @@ func (p *Plugin) Initialize(config map[string]interface{}) error {
 		}
 	}
 
-	cfg := plugin.ConfigSection(config, "admin_commander")
-	if s, ok := stringConfig(cfg, config, "host", "admin_commander_host"); ok && strings.TrimSpace(s) != "" {
+	cfg := plugin.ConfigSection(config, "request")
+	if s, ok := stringConfig(cfg, config, "host", "request_host"); ok && strings.TrimSpace(s) != "" {
 		p.host = strings.TrimSpace(s)
 	}
-	if n := intConfig(configValue(cfg, config, "port", "admin_commander_port"), p.port); n > 0 {
+	if n := intConfig(configValue(cfg, config, "port", "request_port"), p.port); n > 0 {
 		p.port = n
 	}
-	if s, ok := stringConfig(cfg, config, "user", "admin_commander_user"); ok && strings.TrimSpace(s) != "" {
+	if s, ok := stringConfig(cfg, config, "user", "request_user"); ok && strings.TrimSpace(s) != "" {
 		p.user = strings.TrimSpace(s)
 	}
-	if s, ok := stringConfig(cfg, config, "password", "admin_commander_password"); ok {
+	if s, ok := stringConfig(cfg, config, "password", "request_password"); ok {
 		p.password = s
 	}
-	if b, ok := boolConfig(configValue(cfg, config, "tls", "admin_commander_tls")); ok {
+	if b, ok := boolConfig(configValue(cfg, config, "tls", "request_tls")); ok {
 		p.useTLS = b
 	}
-	if b, ok := boolConfig(configValue(cfg, config, "insecure_skip_verify", "admin_commander_insecure_skip_verify")); ok {
+	if b, ok := boolConfig(configValue(cfg, config, "insecure_skip_verify", "request_insecure_skip_verify")); ok {
 		p.insecure = b
 	}
-	if n := intConfig(configValue(cfg, config, "timeout_seconds", "admin_commander_timeout_seconds"), 0); n > 0 {
+	if n := intConfig(configValue(cfg, config, "timeout_seconds", "request_timeout_seconds"), 0); n > 0 {
 		p.timeout = time.Duration(n) * time.Second
 	}
-	if raw, ok := configValueOK(cfg, config, "staff_channels", "admin_commander_staff_channels"); ok {
+	if raw, ok := configValueOK(cfg, config, "channels", "request_channels"); ok {
+		p.channels = plugin.ToStringSlice(raw, p.channels)
+	}
+	if raw, ok := configValueOK(cfg, config, "staff_channels", "request_staff_channels"); ok {
 		p.staffChannels = plugin.ToStringSlice(raw, p.staffChannels)
 	}
-	if raw, ok := configValueOK(cfg, config, "staff_hosts", "admin_commander_staff_hosts"); ok {
+	if raw, ok := configValueOK(cfg, config, "staff_hosts", "request_staff_hosts"); ok {
 		p.staffHosts = plugin.ToStringSlice(raw, p.staffHosts)
 	}
-	if raw, ok := configValueOK(cfg, config, "allowed_commands", "admin_commander_allowed_commands"); ok {
-		p.allowed = allowedSet(plugin.ToStringSlice(raw, nil))
-	}
-	if s, ok := stringConfig(cfg, config, "reply_target", "admin_commander_reply_target"); ok && strings.TrimSpace(s) != "" {
+	if s, ok := stringConfig(cfg, config, "reply_target", "request_reply_target"); ok && strings.TrimSpace(s) != "" {
 		p.replyTarget = strings.ToLower(strings.TrimSpace(s))
 	}
 	return nil
@@ -99,51 +98,61 @@ func (p *Plugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 	if evt.Type != event.EventCommand {
 		return nil, nil
 	}
-
 	cmd := strings.ToLower(strings.TrimSpace(evt.Data["command"]))
 	args := strings.TrimSpace(evt.Data["args"])
 	siteArgs := ""
 	displayArgs := ""
+
 	switch cmd {
-	case "site":
-		siteArgs = args
-		displayArgs = args
-	case "nuke":
+	case "request":
 		if args == "" {
-			return p.reply(evt, p.render("ADMINCMD_USAGE", map[string]string{"command": cmd}, "ADMIN: Usage: !site <command> [args], !nuke <release> <multiplier> <reason>, or !unnuke <release> [reason]")), nil
+			vars := map[string]string{"command": cmd, "response": "!request <request> [-for:<user>]"}
+			return p.reply(evt, p.render("REQUESTCMD_USAGE", vars, "REQUEST: Usage: !request <request> [-for:<user>]")), nil
 		}
-		siteArgs = "NUKE " + args
+		siteArgs = "REQUEST -by:" + evt.User + " " + args
+		displayArgs = "REQUEST " + args
+	case "requests":
+		siteArgs = "REQUESTS " + args
+		displayArgs = strings.TrimSpace(siteArgs)
+	case "reqfill", "reqfilled":
+		if args == "" {
+			vars := map[string]string{"command": cmd, "response": "!reqfill <number|request>"}
+			return p.reply(evt, p.render("REQUESTCMD_USAGE", vars, "REQUEST: Usage: !reqfill <number|request>")), nil
+		}
+		siteArgs = "REQFILL " + args
 		displayArgs = siteArgs
-	case "unnuke":
+	case "reqdel":
 		if args == "" {
-			return p.reply(evt, p.render("ADMINCMD_USAGE", map[string]string{"command": cmd}, "ADMIN: Usage: !site <command> [args], !nuke <release> <multiplier> <reason>, or !unnuke <release> [reason]")), nil
+			vars := map[string]string{"command": cmd, "response": "!reqdel <number|request>"}
+			return p.reply(evt, p.render("REQUESTCMD_USAGE", vars, "REQUEST: Usage: !reqdel <number|request>")), nil
 		}
-		siteArgs = "UNNUKE " + args
+		siteArgs = "REQDEL -by:" + evt.User + " " + args
+		displayArgs = "REQDEL " + args
+	case "reqwipe":
+		if !p.canStaff(evt) {
+			vars := map[string]string{"user": evt.User, "response": "staff command only."}
+			return p.reply(evt, p.render("REQUESTCMD_DENIED", vars, "REQUEST: staff command only.")), nil
+		}
+		if args == "" {
+			vars := map[string]string{"command": cmd, "response": "!reqwipe <number|request>"}
+			return p.reply(evt, p.render("REQUESTCMD_USAGE", vars, "REQUEST: Usage: !reqwipe <number|request>")), nil
+		}
+		siteArgs = "REQWIPE " + args
 		displayArgs = siteArgs
 	default:
 		return nil, nil
 	}
 
-	if !p.canStaff(evt) {
-		return p.reply(evt, p.render("ADMINCMD_DENIED", map[string]string{"user": evt.User}, "ADMIN: staff command only.")), nil
-	}
-	siteArgs = normalizeSiteArgs(siteArgs)
-	if siteArgs == "" {
-		return p.reply(evt, p.render("ADMINCMD_USAGE", map[string]string{"command": cmd}, "ADMIN: Usage: !site <command> [args], !nuke <release> <multiplier> <reason>, or !unnuke <release> [reason]")), nil
-	}
-	if displayArgs == "" {
-		displayArgs = siteArgs
-	}
-	displayArgs = normalizeSiteArgs(displayArgs)
-	siteCommand := firstWord(siteArgs)
-	if !p.allowedCommand(siteCommand) {
-		return p.reply(evt, p.render("ADMINCMD_BLOCKED", map[string]string{"command": siteCommand}, fmt.Sprintf("ADMIN: SITE %s is not allowed.", siteCommand))), nil
+	if !p.channelAllowed(evt) && !p.canStaff(evt) {
+		vars := map[string]string{"user": evt.User, "response": "command not enabled in this channel."}
+		return p.reply(evt, p.render("REQUESTCMD_DENIED", vars, "REQUEST: command not enabled in this channel.")), nil
 	}
 
+	siteArgs = normalizeSiteArgs(siteArgs)
 	responseLines, err := p.runSITE(siteArgs)
 	response := responseText(responseLines)
 	vars := map[string]string{
-		"command":  displayArgs,
+		"command":  normalizeSiteArgs(displayArgs),
 		"response": response,
 		"error":    "",
 		"user":     evt.User,
@@ -155,9 +164,9 @@ func (p *Plugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 			response = err.Error()
 		}
 		vars["response"] = response
-		return p.reply(evt, p.render("ADMINCMD_ERROR", vars, "ADMIN: SITE "+displayArgs+" failed: "+response)), nil
+		return p.reply(evt, p.render("REQUESTCMD_ERROR", vars, "REQUEST: SITE "+vars["command"]+" failed: "+response)), nil
 	}
-	return p.commandResponse(evt, displayArgs, responseLines), nil
+	return p.commandResponse(evt, vars["command"], responseLines), nil
 }
 
 func (p *Plugin) runSITE(siteArgs string) ([]string, error) {
@@ -312,84 +321,17 @@ func normalizeSiteArgs(args string) string {
 	return strings.Join(fields, " ")
 }
 
-func firstWord(s string) string {
-	fields := strings.Fields(s)
-	if len(fields) == 0 {
-		return ""
+func (p *Plugin) channelAllowed(evt *event.Event) bool {
+	if len(p.channels) == 0 {
+		return true
 	}
-	return strings.ToUpper(fields[0])
-}
-
-func allowedSet(commands []string) map[string]bool {
-	out := map[string]bool{}
-	for _, command := range commands {
-		command = strings.ToUpper(strings.TrimSpace(command))
-		if command != "" {
-			out[command] = true
+	channel := strings.TrimSpace(evt.Data["channel"])
+	for _, allowed := range p.channels {
+		if strings.EqualFold(strings.TrimSpace(allowed), channel) {
+			return true
 		}
 	}
-	if len(out) == 0 {
-		return allowedSet(defaultAllowedCommands())
-	}
-	return out
-}
-
-func defaultAllowedCommands() []string {
-	return []string{
-		"HELP",
-		"RULES",
-		"WHO",
-		"SWHO",
-		"USERS",
-		"USER",
-		"SEEN",
-		"LASTON",
-		"LASTLOGIN",
-		"GROUPS",
-		"GROUP",
-		"GINFO",
-		"GRPNFO",
-		"TRAFFIC",
-		"ADDUSER",
-		"DELUSER",
-		"CHPASS",
-		"ADDIP",
-		"DELIP",
-		"FLAGS",
-		"CHGRP",
-		"CHPGRP",
-		"GADMIN",
-		"GRPADD",
-		"GRPDEL",
-		"INVITE",
-		"NUKE",
-		"UNNUKE",
-		"UNDUPE",
-		"WIPE",
-		"KICK",
-		"REHASH",
-		"RACE",
-		"SEARCH",
-		"RESCAN",
-		"CHMOD",
-		"XDUPE",
-		"GRP",
-		"PRE",
-		"ADDAFFIL",
-		"DELAFFIL",
-		"AFFILS",
-		"REQUEST",
-		"REQUESTS",
-		"REQFILL",
-		"REQFILLED",
-		"REQDEL",
-		"REQWIPE",
-	}
-}
-
-func (p *Plugin) allowedCommand(command string) bool {
-	command = strings.ToUpper(strings.TrimSpace(command))
-	return p.allowed["*"] || p.allowed[command]
+	return false
 }
 
 func (p *Plugin) canStaff(evt *event.Event) bool {
@@ -418,6 +360,30 @@ func wildcardMatch(pattern, value string) bool {
 	return pattern == value
 }
 
+func (p *Plugin) commandResponse(evt *event.Event, command string, lines []string) []plugin.Output {
+	if len(lines) <= 1 {
+		response := responseText(lines)
+		vars := map[string]string{"command": command, "response": response, "line": response, "user": evt.User, "channel": evt.Data["channel"]}
+		return p.reply(evt, p.render("REQUESTCMD_OK", vars, "REQUEST: "+response))
+	}
+	out := make([]string, 0, len(lines))
+	for i, line := range lines {
+		vars := map[string]string{
+			"command":  command,
+			"response": responseText(lines),
+			"line":     line,
+			"user":     evt.User,
+			"channel":  evt.Data["channel"],
+		}
+		if i == 0 {
+			out = append(out, p.render("REQUESTCMD_OK", vars, "REQUEST: "+line))
+			continue
+		}
+		out = append(out, p.render("REQUESTCMD_LINE", vars, "REQUEST: "+line))
+	}
+	return p.replies(evt, out...)
+}
+
 func (p *Plugin) replies(evt *event.Event, lines ...string) []plugin.Output {
 	target := strings.TrimSpace(evt.Data["channel"])
 	noticeReply := false
@@ -440,30 +406,6 @@ func (p *Plugin) replies(evt *event.Event, lines ...string) []plugin.Output {
 
 func (p *Plugin) reply(evt *event.Event, text string) []plugin.Output {
 	return p.replies(evt, text)
-}
-
-func (p *Plugin) commandResponse(evt *event.Event, command string, lines []string) []plugin.Output {
-	if len(lines) <= 1 {
-		response := responseText(lines)
-		vars := map[string]string{"command": command, "response": response, "user": evt.User, "channel": evt.Data["channel"]}
-		return p.reply(evt, p.render("ADMINCMD_OK", vars, "ADMIN: SITE "+command+" -> "+response))
-	}
-	out := make([]string, 0, len(lines))
-	for i, line := range lines {
-		vars := map[string]string{
-			"command":  command,
-			"response": line,
-			"line":     line,
-			"user":     evt.User,
-			"channel":  evt.Data["channel"],
-		}
-		if i == 0 {
-			out = append(out, p.render("ADMINCMD_OK", vars, "ADMIN: SITE "+command+" -> "+line))
-			continue
-		}
-		out = append(out, p.render("ADMINCMD_LINE", vars, "ADMIN: "+line))
-	}
-	return p.replies(evt, out...)
 }
 
 func (p *Plugin) render(key string, vars map[string]string, fallback string) string {

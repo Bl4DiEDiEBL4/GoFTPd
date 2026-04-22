@@ -20,6 +20,7 @@ import (
 	freeplugin "goftpd/sitebot/plugins/free"
 	imdbplugin "goftpd/sitebot/plugins/imdb"
 	newsplugin "goftpd/sitebot/plugins/news"
+	requestplugin "goftpd/sitebot/plugins/request"
 	tvmazeplugin "goftpd/sitebot/plugins/tvmaze"
 )
 
@@ -162,6 +163,19 @@ func (b *Bot) initializePlugins() error {
 			return err
 		}
 		if err := b.Plugins.Register(affils); err != nil {
+			return err
+		}
+	}
+	if enabled, ok := b.Config.Plugins.Enabled["Request"]; ok && enabled {
+		requests := requestplugin.New()
+		cfg := map[string]interface{}{"debug": b.Debug, "theme_file": b.Config.Announce.ThemeFile}
+		for k, v := range b.Config.Plugins.Config {
+			cfg[k] = v
+		}
+		if err := requests.Initialize(cfg); err != nil {
+			return err
+		}
+		if err := b.Plugins.Register(requests); err != nil {
 			return err
 		}
 	}

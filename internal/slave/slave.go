@@ -392,6 +392,9 @@ func (s *Slave) handleSymlink(ac *protocol.AsyncCommand) interface{} {
 		if _, err := os.Stat(fullTarget); err != nil {
 			continue
 		}
+		if existingTarget, err := os.Readlink(fullLink); err == nil && cleanSymlinkTarget(existingTarget) == cleanSymlinkTarget(targetPath) {
+			return &protocol.AsyncResponse{Index: ac.Index}
+		}
 		_ = os.Remove(fullLink)
 		if err := os.Symlink(targetPath, fullLink); err != nil {
 			return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("symlink failed: %v", err)}
@@ -399,6 +402,10 @@ func (s *Slave) handleSymlink(ac *protocol.AsyncCommand) interface{} {
 		return &protocol.AsyncResponse{Index: ac.Index}
 	}
 	return &protocol.AsyncResponseError{Index: ac.Index, Message: "symlink: target not found"}
+}
+
+func cleanSymlinkTarget(target string) string {
+	return filepath.ToSlash(filepath.Clean(strings.TrimSpace(target)))
 }
 
 // handleMakeDir physically creates empty directories on the slave disk.

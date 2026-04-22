@@ -19,8 +19,15 @@
 #   "1"           user must have flag 1
 #   "A"           user must have flag A
 #   "=Admin"      user must be a member of group Admin
+#   "@Nick"       user must be FTP user Nick
+#   "=GRP =SiteOP" user must be in group GRP OR group SiteOP
+#   "!4"          user must NOT have flag 4
+#   "!=Group"     user must NOT be in group Group
+#   "!@Nick"      user must NOT be FTP user Nick
+#   "!*"          nobody; explicit deny
 #   "1 =SiteOP"   user must have flag 1 AND be in group SiteOP
 #   "1 A =NUKERS" user must have flags 1 and A AND be in group NUKERS
+#   "1 =GRP =SiteOP" user must have flag 1 AND be in GRP OR SiteOP
 #
 # rule types used here:
 #   privpath      hides/blocks paths unless the user matches required
@@ -30,18 +37,104 @@
 #   makedir       MKD and RMD permission
 #   dirlog        visibility for SITE SEARCH / dirlog-like listings
 #   rename        rename permission
-#   renameown     owner-only rename policy placeholder
+#   renameown     owner-only rename policy
 #   nuke          SITE NUKE permission
 #   unnuke        SITE UNNUKE permission
 #   delete        DELE permission
-#   deleteown     owner-only delete policy placeholder
+#   deleteown     owner-only delete policy
 #   filemove      cross-directory/manual move permission placeholder
 #   nodupecheck   marks paths intended to skip dupe-db checks; overwrite
 #                 protection still rejects uploads to an existing filename
+#   sitecmd       controls who may run SITE subcommands by command name
 #
 rules:
   # ---------------------------------------------------------------------------
-  # Private paths: only flag-1 SiteOP users may enter or see these areas.
+  # SITE commands: command-level ACLs, glftpd-style.
+  # Put specific commands before the wildcard. Examples:
+  #   sitecmd ADDUSER 1
+  #   sitecmd REQUEST *
+  # Use !*, !flag, !=group, or !@nick to block.
+  # ---------------------------------------------------------------------------
+  - type: sitecmd
+    path: ADDUSER
+    required: "1"
+  - type: sitecmd
+    path: DELUSER
+    required: "1"
+  - type: sitecmd
+    path: CHPASS
+    required: "1"
+  - type: sitecmd
+    path: ADDIP
+    required: "1"
+  - type: sitecmd
+    path: DELIP
+    required: "1"
+  - type: sitecmd
+    path: FLAGS
+    required: "1"
+  - type: sitecmd
+    path: CHGRP
+    required: "1"
+  - type: sitecmd
+    path: CHPGRP
+    required: "1"
+  - type: sitecmd
+    path: GADMIN
+    required: "1"
+  - type: sitecmd
+    path: GRPADD
+    required: "1"
+  - type: sitecmd
+    path: GRPDEL
+    required: "1"
+  - type: sitecmd
+    path: WHO
+    required: "1"
+  - type: sitecmd
+    path: SWHO
+    required: "1"
+  - type: sitecmd
+    path: USERS
+    required: "1"
+  - type: sitecmd
+    path: GRPNFO
+    required: "1"
+  - type: sitecmd
+    path: TRAFFIC
+    required: "1"
+  - type: sitecmd
+    path: UNDUPE
+    required: "1"
+  - type: sitecmd
+    path: WIPE
+    required: "1"
+  - type: sitecmd
+    path: KICK
+    required: "1"
+  - type: sitecmd
+    path: CHMOD
+    required: "1"
+  - type: sitecmd
+    path: REHASH
+    required: "1"
+  - type: sitecmd
+    path: ADDAFFIL
+    required: "1"
+  - type: sitecmd
+    path: DELAFFIL
+    required: "1"
+  - type: sitecmd
+    path: REQWIPE
+    required: "1"
+  - type: sitecmd
+    path: '*'
+    required: "*"
+
+  # ---------------------------------------------------------------------------
+  # Private paths: only matching users may enter or see these areas.
+  # Affil PRE dirs should only need one glftpd-style line:
+  #   privpath /site/PRE/GROUP =GROUP =SiteOP
   # ---------------------------------------------------------------------------
   - type: privpath
     path: /site/LINKS
@@ -75,15 +168,16 @@ rules:
     required: "*"
 
   # ---------------------------------------------------------------------------
-  # Directory creation/removal: flag 1 may create or remove dirs.
+  # Directory creation/removal: everyone may create/remove dirs unless a more
+  # specific rule above this says otherwise.
   # Keep the REQUESTS rule above the general /site rule for easy override later.
   # ---------------------------------------------------------------------------
   - type: makedir
     path: /site/REQUESTS/*
-    required: "1"
+    required: "*"
   - type: makedir
     path: /site/*
-    required: "1"
+    required: "*"
 
   # ---------------------------------------------------------------------------
   # Directory logs/search: PRE is restricted to flag 1; everything else is open.
@@ -96,14 +190,14 @@ rules:
     required: "*"
 
   # ---------------------------------------------------------------------------
-  # Rename: flag 1 may rename. renameown is reserved for owner-only policies.
+  # Rename: flag 1 may rename anything. Everyone may rename their own entries.
   # ---------------------------------------------------------------------------
   - type: rename
     path: /site/*
     required: "1"
   - type: renameown
     path: /site/*
-    required: "1"
+    required: "*"
 
   # ---------------------------------------------------------------------------
   # Nuke/unnuke: intended for NUKERS with separate flags for nuke and unnuke.
@@ -116,18 +210,17 @@ rules:
     required: "1 B =NUKERS"
 
   # ---------------------------------------------------------------------------
-  # Delete: flag 1 may delete, including one level below /site/PRE.
-  # deleteown is reserved for owner-only delete policies.
+  # Delete: flag 1 may delete anything. Everyone may delete their own entries.
   # ---------------------------------------------------------------------------
   - type: delete
     path: /site/PRE/*/*
-    required: "1"
+    required: "*"
   - type: delete
     path: /site/*
     required: "1"
   - type: deleteown
     path: /site/*
-    required: "1"
+    required: "*"
 
   # ---------------------------------------------------------------------------
   # File moves: Admin group only. This is for explicit filemove support.
@@ -142,10 +235,10 @@ rules:
   # ---------------------------------------------------------------------------
   - type: nodupecheck
     path: /site/PRE/*
-    required: "1"
+    required: "*"
   - type: nodupecheck
     path: /site/REQUESTS/*
-    required: "1"
+    required: "*"
   - type: nodupecheck
     path: /site/SPEEDTEST/*
-    required: "1"
+    required: "*"

@@ -386,3 +386,9 @@ announce.ADMINCMD_ERROR = "%b{%c02{ADMIN:}} %c04{SITE %command failed:} %c05{%re
 announce.ADMINCMD_DENIED = "%b{%c02{ADMIN:}} %c04{Staff command only.}"
 announce.ADMINCMD_BLOCKED = "%b{%c02{ADMIN:}} %c04{SITE %command is not allowed.}"
 announce.ADMINCMD_USAGE = "%b{%c02{ADMIN:}} %c01{Usage:} %c05{!site <command> [args]} %c01{or} %c05{!nuke/!unnuke}"
+
+announce.REQUESTCMD_OK = "%b{%c02{REQUEST:}} %c05{%line}"
+announce.REQUESTCMD_LINE = "%b{%c02{REQUEST:}} %c05{%line}"
+announce.REQUESTCMD_ERROR = "%b{%c02{REQUEST:}} %c04{SITE %command failed:} %c05{%response}"
+announce.REQUESTCMD_DENIED = "%b{%c02{REQUEST:}} %c04{%response}"
+announce.REQUESTCMD_USAGE = "%b{%c02{REQUEST:}} %c01{Usage:} %c05{%response}"

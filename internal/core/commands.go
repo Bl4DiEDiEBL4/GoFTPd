@@ -393,7 +393,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		parent := path.Dir(targetPath)
 		isSectionDir := parent == "/" || parent == "."
 		isSubFolder := isSceneSubfolder(dirName)
-		dupeEligible := !isSectionDir && !isSubFolder
+		skipDupeCheck := s.ACLEngine != nil && s.ACLEngine.CanPerformRuleOnly(s.User, "NODUPECHECK", aclPath)
+		dupeEligible := !isSectionDir && !isSubFolder && !skipDupeCheck
 
 		if dupeEligible && s.DupeChecker != nil {
 			if dc, ok := s.DupeChecker.(interface{ IsDupe(string) (bool, error) }); ok {
@@ -485,14 +486,13 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			fmt.Fprintf(s.Conn, "501 Syntax error\r\n")
 			return false
 		}
-		aclPath := path.Join(s.Config.ACLBasePath, s.CurrentDir, args[0])
-		if !s.ACLEngine.CanPerform(s.User, "DELETE", aclPath) {
+		filePath := path.Join(s.CurrentDir, args[0])
+		if !s.canDeletePath(filePath) {
 			fmt.Fprintf(s.Conn, "550 Access Denied: Insufficient flags.\r\n")
 			return false
 		}
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
-				filePath := path.Join(s.CurrentDir, args[0])
 				bridge.DeleteFile(filePath)
 			}
 		}
@@ -511,14 +511,14 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			fmt.Fprintf(s.Conn, "503 Bad sequence of commands.\r\n")
 			return false
 		}
-		aclPath := path.Join(s.Config.ACLBasePath, s.CurrentDir, args[0])
-		if !s.ACLEngine.CanPerform(s.User, "RENAME", aclPath) {
+		fromPath := path.Join(s.CurrentDir, s.RenameFrom)
+		toPath := path.Join(s.CurrentDir, args[0])
+		if !s.canRenamePath(fromPath, toPath) {
 			fmt.Fprintf(s.Conn, "550 Access Denied: Insufficient flags.\r\n")
 			return false
 		}
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
-				fromPath := path.Join(s.CurrentDir, s.RenameFrom)
 				toDir := s.CurrentDir
 				toName := args[0]
 				bridge.RenameFile(fromPath, toDir, toName)

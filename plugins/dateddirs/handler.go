@@ -2,6 +2,7 @@ package dateddirs
 
 import (
 	"log"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -97,12 +98,18 @@ func (h *Handler) apply(now time.Time) {
 		}
 
 		todayPath := "/" + section + "/" + today
-		h.svc.Bridge.MakeDir(todayPath, "GoFTPd", "GoFTPd")
+		if !h.pathExists(todayPath) {
+			h.svc.Bridge.MakeDir(todayPath, "GoFTPd", "GoFTPd")
+		}
 
 		linkPath := ""
 		if h.todaySymlink {
 			linkPath = "/" + h.symlinkPrefix + section
-			if err := h.svc.Bridge.Symlink(linkPath, todayPath); err != nil && h.debug {
+			if h.symlinkCurrent(linkPath, todayPath) {
+				if h.debug {
+					log.Printf("[DATEDDIRS] symlink %s already points to %s", linkPath, todayPath)
+				}
+			} else if err := h.svc.Bridge.Symlink(linkPath, todayPath); err != nil && h.debug {
 				log.Printf("[DATEDDIRS] symlink %s -> %s failed: %v", linkPath, todayPath, err)
 			}
 		}
@@ -117,13 +124,54 @@ func (h *Handler) apply(now time.Time) {
 		}
 
 		if minutesSinceMidnight(now) >= h.readOnlyAfterMinutes {
-			_ = h.svc.Bridge.Chmod("/"+section+"/"+yesterday, 0555)
+			yesterdayPath := "/" + section + "/" + yesterday
+			if h.pathExists(yesterdayPath) && !h.pathMode(yesterdayPath, 0555) {
+				_ = h.svc.Bridge.Chmod(yesterdayPath, 0555)
+			}
 		}
 	}
 
 	h.mu.Lock()
 	h.lastDay = today
 	h.mu.Unlock()
+}
+
+func (h *Handler) symlinkCurrent(linkPath, targetPath string) bool {
+	if h.svc == nil || h.svc.Bridge == nil {
+		return false
+	}
+	linkPath = path.Clean(linkPath)
+	parent := path.Dir(linkPath)
+	name := path.Base(linkPath)
+	targetPath = path.Clean(targetPath)
+	for _, entry := range h.svc.Bridge.PluginListDir(parent) {
+		if entry.Name == name && entry.IsSymlink && path.Clean(entry.LinkTarget) == targetPath {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *Handler) pathExists(targetPath string) bool {
+	if h.svc == nil || h.svc.Bridge == nil {
+		return false
+	}
+	return h.svc.Bridge.FileExists(path.Clean(targetPath))
+}
+
+func (h *Handler) pathMode(targetPath string, mode uint32) bool {
+	if h.svc == nil || h.svc.Bridge == nil {
+		return false
+	}
+	targetPath = path.Clean(targetPath)
+	parent := path.Dir(targetPath)
+	name := path.Base(targetPath)
+	for _, entry := range h.svc.Bridge.PluginListDir(parent) {
+		if entry.Name == name {
+			return entry.Mode == mode
+		}
+	}
+	return false
 }
 
 func normalizeFormat(format string) string {

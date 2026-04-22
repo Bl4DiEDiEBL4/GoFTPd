@@ -336,6 +336,7 @@ plugins:
     News: true
     Free: true
     Affils: true
+    Request: true
     AdminCommander: false
   config:
     debug: true
@@ -407,6 +408,31 @@ plugins:
       # This plugin is display-only. Use AdminCommander below for privileged
       # SITE commands such as ADDAFFIL, DELAFFIL, NUKE, and UNNUKE.
 
+    request:
+      # Public IRC gateway for SITE REQUEST/REQUESTS/REQFILL/REQDEL.
+      # !request stores the IRC nick as requester. !reqdel only deletes that
+      # nick's own requests; !reqwipe is staff-only.
+      #
+      # IRC commands:
+      #   !request Release.Name-GRP
+      #   !request Release.Name-GRP -for:Nick
+      #   !requests
+      #   !reqfill 1
+      #   !reqdel 1
+      #   !reqwipe 1
+      host: "127.0.0.1"
+      port: 2121
+      user: "goftpd"
+      password: "change-me"
+      tls: true
+      insecure_skip_verify: true
+      timeout_seconds: 10
+      channels: *chan_main
+      staff_channels: *chan_staff
+      staff_hosts: []
+      # reply_target supports "channel", "notice", or a fixed "#channel".
+      reply_target: "channel"
+
     admin_commander:
       # Staff-only IRC gateway for real FTP SITE commands. The sitebot logs in
       # as this FTP user and sends SITE <command>, so the daemon owns all admin
@@ -434,6 +460,17 @@ plugins:
         - HELP
         - RULES
         - WHO
+        - SWHO
+        - USERS
+        - USER
+        - SEEN
+        - LASTON
+        - LASTLOGIN
+        - GROUPS
+        - GROUP
+        - GINFO
+        - GRPNFO
+        - TRAFFIC
         # Users / groups
         - ADDUSER
         - DELUSER
@@ -450,6 +487,9 @@ plugins:
         # Release / admin
         - NUKE
         - UNNUKE
+        - UNDUPE
+        - WIPE
+        - KICK
         - REHASH
         # Misc / lookup
         - RACE
@@ -463,5 +503,12 @@ plugins:
         - ADDAFFIL
         - DELAFFIL
         - AFFILS
+        # REQUEST plugin SITE commands
+        - REQUEST
+        - REQUESTS
+        - REQFILL
+        - REQFILLED
+        - REQDEL
+        - REQWIPE
       # reply_target supports "channel", "notice", or a fixed "#channel".
       reply_target: "channel"

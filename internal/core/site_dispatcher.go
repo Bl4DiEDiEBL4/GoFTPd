@@ -22,6 +22,10 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 	if s.Config.Debug {
 		log.Printf("[SITE] siteCmd=%q remainingArgs=%q", siteCmd, remainingArgs)
 	}
+	if !s.canUseSiteCommand(siteCmd) {
+		fmt.Fprintf(s.Conn, "550 Access denied: SITE %s is not allowed.\r\n", siteCmd)
+		return false
+	}
 
 	switch siteCmd {
 	// Informational Commands (site_info.go)
@@ -29,8 +33,22 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 		return s.HandleSiteHelp(remainingArgs)
 	case "RULES":
 		return s.HandleSiteRules(remainingArgs)
-	case "WHO":
+	case "WHO", "SWHO":
 		return s.HandleSiteWho(remainingArgs)
+	case "USERS":
+		return s.HandleSiteUsers(remainingArgs)
+	case "USER":
+		return s.HandleSiteUser(remainingArgs)
+	case "SEEN", "LASTON", "LASTLOGIN":
+		return s.HandleSiteSeen(remainingArgs)
+	case "GROUPS":
+		return s.HandleSiteGroups(remainingArgs)
+	case "GROUP", "GINFO":
+		return s.HandleSiteGroup(remainingArgs)
+	case "GRPNFO":
+		return s.HandleSiteGrpNfo(remainingArgs)
+	case "TRAFFIC":
+		return s.HandleSiteTraffic(remainingArgs)
 
 	// Admin / User & Group Management (site_admin.go)
 	case "ADDUSER":
@@ -63,6 +81,12 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 		return s.HandleSiteNuke(remainingArgs)
 	case "UNNUKE":
 		return s.HandleSiteUnnuke(remainingArgs)
+	case "UNDUPE":
+		return s.HandleSiteUndupe(remainingArgs)
+	case "WIPE":
+		return s.HandleSiteWipe(remainingArgs)
+	case "KICK":
+		return s.HandleSiteKick(remainingArgs)
 	case "REHASH":
 		return s.HandleSiteRehash(remainingArgs)
 
@@ -89,6 +113,66 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 		fmt.Fprintf(s.Conn, "504 Unknown SITE command.\r\n")
 	}
 	return false
+}
+
+func (s *Session) canUseSiteCommand(command string) bool {
+	command = strings.ToUpper(strings.TrimSpace(command))
+	if command == "" {
+		return false
+	}
+	if s != nil && s.ACLEngine != nil && s.ACLEngine.HasRuleType("sitecmd") {
+		return s.ACLEngine.CanPerformRuleOnly(s.User, "sitecmd", command)
+	}
+	if required := requiredSiteCommandFlags(command); required != "" {
+		return siteCommandFlagsAllowed(s, required)
+	}
+	return true
+}
+
+// requiredSiteCommandFlags is the daemon-side equivalent of glftpd's
+// -addip/-deluser/etc command restrictions. Path ACLs still handle release
+// commands such as NUKE/UNNUKE; this table protects account/site admin verbs.
+func requiredSiteCommandFlags(command string) string {
+	switch strings.ToUpper(strings.TrimSpace(command)) {
+	case "WHO",
+		"SWHO",
+		"ADDUSER",
+		"DELUSER",
+		"CHPASS",
+		"ADDIP",
+		"DELIP",
+		"FLAGS",
+		"CHGRP",
+		"CHPGRP",
+		"GADMIN",
+		"GRPADD",
+		"GRPDEL",
+		"USERS",
+		"GRPNFO",
+		"TRAFFIC",
+		"UNDUPE",
+		"WIPE",
+		"KICK",
+		"CHMOD",
+		"REHASH",
+		"ADDAFFIL",
+		"DELAFFIL":
+		return "1"
+	default:
+		return ""
+	}
+}
+
+func siteCommandFlagsAllowed(s *Session, required string) bool {
+	if s == nil || s.User == nil {
+		return false
+	}
+	for _, flag := range strings.Fields(required) {
+		if !s.User.HasFlag(flag) {
+			return false
+		}
+	}
+	return true
 }
 
 type pluginSiteContext struct {

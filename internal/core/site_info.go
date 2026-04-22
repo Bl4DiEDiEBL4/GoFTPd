@@ -4,11 +4,20 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 )
 
 func (s *Session) HandleSiteWho(args []string) bool {
 	fmt.Fprintf(s.Conn, "200- Currently Online:\r\n")
-	fmt.Fprintf(s.Conn, "200- User: %-10s | Flags: %-10s | IP: %s\r\n", s.User.Name, s.User.Flags, s.Conn.RemoteAddr())
+	for _, snap := range listActiveSessions() {
+		user := snap.User
+		if user == "" {
+			user = "(login)"
+		}
+		idle := time.Since(snap.StartedAt).Round(time.Second)
+		fmt.Fprintf(s.Conn, "200- #%d User: %-12s | Flags: %-8s | IP: %-22s | Dir: %-20s | Online: %s\r\n",
+			snap.ID, user, snap.Flags, snap.Remote, snap.CurrentDir, idle)
+	}
 	fmt.Fprintf(s.Conn, "200 End of WHO\r\n")
 	return false
 }

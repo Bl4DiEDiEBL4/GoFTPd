@@ -240,6 +240,14 @@ func (p *Plugin) handleAddAffil(ctx plugin.SiteContext, args []string) bool {
 				ctx.Reply("550 Affil %s already exists, but could not ensure group files: %v\r\n", group, err)
 				return true
 			}
+			predir := affil.Predir
+			if strings.TrimSpace(predir) == "" {
+				predir = path.Join(base, group)
+			}
+			if err := ensureAffilPermissions(p.permissionsFile, p.aclPath(predir), group); err != nil {
+				ctx.Reply("550 Affil %s already exists, but could not repair permissions: %v\r\n", group, err)
+				return true
+			}
 			ctx.Reply("550 Affil %s already exists.\r\n", group)
 			return true
 		}
@@ -820,22 +828,11 @@ func ensureAffilPermissions(filePath, aclPredir, group string) error {
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
-	required := "="+group
-	rules := []permissionRule{
-		{Type: "privpath", Path: aclPredir, Required: required},
-		{Type: "upload", Path: path.Join(aclPredir, "*"), Required: required},
-		{Type: "resume", Path: path.Join(aclPredir, "*"), Required: required},
-		{Type: "download", Path: path.Join(aclPredir, "*"), Required: required},
-		{Type: "makedir", Path: path.Join(aclPredir, "*"), Required: required},
-		{Type: "delete", Path: path.Join(aclPredir, "*"), Required: required},
-		{Type: "rename", Path: path.Join(aclPredir, "*"), Required: required},
-		{Type: "dirlog", Path: path.Join(aclPredir, "*"), Required: required},
-		{Type: "nodupecheck", Path: path.Join(aclPredir, "*"), Required: required},
-	}
-	for _, rule := range rules {
-		if !hasPermissionRule(cfg.Rules, rule) {
-			cfg.Rules = append([]permissionRule{rule}, cfg.Rules...)
-		}
+	required := "=" + group + " =SiteOP"
+	rule := permissionRule{Type: "privpath", Path: aclPredir, Required: required}
+	cfg.Rules = removeLegacyAffilRules(cfg.Rules, aclPredir, group)
+	if !hasPermissionRule(cfg.Rules, rule) {
+		cfg.Rules = append([]permissionRule{rule}, cfg.Rules...)
 	}
 	return savePermissionsFile(filePath, cfg)
 }
@@ -846,9 +843,11 @@ func removeAffilPermissions(filePath, aclPredir, group string) error {
 		return err
 	}
 	required := "=" + group
+	requiredWithSiteOP := "=" + group + " =SiteOP"
 	kept := make([]permissionRule, 0, len(cfg.Rules))
 	for _, rule := range cfg.Rules {
-		if strings.EqualFold(strings.TrimSpace(rule.Required), required) &&
+		ruleRequired := strings.TrimSpace(rule.Required)
+		if (strings.EqualFold(ruleRequired, required) || strings.EqualFold(ruleRequired, requiredWithSiteOP)) &&
 			(strings.EqualFold(rule.Path, aclPredir) || strings.HasPrefix(strings.ToLower(rule.Path), strings.ToLower(aclPredir)+"/")) {
 			continue
 		}
@@ -856,6 +855,34 @@ func removeAffilPermissions(filePath, aclPredir, group string) error {
 	}
 	cfg.Rules = kept
 	return savePermissionsFile(filePath, cfg)
+}
+
+func removeLegacyAffilRules(rules []permissionRule, aclPredir, group string) []permissionRule {
+	required := "=" + group
+	actionPath := path.Join(aclPredir, "*")
+	kept := make([]permissionRule, 0, len(rules))
+	for _, rule := range rules {
+		if strings.EqualFold(strings.TrimSpace(rule.Required), required) {
+			rulePath := strings.TrimSpace(rule.Path)
+			if strings.EqualFold(strings.TrimSpace(rule.Type), "privpath") && strings.EqualFold(rulePath, aclPredir) {
+				continue
+			}
+			if strings.EqualFold(rulePath, actionPath) && isLegacyAffilActionRule(rule.Type) {
+				continue
+			}
+		}
+		kept = append(kept, rule)
+	}
+	return kept
+}
+
+func isLegacyAffilActionRule(ruleType string) bool {
+	switch strings.ToLower(strings.TrimSpace(ruleType)) {
+	case "upload", "resume", "download", "makedir", "delete", "rename", "dirlog", "nodupecheck":
+		return true
+	default:
+		return false
+	}
 }
 
 func loadPermissionsFile(filePath string) (permissionsFileConfig, error) {
@@ -879,14 +906,177 @@ func savePermissionsFile(filePath string, cfg permissionsFileConfig) error {
 	if filePath == "" {
 		return fmt.Errorf("empty permissions file path")
 	}
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return err
-	}
 	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(filePath, data, 0644)
+	return os.WriteFile(filePath, []byte(renderPermissionsFile(cfg)), 0644)
+}
+
+func renderPermissionsFile(cfg permissionsFileConfig) string {
+	var b strings.Builder
+	b.WriteString(`# GoFTPd ACL rules.
+#
+# How matching works:
+#   - Rules are checked top to bottom inside the requested type.
+#   - The first matching rule decides access.
+#   - If no action rule matches, matching privpath rules are checked.
+#   - If nothing matches, flag 1 users are allowed by default.
+#
+# path:
+#   - Paths are virtual paths under acl_base_path, normally /site.
+#   - "*" is a wildcard. /site/* matches everything below /site.
+#   - A trailing slash limits wildcard matches to one directory level,
+#     glftpd-style:
+#       /site/series/*/ matches /site/series/Release/
+#       but not /site/series/Release/Sample/
+#
+# required:
+#   "*"           anyone
+#   "1"           user must have flag 1
+#   "A"           user must have flag A
+#   "=Admin"      user must be a member of group Admin
+#   "@Nick"       user must be FTP user Nick
+#   "=GROUP =SiteOP" user must be in GROUP OR SiteOP
+#   "!4"          user must NOT have flag 4
+#   "!=Group"     user must NOT be in group Group
+#   "!@Nick"      user must NOT be FTP user Nick
+#   "!*"          nobody; explicit deny
+#   "1 =SiteOP"   user must have flag 1 AND be in group SiteOP
+#   "1 A =NUKERS" user must have flags 1 and A AND be in group NUKERS
+#
+# rule types used here:
+#   privpath      hides/blocks paths unless the user matches required
+#   upload        STOR permission
+#   resume        resume permission placeholder for clients/configs
+#   download      RETR permission
+#   makedir       MKD and RMD permission
+#   dirlog        visibility for SITE SEARCH / dirlog-like listings
+#   rename        rename permission
+#   renameown     owner-only rename policy
+#   nuke          SITE NUKE permission
+#   unnuke        SITE UNNUKE permission
+#   delete        DELE permission
+#   deleteown     owner-only delete policy
+#   filemove      cross-directory/manual move permission placeholder
+#   nodupecheck   marks paths intended to skip dupe-db checks; overwrite
+#                 protection still rejects uploads to an existing filename
+#   sitecmd       controls who may run SITE subcommands by command name
+#
+rules:
+`)
+	sections := []struct {
+		Name  string
+		About string
+		Types []string
+	}{
+		{
+			Name:  "SITE commands",
+			About: "Command-level ACLs. Use a specific command before the wildcard for exceptions.",
+			Types: []string{"sitecmd"},
+		},
+		{
+			Name:  "Private paths and affil predirs",
+			About: "Private paths hide/block dirs unless the user matches required. Affil PRE dirs should normally be only one privpath rule, e.g. =GROUP =SiteOP.",
+			Types: []string{"privpath"},
+		},
+		{
+			Name:  "Transfers",
+			About: "Upload, resume, and download access. Speedtest credits are handled in code; these rules only grant access.",
+			Types: []string{"upload", "resume", "download"},
+		},
+		{
+			Name:  "Directory creation/removal",
+			About: "MKD and RMD checks use makedir rules.",
+			Types: []string{"makedir"},
+		},
+		{
+			Name:  "Directory logs/search",
+			About: "Controls SITE SEARCH and dirlog-like visibility.",
+			Types: []string{"dirlog"},
+		},
+		{
+			Name:  "Rename",
+			About: "Rename rules control RNFR/RNTO. renameown allows matching users to rename only their own entries.",
+			Types: []string{"rename", "renameown"},
+		},
+		{
+			Name:  "Nuke/unnuke",
+			About: "Separate permissions for SITE NUKE and SITE UNNUKE.",
+			Types: []string{"nuke", "unnuke"},
+		},
+		{
+			Name:  "Delete",
+			About: "Delete rules control DELE. deleteown allows matching users to delete only their own entries.",
+			Types: []string{"delete", "deleteown"},
+		},
+		{
+			Name:  "File moves",
+			About: "Explicit filemove support, usually Admin-only.",
+			Types: []string{"filemove"},
+		},
+		{
+			Name:  "Dupe-check exclusions",
+			About: "Paths intended to skip dupe-db checks. Existing-file overwrite protection still applies.",
+			Types: []string{"nodupecheck"},
+		},
+	}
+	used := make([]bool, len(cfg.Rules))
+	for _, section := range sections {
+		wroteHeader := false
+		for i, rule := range cfg.Rules {
+			if used[i] || !containsStringFold(section.Types, rule.Type) {
+				continue
+			}
+			if !wroteHeader {
+				writePermissionSectionHeader(&b, section.Name, section.About)
+				wroteHeader = true
+			}
+			writePermissionRule(&b, rule)
+			used[i] = true
+		}
+	}
+	wroteOther := false
+	for i, rule := range cfg.Rules {
+		if used[i] {
+			continue
+		}
+		if !wroteOther {
+			writePermissionSectionHeader(&b, "Other rules", "Rules not recognized by the standard example sections are preserved here.")
+			wroteOther = true
+		}
+		writePermissionRule(&b, rule)
+	}
+	return b.String()
+}
+
+func writePermissionSectionHeader(b *strings.Builder, title, about string) {
+	b.WriteString("\n  # ---------------------------------------------------------------------------\n")
+	b.WriteString("  # " + title + "\n")
+	if strings.TrimSpace(about) != "" {
+		b.WriteString("  # " + about + "\n")
+	}
+	b.WriteString("  # ---------------------------------------------------------------------------\n")
+}
+
+func writePermissionRule(b *strings.Builder, rule permissionRule) {
+	b.WriteString("  - type: ")
+	b.WriteString(strconv.Quote(strings.TrimSpace(rule.Type)))
+	b.WriteByte('\n')
+	b.WriteString("    path: ")
+	b.WriteString(strconv.Quote(strings.TrimSpace(rule.Path)))
+	b.WriteByte('\n')
+	b.WriteString("    required: ")
+	b.WriteString(strconv.Quote(strings.TrimSpace(rule.Required)))
+	b.WriteByte('\n')
+}
+
+func containsStringFold(values []string, needle string) bool {
+	for _, value := range values {
+		if strings.EqualFold(value, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasPermissionRule(rules []permissionRule, needle permissionRule) bool {
