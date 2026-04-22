@@ -207,8 +207,8 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 			section, rel, vars["genre"], vars["year"], vars["sample_rate"], vars["channels"], vars["bitrate"], vars["bitrate_mode"])
 		outs = append(outs, plugin.Output{Type: "AUDIOINFO", Text: p.render("AUDIOINFO", vars, fallback)})
 	case event.EventMediaInfo:
-		fallback := fmt.Sprintf("MEDIA-INFO: [%s] %s %sx%s %s %s %s.",
-			section, rel, vars["width"], vars["height"], vars["video_format"], vars["audio_format"], vars["duration"])
+		fallback := fmt.Sprintf("SAMPLE-INFO: [%s] %s - Video: %s %sx%s - Audio: %s %s - Subs: %s - Duration: %s",
+			section, rel, vars["video_format"], vars["width"], vars["height"], vars["audio_format"], vars["channels"], vars["subtitle_format"], vars["duration"])
 		outs = append(outs, plugin.Output{Type: "MEDIAINFO", Text: p.render("MEDIAINFO", vars, fallback)})
 	case event.EventSpeedtest:
 		nick := vars["nick"]
@@ -322,7 +322,7 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 			outs = append(outs, plugin.Output{Type: "STATS", Text: line})
 		}
 	case event.EventRaceFooter:
-		if line := strings.TrimSpace(p.render("STATS_END", vars, "STATS: -----------====>>>>           END          <<<<====-----------")); line != "" {
+		if line := strings.TrimRight(p.render("STATS_END", vars, "STATS: -----------====>>>>           END          <<<<====-----------\n "), "\r\n"); line != "" {
 			outs = append(outs, plugin.Output{Type: "STATS", Text: line})
 		}
 	case event.EventNuke:

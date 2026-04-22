@@ -86,7 +86,7 @@ func (b *Bot) initializePlugins() error {
 			fakeEvt := &event.Event{Type: event.EventMKDir, Section: section, Path: relpath}
 			channels := b.routeChannels(fakeEvt, outType)
 			for _, line := range strings.Split(text, "\n") {
-				line = strings.TrimSpace(line)
+				line = strings.TrimRight(line, "\r")
 				if line == "" {
 					continue
 				}
@@ -112,7 +112,7 @@ func (b *Bot) initializePlugins() error {
 			fakeEvt := &event.Event{Type: event.EventMKDir, Section: section, Path: relpath}
 			channels := b.routeChannels(fakeEvt, outType)
 			for _, line := range strings.Split(text, "\n") {
-				line = strings.TrimSpace(line)
+				line = strings.TrimRight(line, "\r")
 				if line == "" {
 					continue
 				}
@@ -470,7 +470,7 @@ func (b *Bot) handleEvent(evt *event.Event) {
 	for _, out := range outs {
 		if strings.TrimSpace(out.Target) != "" {
 			for _, line := range strings.Split(out.Text, "\n") {
-				line = strings.TrimSpace(line)
+				line = strings.TrimRight(line, "\r")
 				if line == "" {
 					continue
 				}
@@ -497,7 +497,7 @@ func (b *Bot) handleEvent(evt *event.Event) {
 			continue
 		}
 		for _, line := range strings.Split(out.Text, "\n") {
-			line = strings.TrimSpace(line)
+			line = strings.TrimRight(line, "\r")
 			if line == "" {
 				continue
 			}

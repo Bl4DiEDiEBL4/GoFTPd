@@ -389,8 +389,8 @@ func (p *IMDBPlugin) doLookup(job imdbJob) {
 		}
 	}
 	if text == "" {
-		text = fmt.Sprintf("MOVIE-INFO: [%s] %s (%s) - Genre: %s - Rating: %s/10 (%s votes) - Metacritic: %s - Runtime: %s - Director: %s - Stars: %s - Country: %s - Language: %s - Link: %s",
-			job.section, m.PrimaryTitle, yr, genres, rating, votes, metacritic, runtime, director, stars, country, language, link)
+		text = fmt.Sprintf("MOVIE-INFO: [%s] %s - %s (%s) - Genre: %s - Rating: %s/10 (%s votes) - Metacritic: %s - Runtime: %s - Country: %s - Language: %s - Link: %s\nMOVIE-INFO: [%s] %s - Director: %s - Stars: %s",
+			job.section, job.rel, m.PrimaryTitle, yr, genres, rating, votes, metacritic, runtime, country, language, link, job.section, job.rel, director, stars)
 	}
 
 	if p.asyncEmit != nil {

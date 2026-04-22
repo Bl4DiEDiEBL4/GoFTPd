@@ -323,7 +323,7 @@ announce.NEWDAY = "%b{%c%sec_c1{NEW DAY:}} %c01{-}%section_colored%c01{- A new d
 
 announce.AUDIOINFO = "%b{%c%sec_c1{AUDIO-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{Get ready for some} %c%sec_c5{%genre} %c01{from} %c%sec_c5{%year} %c01{at} %c%sec_c5{%sample_rate}Hz %c01{in} %c%sec_c5{%channels} %c%sec_c5{%bitrate} %c01{(}%c%sec_c5{%bitrate_mode}%c01{).}"
 
-announce.MEDIAINFO = "%b{%c%sec_c1{SAMPLE-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{Video:} %c%sec_c5{%video_format} %c01{%width}x%height %c01{- Audio:} %c%sec_c5{%audio_format} %c01{%channels} %c01{- Subs:} %c%sec_c5{%subtitle_format} %c01{- Duration:} %c%sec_c5{%duration}"
+announce.MEDIAINFO = "%b{%c%sec_c1{SAMPLE-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{- Video:} %c%sec_c5{%video_format} %c01{%width}x%height %c01{- Audio:} %c%sec_c5{%audio_format} %c01{%channels} %c01{- Subs:} %c%sec_c5{%subtitle_format} %c01{- Duration:} %c%sec_c5{%duration}"
 
 announce.SPEEDTEST = "%b{%c03{SPEEDTEST:}} %c04{%nick} %c01{%action} %c01{a} %c05{%{size_mb}MB} %c01{file with} %c06{%speed_mbs}"
 
@@ -341,19 +341,19 @@ announce.NEWLEADER = "%b{%c04{NEW LEADER:}} %c01{[}%section_colored%c01{]} %c%se
 
 announce.HALFWAY = "%b{%c13{HALFWAY:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{- avg speed:} %c%sec_c5{%t_avgspeed} %c01{- time left:} %c%sec_c5{%t_timeleft} %c01{- leader:} %c%sec_c4{%leader_name} %c01{[}%c%sec_c5{%{leader_mb}MB}%c01{/}%c%sec_c5{%{leader_files}F}%c01{/}%c%sec_c5{%{leader_pct}%}%c01{/}%c%sec_c5{%leader_speed}%c01{] -} %c%sec_c5{%t_filesleft} %c01{files left.}"
 
-announce.TVINFO = "%b{%c%sec_c1{TV-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{Genre:} %c%sec_c5{%genre} %c01{- Type:} %c%sec_c5{%b{%type}} %c01{- Link:} %c%sec_c5{%link}\n%b{%c%sec_c1{TV-INFO:}} %c01{[}%section_colored%c01{]} %c01{Network:} %c%sec_c5{%b{%network}} %c01{- Rating:} %b{%c%sec_c5{%rating}} %c01{- Language:} %c%sec_c5{%language}"
+announce.TVINFO = "%b{%c%sec_c1{TV-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{- Genre:} %c%sec_c5{%genre} %c01{- Type:} %c%sec_c5{%b{%type}} %c01{- Link:} %c%sec_c5{%link}\n%b{%c%sec_c1{TV-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{- Network:} %c%sec_c5{%b{%network}} %c01{- Rating:} %b{%c%sec_c5{%rating}} %c01{- Language:} %c%sec_c5{%language}"
 
-announce.MOVIEINFO = "%b{%c%sec_c1{MOVIE-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%title}} %c01{(}%c%sec_c5{%year}%c01{)} %c01{-} %c%sec_c5{%genre} %c01{-} %b{%c%sec_c5{%rating}}/10 %c01{(}%c%sec_c5{%votes} votes%c01{) - Metacritic:} %c%sec_c5{%metacritic} %c01{-} %c%sec_c5{%runtime} %c01{-} %c%sec_c5{%language} %c01{-} %c%sec_c5{%link}\n%b{%c%sec_c1{MOVIE-INFO:}} %c01{[}%section_colored%c01{]} %c01{Director:} %c%sec_c4{%director} %c01{- Stars:} %c%sec_c4{%stars}"
+announce.MOVIEINFO = "%b{%c%sec_c1{MOVIE-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{-} %c%sec_c5{%title} %c01{(}%c%sec_c5{%year}%c01{)} %c01{- Genre:} %c%sec_c5{%genre} %c01{-} %b{%c%sec_c5{%rating}}/10 %c01{(}%c%sec_c5{%votes} votes%c01{) - Metacritic:} %c%sec_c5{%metacritic} %c01{-} %c%sec_c5{%runtime} %c01{-} %c%sec_c5{%language} %c01{-} %c%sec_c5{%link}\n%b{%c%sec_c1{MOVIE-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{- Director:} %c%sec_c4{%director} %c01{- Stars:} %c%sec_c4{%stars}"
 
 announce.COMPLETE = "%b{%c%sec_c1{COMPLETE:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{by} %c%sec_c5{%u_count} %c01{racers -} %c%sec_c5{%t_mbytes}%c01{/}%c%sec_c5{%t_files}%c01{/}%c%sec_c5{%t_avgspeed}%c01{/}%c%sec_c5{%t_duration}"
 
-announce.STATS_HOF = "%b{%c02{STATS:}} Users Hall Of Fame"
+announce.STATS_HOF = "%b{%c02{STATS:}} ▂▃▅▇█▓▒░۩۞۩  %c03{Users Hall Of Fame} ۩۞۩░▒▓█▇▅▃▂"
 
 announce.STATS_SPEEDS = "%b{%c02{STATS:}} %c01{Slowest:} %c04{%u_slowest_name} %c01{at} %c05{%u_slowest_speed} %c01{-} %c01{Fastest:} %c04{%u_fastest_name} %c01{at} %c05{%u_fastest_speed}%c01{.}"
 
 announce.STATS_USER = "%b{%c02{STATS:}} %c01{[}%c03{%u_rank}%c01{]} %c04{%u_name}%c01{/}%c06{%u_group} %c01{-} %c05{%b{%{u_files}f}} %c01{-} %c05{%b{%{u_mb}MB}} %c01{-} %c05{%b{%{u_pct}%}} %c01{-} %c05{%u_speed}"
 
-announce.STATS_END = "%b{%c02{STATS:}} -----------====>>>>           %c03{END}          <<<<====-----------"
+announce.STATS_END = "%b{%c02{STATS:}} -----------====>>>>           %c03{END}          <<<<====-----------\n "
 
 announce.NUKE = "%b{%c04{NUKE:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{by} %c04{%u_name}"
 

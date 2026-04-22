@@ -292,8 +292,8 @@ func (p *TVMazePlugin) doLookup(job tvmazeJob) {
 		}
 	}
 	if text == "" {
-		text = fmt.Sprintf("TV-INFO: [%s] %s Genre: %s - Type: %s - Link: %s - Network: %s - Rating: %s - Language: %s",
-			job.section, job.rel, genres, showType, link, network, rating, language)
+		text = fmt.Sprintf("TV-INFO: [%s] %s - Genre: %s - Type: %s - Link: %s\nTV-INFO: [%s] %s - Network: %s - Rating: %s - Language: %s",
+			job.section, job.rel, genres, showType, link, job.section, job.rel, network, rating, language)
 	}
 
 	if p.asyncEmit != nil {
