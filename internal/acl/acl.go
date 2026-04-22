@@ -105,10 +105,13 @@ func pathMatches(pattern, vpath string) bool {
 		return false
 	}
 
-	pattern = filepath.Clean(pattern)
-	vpath = filepath.Clean(vpath)
+	pattern = filepath.ToSlash(filepath.Clean(rawPattern))
+	vpath = filepath.ToSlash(filepath.Clean(rawPath))
 
 	if pattern == vpath {
+		return true
+	}
+	if ok, _ := pathpkg.Match(pattern, vpath); ok {
 		return true
 	}
 
@@ -147,9 +150,25 @@ func checkRequired(required string, u *user.User) bool {
 
 	var flags []string
 	var groups []string
+	var denyFlags []string
+	allowAll := false
 	for _, token := range strings.Fields(required) {
 		token = strings.TrimSpace(token)
 		if token == "" {
+			continue
+		}
+		if token == "*" {
+			allowAll = true
+			continue
+		}
+		if token == "!*" {
+			return false
+		}
+		if strings.HasPrefix(token, "!") {
+			flag := strings.TrimSpace(strings.TrimPrefix(token, "!"))
+			if flag != "" {
+				denyFlags = append(denyFlags, flag)
+			}
 			continue
 		}
 		if strings.HasPrefix(token, "=") {
@@ -162,11 +181,16 @@ func checkRequired(required string, u *user.User) bool {
 		flags = append(flags, token)
 	}
 
+	for _, flag := range denyFlags {
+		if u.HasFlag(flag) {
+			return false
+		}
+	}
 	if !hasAllFlags(u, flags) {
 		return false
 	}
 	if len(groups) == 0 {
-		return true
+		return allowAll || len(flags) > 0 || len(denyFlags) > 0
 	}
 	for _, group := range groups {
 		if u.IsInGroup(group) {
@@ -175,6 +199,30 @@ func checkRequired(required string, u *user.User) bool {
 	}
 
 	return false
+}
+
+func ruleTypeForAction(action string) string {
+	action = strings.ToLower(action)
+	switch action {
+	case "upload":
+		return "upload"
+	case "download":
+		return "download"
+	case "mkd":
+		return "makedir"
+	case "rmd":
+		return "makedir"
+	case "delete", "dele":
+		return "delete"
+	case "rnfr", "rnto":
+		return "rename"
+	case "nuke":
+		return "nuke"
+	case "unnuke":
+		return "unnuke"
+	default:
+		return action
+	}
 }
 
 func hasAllFlags(u *user.User, flags []string) bool {
@@ -202,25 +250,7 @@ func (e *Engine) CanPerform(u *user.User, action string, vpath string) bool {
 	vpath = filepath.Clean(vpath)
 
 	// Map FTP commands to rule types
-	ruleType := action
-	switch action {
-	case "upload":
-		ruleType = "upload"
-	case "download":
-		ruleType = "download"
-	case "mkd":
-		ruleType = "makedir"
-	case "rmd":
-		ruleType = "makedir"
-	case "delete", "dele":
-		ruleType = "delete"
-	case "rnfr", "rnto":
-		ruleType = "rename"
-	case "nuke":
-		ruleType = "nuke"
-	case "unnuke":
-		ruleType = "unnuke"
-	}
+	ruleType := ruleTypeForAction(action)
 
 	// Check rules for this action type only
 	if rules, ok := e.RulesByType[ruleType]; ok {
@@ -242,4 +272,31 @@ func (e *Engine) CanPerform(u *user.User, action string, vpath string) bool {
 
 	// Default: siteop (flag 1) always allowed
 	return u.HasFlag("1")
+}
+
+// CanPerformRuleOnly checks only rules for the requested action. Unlike
+// CanPerform, it does not fall back to privpath or default siteop behavior.
+// Use it for non-permission modifiers such as nodupecheck.
+func (e *Engine) CanPerformRuleOnly(u *user.User, action string, vpath string) bool {
+	if u == nil {
+		return false
+	}
+	ruleType := ruleTypeForAction(action)
+	vpath = filepath.Clean(vpath)
+	if rules, ok := e.RulesByType[ruleType]; ok {
+		for _, rule := range rules {
+			if pathMatches(rule.Path, vpath) {
+				return checkRequired(rule.Required, u)
+			}
+		}
+	}
+	return false
+}
+
+func (e *Engine) HasRuleType(ruleType string) bool {
+	if e == nil {
+		return false
+	}
+	_, ok := e.RulesByType[strings.ToLower(strings.TrimSpace(ruleType))]
+	return ok
 }

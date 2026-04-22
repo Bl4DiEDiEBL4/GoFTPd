@@ -22,8 +22,8 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 	if s.Config.Debug {
 		log.Printf("[SITE] siteCmd=%q remainingArgs=%q", siteCmd, remainingArgs)
 	}
-	if required := requiredSiteCommandFlags(siteCmd); required != "" && !siteCommandFlagsAllowed(s, required) {
-		fmt.Fprintf(s.Conn, "550 Access denied: SITE %s requires flag(s) %s.\r\n", siteCmd, required)
+	if !s.canUseSiteCommand(siteCmd) {
+		fmt.Fprintf(s.Conn, "550 Access denied: SITE %s is not allowed.\r\n", siteCmd)
 		return false
 	}
 
@@ -113,6 +113,20 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 		fmt.Fprintf(s.Conn, "504 Unknown SITE command.\r\n")
 	}
 	return false
+}
+
+func (s *Session) canUseSiteCommand(command string) bool {
+	command = strings.ToUpper(strings.TrimSpace(command))
+	if command == "" {
+		return false
+	}
+	if s != nil && s.ACLEngine != nil && s.ACLEngine.HasRuleType("sitecmd") {
+		return s.ACLEngine.CanPerformRuleOnly(s.User, "sitecmd", command)
+	}
+	if required := requiredSiteCommandFlags(command); required != "" {
+		return siteCommandFlagsAllowed(s, required)
+	}
+	return true
 }
 
 // requiredSiteCommandFlags is the daemon-side equivalent of glftpd's

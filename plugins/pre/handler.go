@@ -936,6 +936,8 @@ func renderPermissionsFile(cfg permissionsFileConfig) string {
 #   "A"           user must have flag A
 #   "=Admin"      user must be a member of group Admin
 #   "=GROUP =SiteOP" user must be in GROUP OR SiteOP
+#   "!4"          user must NOT have flag 4
+#   "!*"          nobody; explicit deny
 #   "1 =SiteOP"   user must have flag 1 AND be in group SiteOP
 #   "1 A =NUKERS" user must have flags 1 and A AND be in group NUKERS
 #
@@ -947,14 +949,15 @@ func renderPermissionsFile(cfg permissionsFileConfig) string {
 #   makedir       MKD and RMD permission
 #   dirlog        visibility for SITE SEARCH / dirlog-like listings
 #   rename        rename permission
-#   renameown     owner-only rename policy placeholder
+#   renameown     owner-only rename policy
 #   nuke          SITE NUKE permission
 #   unnuke        SITE UNNUKE permission
 #   delete        DELE permission
-#   deleteown     owner-only delete policy placeholder
+#   deleteown     owner-only delete policy
 #   filemove      cross-directory/manual move permission placeholder
 #   nodupecheck   marks paths intended to skip dupe-db checks; overwrite
 #                 protection still rejects uploads to an existing filename
+#   sitecmd       controls who may run SITE subcommands by command name
 #
 rules:
 `)
@@ -963,6 +966,11 @@ rules:
 		About string
 		Types []string
 	}{
+		{
+			Name:  "SITE commands",
+			About: "Command-level ACLs. Use a specific command before the wildcard for exceptions.",
+			Types: []string{"sitecmd"},
+		},
 		{
 			Name:  "Private paths and affil predirs",
 			About: "Private paths hide/block dirs unless the user matches required. Affil PRE dirs should normally be only one privpath rule, e.g. =GROUP =SiteOP.",
@@ -985,7 +993,7 @@ rules:
 		},
 		{
 			Name:  "Rename",
-			About: "Rename rules control RNFR/RNTO. renameown is reserved for owner-only policies.",
+			About: "Rename rules control RNFR/RNTO. renameown allows matching users to rename only their own entries.",
 			Types: []string{"rename", "renameown"},
 		},
 		{
@@ -995,7 +1003,7 @@ rules:
 		},
 		{
 			Name:  "Delete",
-			About: "Delete rules control DELE. deleteown is reserved for owner-only policies.",
+			About: "Delete rules control DELE. deleteown allows matching users to delete only their own entries.",
 			Types: []string{"delete", "deleteown"},
 		},
 		{
