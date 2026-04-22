@@ -1100,8 +1100,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					}
 				}
 
+				isSpeedtest := isSpeedtestPath(filePath)
 				if fileSize > 0 {
-					s.User.UpdateStats(fileSize, true)
+					s.User.UpdateStatsWithCredits(fileSize, true, !isSpeedtest)
 				}
 				speedMB := 0.0
 				if xferMs > 0 {
@@ -1248,8 +1249,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					}
 				}
 
+				isSpeedtest := isSpeedtestPath(filePath)
 				if fileSize > 0 {
-					s.User.UpdateStats(fileSize, true)
+					s.User.UpdateStatsWithCredits(fileSize, true, !isSpeedtest)
 				}
 				speedMB := 0.0
 				if xferMs > 0 {
@@ -1348,7 +1350,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					fmt.Fprintf(s.Conn, "550 File not found on any slave.\r\n")
 					return false
 				}
-				if !s.User.CanDownload("", fileSize) {
+				isSpeedtest := isSpeedtestPath(filePath)
+				if !isSpeedtest && !s.User.CanDownload("", fileSize) {
 					fmt.Fprintf(s.Conn, "550 Not enough credits.\r\n")
 					return false
 				}
@@ -1358,7 +1361,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					fmt.Fprintf(s.Conn, "150 Opening binary mode data connection for %s (%d bytes).\r\n", args[0], fileSize)
 					log.Printf("[Passthrough] RETR %s via slave %s (xferIdx=%d)", filePath, slaveName, s.PassthruXferIdx)
 
+					start := time.Now()
 					err := bridge.SlaveSendPassthrough(filePath, s.PassthruXferIdx, slaveName)
+					xferMs := time.Since(start).Milliseconds()
 					s.PassthruSlave = nil
 					s.PretCmd = ""
 					s.PretArg = ""
@@ -1369,9 +1374,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					} else {
 						fmt.Fprintf(s.Conn, "226 Transfer complete.\r\n")
 						if fileSize > 0 {
-							s.User.UpdateStats(fileSize, false)
+							s.User.UpdateStatsWithCredits(fileSize, false, !isSpeedtest)
 						}
-						s.emitEvent(EventDownload, filePath, args[0], fileSize, 0, nil)
+						s.emitEvent(EventDownload, filePath, args[0], fileSize, transferSpeedMB(fileSize, xferMs), nil)
 					}
 				} else {
 					raw, err := s.getRawDataConn()
@@ -1385,7 +1390,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						raw.Close()
 						return false
 					}
+					start := time.Now()
 					err = bridge.DownloadFile(filePath, dataConn)
+					xferMs := time.Since(start).Milliseconds()
 					dataConn.Close()
 					s.PretCmd = ""
 					s.PretArg = ""
@@ -1395,8 +1402,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					} else {
 						fmt.Fprintf(s.Conn, "226 Transfer complete.\r\n")
 						if fileSize > 0 {
-							s.User.UpdateStats(fileSize, false)
+							s.User.UpdateStatsWithCredits(fileSize, false, !isSpeedtest)
 						}
+						s.emitEvent(EventDownload, filePath, args[0], fileSize, transferSpeedMB(fileSize, xferMs), nil)
 					}
 				}
 			} else {
@@ -1505,6 +1513,18 @@ func (s *Session) showGlobalStats(code string, final bool) {
 }
 
 func mbString(size int64) string { return fmt.Sprintf("%.0fMB", float64(size)/1024.0/1024.0) }
+
+func isSpeedtestPath(p string) bool {
+	clean := strings.ToLower(path.Clean("/" + strings.TrimSpace(p)))
+	return clean == "/speedtest" || strings.HasPrefix(clean, "/speedtest/")
+}
+
+func transferSpeedMB(size int64, xferMs int64) float64 {
+	if size <= 0 || xferMs <= 0 {
+		return 0
+	}
+	return (float64(size) / 1024.0 / 1024.0) / (float64(xferMs) / 1000.0)
+}
 
 func ftpListMode(e MasterFileEntry) string {
 	switch {

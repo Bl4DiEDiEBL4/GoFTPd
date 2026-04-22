@@ -37,6 +37,10 @@ type MasterBridge interface {
 	// Chmod changes permissions in VFS/slaves.
 	Chmod(path string, mode uint32) error
 
+	// CreateSparseFile creates a file with the requested logical size without
+	// streaming bytes through the master.
+	CreateSparseFile(filePath string, size int64, owner, group string) error
+
 	// GetFileSize returns file size from VFS, or -1 if not found.
 	GetFileSize(filePath string) int64
 

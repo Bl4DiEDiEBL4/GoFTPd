@@ -50,6 +50,8 @@ announce.AUDIOINFO = "%b{%c%sec_c1{AUDIO-INFO:}} %c01{[}%section_colored%c01{]} 
 
 announce.MEDIAINFO = "%b{%c%sec_c1{SAMPLE-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{Video:} %c%sec_c5{%video_format} %c01{%width}x%height %c01{- Audio:} %c%sec_c5{%audio_format} %c01{%channels} %c01{- Subs:} %c%sec_c5{%subtitle_format} %c01{- Duration:} %c%sec_c5{%duration}"
 
+announce.SPEEDTEST = "%b{%c03{SPEEDTEST:}} %c04{%nick} %c01{%action} %c01{a} %c05{%{size_mb}MB} %c01{file with} %c06{%speed_mbs}"
+
 announce.SFV_RAR = "%b{%c%sec_c1{RACE:}} %c01{[}%section_colored%c01{]} Got SFV for %c%sec_c3{%b{%relname}} %c01{uploaded by} %c%sec_c4{%u_name}%c01{. Now expecting} %c%sec_c5{%b{%t_filecount}} %c01{%t_file_label.}"
 
 announce.UPDATE_RAR = "%b{%c%sec_c1{RACE:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{got its first rar file from} %c%sec_c4{%u_name} %c01{at} %c%sec_c5{%u_speed}%c01{. Now expecting} %c%sec_c5{%b{%t_mbytes}}%c01{.}"

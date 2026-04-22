@@ -338,6 +338,13 @@ func (u *User) Save() error {
 
 // UpdateStats increments throughput metrics and manages credits
 func (u *User) UpdateStats(bytes int64, isUpload bool) {
+	u.UpdateStatsWithCredits(bytes, isUpload, true)
+}
+
+// UpdateStatsWithCredits increments throughput metrics and optionally applies
+// ratio credits. Free sections such as speedtest still count traffic, but do
+// not add upload credits or charge download credits.
+func (u *User) UpdateStatsWithCredits(bytes int64, isUpload bool, applyCredits bool) {
 	if isUpload {
 		u.AllUp.Files++
 		u.AllUp.Bytes += bytes
@@ -348,7 +355,7 @@ func (u *User) UpdateStats(bytes int64, isUpload bool) {
 		u.MonthUp.Files++
 		u.MonthUp.Bytes += bytes
 		
-		if u.Ratio > 0 {
+		if applyCredits && u.Ratio > 0 {
 			u.Credits += (bytes * int64(u.Ratio))
 		}
 	} else {
@@ -361,7 +368,7 @@ func (u *User) UpdateStats(bytes int64, isUpload bool) {
 		u.MonthDn.Files++
 		u.MonthDn.Bytes += bytes
 		
-		if u.Ratio > 0 {
+		if applyCredits && u.Ratio > 0 {
 			u.Credits -= bytes
 			if u.Credits < 0 {
 				u.Credits = 0

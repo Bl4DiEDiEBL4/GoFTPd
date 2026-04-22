@@ -145,9 +145,9 @@ func checkRequired(required string, u *user.User) bool {
 		return true
 	}
 
-	// Single flag like "1" or "A"
-	if len(required) == 1 && !strings.Contains(required, " ") {
-		return u.HasFlag(required)
+	// Single flag like "1" or "A", or multiple flags like "1 A".
+	if !strings.Contains(required, "=") {
+		return hasAllFlags(u, strings.Fields(required))
 	}
 
 	// Group check like "1 =SiteOP" or "A =NUKERS"
@@ -162,12 +162,27 @@ func checkRequired(required string, u *user.User) bool {
 				return u.IsInGroup(groupName)
 			}
 
-			// Otherwise check flag AND group: "1 =SiteOP"
-			return u.HasFlag(flagPart) && u.IsInGroup(groupName)
+			// Otherwise check flag(s) AND group: "1 =SiteOP" or "1 A =NUKERS"
+			return hasAllFlags(u, strings.Fields(flagPart)) && u.IsInGroup(groupName)
 		}
 	}
 
 	return false
+}
+
+func hasAllFlags(u *user.User, flags []string) bool {
+	if len(flags) == 0 {
+		return true
+	}
+	for _, flag := range flags {
+		if flag == "" {
+			continue
+		}
+		if !u.HasFlag(flag) {
+			return false
+		}
+	}
+	return true
 }
 
 // CanPerform checks if user can perform action in path
