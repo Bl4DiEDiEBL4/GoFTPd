@@ -14,12 +14,6 @@ import (
 )
 
 func (s *Session) HandleSiteNuke(args []string) bool {
-	aclPath := path.Join(s.Config.ACLBasePath, s.CurrentDir)
-	if !s.ACLEngine.CanPerform(s.User, "NUKE", aclPath) {
-		fmt.Fprintf(s.Conn, "550 Insufficient flags.\r\n")
-		return false
-	}
-
 	// Parse: SITE NUKE <dir> <x multiplier> [reason]
 	if len(args) < 2 {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE NUKE <dir> <xN> [reason]\r\n")
@@ -45,7 +39,20 @@ func (s *Session) HandleSiteNuke(args []string) bool {
 		reason = strings.Join(args[2:], " ")
 	}
 
+	if bridge, ok := s.masterBridge(); ok {
+		return s.handleSiteNukeVFS(bridge, target, multiplier, reason)
+	}
+
 	// Get target directory
+	targetPath := target
+	if !strings.HasPrefix(targetPath, "/") {
+		targetPath = path.Join(s.CurrentDir, targetPath)
+	}
+	aclPath := path.Join(s.Config.ACLBasePath, path.Clean(targetPath))
+	if !s.ACLEngine.CanPerform(s.User, "NUKE", aclPath) {
+		fmt.Fprintf(s.Conn, "550 Insufficient flags.\r\n")
+		return false
+	}
 	fullPath := filepath.Join(s.Config.StoragePath, s.CurrentDir, target)
 	dirName := filepath.Base(fullPath)
 
@@ -132,12 +139,6 @@ func (s *Session) HandleSiteNuke(args []string) bool {
 }
 
 func (s *Session) HandleSiteUnnuke(args []string) bool {
-	aclPath := path.Join(s.Config.ACLBasePath, s.CurrentDir)
-	if !s.ACLEngine.CanPerform(s.User, "UNNUKE", aclPath) {
-		fmt.Fprintf(s.Conn, "550 Insufficient flags.\r\n")
-		return false
-	}
-
 	// Parse: SITE UNNUKE <dir> [reason]
 	if len(args) < 1 {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE UNNUKE <dir> [reason]\r\n")
@@ -145,6 +146,19 @@ func (s *Session) HandleSiteUnnuke(args []string) bool {
 	}
 
 	target := args[0]
+	if bridge, ok := s.masterBridge(); ok {
+		return s.handleSiteUnnukeVFS(bridge, target)
+	}
+
+	targetPath := target
+	if !strings.HasPrefix(targetPath, "/") {
+		targetPath = path.Join(s.CurrentDir, targetPath)
+	}
+	aclPath := path.Join(s.Config.ACLBasePath, path.Clean(targetPath))
+	if !s.ACLEngine.CanPerform(s.User, "UNNUKE", aclPath) {
+		fmt.Fprintf(s.Conn, "550 Insufficient flags.\r\n")
+		return false
+	}
 	fullPath := filepath.Join(s.Config.StoragePath, s.CurrentDir, target)
 	dirName := filepath.Base(fullPath)
 
@@ -219,4 +233,192 @@ func (s *Session) HandleSiteUnnuke(args []string) bool {
 	fmt.Fprintf(s.Conn, "200 Unnuked: %d MB, %d users affected, %d credits restored.\r\n",
 		len(uploaderBytes), len(uploaderBytes), totalRestored)
 	return true
+}
+
+func (s *Session) handleSiteNukeVFS(bridge MasterBridge, target string, multiplier int, reason string) bool {
+	dirPath, ok := s.resolveSiteDir(bridge, target, false)
+	if !ok {
+		return false
+	}
+	dirName := path.Base(dirPath)
+	if strings.HasPrefix(dirName, "[NUKED]-") {
+		fmt.Fprintf(s.Conn, "550 Directory is already nuked: %s\r\n", dirPath)
+		return false
+	}
+	aclPath := path.Join(s.Config.ACLBasePath, dirPath)
+	if !s.ACLEngine.CanPerform(s.User, "NUKE", aclPath) {
+		fmt.Fprintf(s.Conn, "550 Insufficient flags for %s.\r\n", dirPath)
+		return false
+	}
+
+	uploaderBytes := vfsUploaderBytes(bridge.ListDir(dirPath))
+	totalNuked := s.applyNukeCredits(uploaderBytes, multiplier)
+	newName := "[NUKED]-" + dirName
+	bridge.RenameFile(dirPath, path.Dir(dirPath), newName)
+
+	s.emitEvent(EventNuke, dirPath, dirName, 0, 0, map[string]string{
+		"multiplier": strconv.Itoa(multiplier),
+		"reason":     reason,
+		"users":      strconv.Itoa(len(uploaderBytes)),
+	})
+	fmt.Fprintf(s.Conn, "200 Nuked %s: x%d multiplier, %d MB, %d users affected, %d credits removed. Reason: %s\r\n",
+		dirPath, multiplier, bytesToMB(sumBytes(uploaderBytes)), len(uploaderBytes), totalNuked, reason)
+	return true
+}
+
+func (s *Session) handleSiteUnnukeVFS(bridge MasterBridge, target string) bool {
+	dirPath, ok := s.resolveSiteDir(bridge, target, true)
+	if !ok {
+		return false
+	}
+	dirName := path.Base(dirPath)
+	if !strings.HasPrefix(dirName, "[NUKED]-") {
+		fmt.Fprintf(s.Conn, "550 Directory is not nuked: %s\r\n", dirPath)
+		return false
+	}
+	aclPath := path.Join(s.Config.ACLBasePath, dirPath)
+	if !s.ACLEngine.CanPerform(s.User, "UNNUKE", aclPath) {
+		fmt.Fprintf(s.Conn, "550 Insufficient flags for %s.\r\n", dirPath)
+		return false
+	}
+
+	uploaderBytes := vfsUploaderBytes(bridge.ListDir(dirPath))
+	totalRestored := s.applyUnnukeCredits(uploaderBytes)
+	originalName := strings.TrimPrefix(dirName, "[NUKED]-")
+	bridge.RenameFile(dirPath, path.Dir(dirPath), originalName)
+
+	newPath := path.Join(path.Dir(dirPath), originalName)
+	s.emitEvent(EventUnnuke, newPath, originalName, 0, 0, map[string]string{
+		"users": strconv.Itoa(len(uploaderBytes)),
+	})
+	fmt.Fprintf(s.Conn, "200 Unnuked %s: %d MB, %d users affected, %d credits restored.\r\n",
+		dirPath, bytesToMB(sumBytes(uploaderBytes)), len(uploaderBytes), totalRestored)
+	return true
+}
+
+func (s *Session) masterBridge() (MasterBridge, bool) {
+	if s.Config == nil || s.Config.Mode != "master" || s.MasterManager == nil {
+		return nil, false
+	}
+	bridge, ok := s.MasterManager.(MasterBridge)
+	return bridge, ok
+}
+
+func (s *Session) resolveSiteDir(bridge MasterBridge, target string, wantNuked bool) (string, bool) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		fmt.Fprintf(s.Conn, "550 Missing directory.\r\n")
+		return "", false
+	}
+	candidate := target
+	if !strings.HasPrefix(candidate, "/") {
+		candidate = path.Join(s.CurrentDir, candidate)
+	}
+	candidate = path.Clean(candidate)
+	if bridge.FileExists(candidate) {
+		if s.dirNukeStateOK(candidate, wantNuked) {
+			return candidate, true
+		}
+	}
+
+	query := strings.TrimPrefix(path.Base(target), "[NUKED]-")
+	results := bridge.SearchDirs(query, siteSearchLimit)
+	matches := make([]VFSSearchResult, 0, len(results))
+	for _, result := range results {
+		if !s.dirNukeStateOK(result.Path, wantNuked) {
+			continue
+		}
+		base := path.Base(result.Path)
+		cleanBase := strings.TrimPrefix(base, "[NUKED]-")
+		if strings.EqualFold(base, target) || strings.EqualFold(cleanBase, target) || strings.EqualFold(cleanBase, query) {
+			matches = append(matches, result)
+		}
+	}
+	if len(matches) == 1 {
+		return path.Clean(matches[0].Path), true
+	}
+	if len(matches) == 0 {
+		fmt.Fprintf(s.Conn, "550 Directory not found. Try SITE SEARCH %s\r\n", query)
+		return "", false
+	}
+	fmt.Fprintf(s.Conn, "550- Multiple matches for %s; use the full path:\r\n", query)
+	for i, match := range matches {
+		if i >= 10 {
+			fmt.Fprintf(s.Conn, "550- ... and %d more\r\n", len(matches)-i)
+			break
+		}
+		fmt.Fprintf(s.Conn, "550- %s\r\n", match.Path)
+	}
+	fmt.Fprintf(s.Conn, "550 Ambiguous directory.\r\n")
+	return "", false
+}
+
+func (s *Session) dirNukeStateOK(dirPath string, wantNuked bool) bool {
+	isNuked := strings.HasPrefix(path.Base(dirPath), "[NUKED]-")
+	return isNuked == wantNuked
+}
+
+func vfsUploaderBytes(entries []MasterFileEntry) map[string]int64 {
+	uploaderBytes := make(map[string]int64)
+	for _, entry := range entries {
+		if entry.IsDir || strings.HasPrefix(entry.Name, ".") {
+			continue
+		}
+		owner := entry.Owner
+		if owner == "" {
+			owner = "unknown"
+		}
+		uploaderBytes[owner] += entry.Size
+	}
+	return uploaderBytes
+}
+
+func (s *Session) applyNukeCredits(uploaderBytes map[string]int64, multiplier int) int64 {
+	now := time.Now().Unix()
+	totalNuked := int64(0)
+	for username, bytes := range uploaderBytes {
+		u, err := user.LoadUser(username, s.GroupMap)
+		if err != nil {
+			continue
+		}
+		nukedCredits := bytes * int64(u.Ratio) * int64(multiplier)
+		u.Credits -= nukedCredits
+		if u.Credits < 0 {
+			u.Credits = 0
+		}
+		u.NukeStat.Meta = now
+		u.NukeStat.Files++
+		u.NukeStat.Bytes += bytes
+		_ = u.Save()
+		totalNuked += nukedCredits
+	}
+	return totalNuked
+}
+
+func (s *Session) applyUnnukeCredits(uploaderBytes map[string]int64) int64 {
+	totalRestored := int64(0)
+	for username, bytes := range uploaderBytes {
+		u, err := user.LoadUser(username, s.GroupMap)
+		if err != nil {
+			continue
+		}
+		restored := bytes * int64(u.Ratio) * int64(s.Config.NukeMaxMultiplier)
+		u.Credits += restored
+		u.NukeStat = user.StatLine{}
+		_ = u.Save()
+		totalRestored += restored
+	}
+	return totalRestored
+}
+
+func sumBytes(values map[string]int64) int64 {
+	total := int64(0)
+	for _, n := range values {
+		total += n
+	}
+	return total
+}
+
+func bytesToMB(bytes int64) int64 {
+	return bytes / 1024 / 1024
 }

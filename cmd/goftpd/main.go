@@ -130,6 +130,7 @@ func main() {
 					Sections: sp.Sections,
 					Paths:    sp.Paths,
 					Weight:   sp.Weight,
+					ReadOnly: sp.ReadOnly,
 				}
 			}
 			sm.SetSlavePolicies(policies)
@@ -160,6 +161,7 @@ func main() {
 					Sections: sp.Sections,
 					Paths:    sp.Paths,
 					Weight:   sp.Weight,
+					ReadOnly: sp.ReadOnly,
 				}
 			}
 			sm.SetSlavePolicies(policies)

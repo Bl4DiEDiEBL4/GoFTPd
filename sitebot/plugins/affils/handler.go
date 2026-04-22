@@ -9,6 +9,7 @@ import (
 
 	"goftpd/sitebot/internal/event"
 	"goftpd/sitebot/internal/plugin"
+	tmpl "goftpd/sitebot/internal/template"
 	"gopkg.in/yaml.v3"
 )
 
@@ -17,6 +18,7 @@ type Plugin struct {
 	file        string
 	replyTarget string
 	showPredirs bool
+	theme       *tmpl.Theme
 }
 
 type Affil struct {
@@ -40,6 +42,12 @@ func New() *Plugin {
 func (p *Plugin) Name() string { return "Affils" }
 
 func (p *Plugin) Initialize(config map[string]interface{}) error {
+	if themeFile, ok := config["theme_file"].(string); ok && strings.TrimSpace(themeFile) != "" {
+		th, err := tmpl.LoadTheme(themeFile)
+		if err == nil {
+			p.theme = th
+		}
+	}
 	cfg := plugin.ConfigSection(config, "affils")
 	if s, ok := stringConfig(cfg, config, "reply_target", "affils_reply_target"); ok && strings.TrimSpace(s) != "" {
 		p.replyTarget = strings.ToLower(strings.TrimSpace(s))
@@ -65,7 +73,7 @@ func (p *Plugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 	case "affils", "affil":
 		return p.showAffils(evt), nil
 	case "pre":
-		return p.reply(evt, "PRE: use SITE PRE <releasename> <section> in FTP."), nil
+		return p.reply(evt, p.render("AFFILS_PRE_HELP", nil, "PRE: use SITE PRE <releasename> <section> in FTP.")), nil
 	default:
 		return nil, nil
 	}
@@ -74,12 +82,12 @@ func (p *Plugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 func (p *Plugin) showAffils(evt *event.Event) []plugin.Output {
 	affils := p.currentAffils()
 	if len(affils) == 0 {
-		return p.reply(evt, "AFFILS: No affils configured.")
+		return p.reply(evt, p.render("AFFILS_EMPTY", nil, "AFFILS: No affils configured."))
 	}
 	if p.showPredirs {
 		lines := make([]string, 0, len(affils))
 		for _, affil := range affils {
-			lines = append(lines, fmt.Sprintf("AFFIL: %s - %s", affil.Group, affil.Predir))
+			lines = append(lines, p.render("AFFIL_ENTRY", affilVars(affil), fmt.Sprintf("AFFIL: %s - %s", affil.Group, affil.Predir)))
 		}
 		return p.replies(evt, lines...)
 	}
@@ -87,18 +95,23 @@ func (p *Plugin) showAffils(evt *event.Event) []plugin.Output {
 	for _, affil := range affils {
 		groups = append(groups, affil.Group)
 	}
-	return p.reply(evt, "AFFILS: "+strings.Join(groups, ", "))
+	return p.reply(evt, p.render("AFFILS_LIST", map[string]string{"groups": strings.Join(groups, ", ")}, "AFFILS: "+strings.Join(groups, ", ")))
 }
 
 func (p *Plugin) currentAffils() []Affil {
+	return p.currentAffilsFileConfig().Groups
+}
+
+func (p *Plugin) currentAffilsFileConfig() affilsFileConfig {
 	cfg, err := loadAffilsFile(p.file)
-	if err != nil {
-		return append([]Affil(nil), p.affils...)
+	if err == nil {
+		if strings.TrimSpace(cfg.Base) == "" {
+			cfg.Base = "/PRE"
+		}
+		cfg.Groups = sortedAffils(cfg.Groups)
+		return cfg
 	}
-	if len(cfg.Groups) == 0 {
-		return append([]Affil(nil), p.affils...)
-	}
-	return sortedAffils(cfg.Groups)
+	return affilsFileConfig{Base: "/PRE", Groups: sortedAffils(append([]Affil(nil), p.affils...))}
 }
 
 func (p *Plugin) replies(evt *event.Event, lines ...string) []plugin.Output {
@@ -123,6 +136,22 @@ func (p *Plugin) replies(evt *event.Event, lines ...string) []plugin.Output {
 
 func (p *Plugin) reply(evt *event.Event, text string) []plugin.Output {
 	return p.replies(evt, text)
+}
+
+func (p *Plugin) render(key string, vars map[string]string, fallback string) string {
+	if p.theme != nil {
+		if raw, ok := p.theme.Announces[key]; ok && raw != "" {
+			return tmpl.Render(raw, vars)
+		}
+	}
+	return fallback
+}
+
+func affilVars(affil Affil) map[string]string {
+	return map[string]string{
+		"group":  affil.Group,
+		"predir": affil.Predir,
+	}
 }
 
 func affilsConfig(raw interface{}) []Affil {

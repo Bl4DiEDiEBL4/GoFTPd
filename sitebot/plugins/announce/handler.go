@@ -322,8 +322,8 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 			outs = append(outs, plugin.Output{Type: "STATS", Text: line})
 		}
 	case event.EventRaceFooter:
-		if line := strings.TrimRight(p.render("STATS_END", vars, "STATS: -----------====>>>>           END          <<<<====-----------\n "), "\r\n"); line != "" {
-			outs = append(outs, plugin.Output{Type: "STATS", Text: line})
+		if line := p.render("STATS_END", vars, "STATS: -----------====>>>>           END          <<<<====-----------"); strings.TrimSpace(line) != "" {
+			outs = append(outs, plugin.Output{Type: "STATS", Text: line + "\n "})
 		}
 	case event.EventNuke:
 		outs = append(outs, plugin.Output{Type: "NUKE", Text: p.render("NUKE", vars, fmt.Sprintf("NUKE: [%s] %s by %s", section, rel, evt.User))})

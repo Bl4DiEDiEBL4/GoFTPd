@@ -155,6 +155,7 @@ type SlavePolicyConfig struct {
 	Sections []string `yaml:"sections"` // e.g. ["TV-1080P", "MP3"] (case-insensitive)
 	Paths    []string `yaml:"paths"`    // e.g. ["/TV-1080P/*"]
 	Weight   int      `yaml:"weight"`   // default 1, higher = more uploads routed here
+	ReadOnly bool     `yaml:"readonly"` // true = scan/download only; never route uploads here
 }
 
 func LoadConfig(filePath string) (*Config, error) {

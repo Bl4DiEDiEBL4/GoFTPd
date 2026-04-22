@@ -343,7 +343,7 @@ announce.HALFWAY = "%b{%c13{HALFWAY:}} %c01{[}%section_colored%c01{]} %c%sec_c3{
 
 announce.TVINFO = "%b{%c%sec_c1{TV-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{- Genre:} %c%sec_c5{%genre} %c01{- Type:} %c%sec_c5{%b{%type}} %c01{- Link:} %c%sec_c5{%link}\n%b{%c%sec_c1{TV-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{- Network:} %c%sec_c5{%b{%network}} %c01{- Rating:} %b{%c%sec_c5{%rating}} %c01{- Language:} %c%sec_c5{%language}"
 
-announce.MOVIEINFO = "%b{%c%sec_c1{MOVIE-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{-} %c%sec_c5{%title} %c01{(}%c%sec_c5{%year}%c01{)} %c01{- Genre:} %c%sec_c5{%genre} %c01{-} %b{%c%sec_c5{%rating}}/10 %c01{(}%c%sec_c5{%votes} votes%c01{) - Metacritic:} %c%sec_c5{%metacritic} %c01{-} %c%sec_c5{%runtime} %c01{-} %c%sec_c5{%language} %c01{-} %c%sec_c5{%link}\n%b{%c%sec_c1{MOVIE-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{- Director:} %c%sec_c4{%director} %c01{- Stars:} %c%sec_c4{%stars}"
+announce.MOVIEINFO = "%b{%c%sec_c1{MOVIE-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{-} %c%sec_c5{%title} %c01{(}%c%sec_c5{%year}%c01{)} %c01{- Genre:} %c%sec_c5{%genre} %c01{-} %b{%c%sec_c5{%rating}}/10 %c01{(}%c%sec_c5{%votes} votes%c01{) - Metacritic:} %c%sec_c5{%metacritic} %c01{-} %c%sec_c5{%runtime} %c01{-} %c%sec_c5{%language}\n%b{%c%sec_c1{MOVIE-INFO:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{- Link:} %link %c01{- Director:} %c%sec_c4{%director} %c01{- Stars:} %c%sec_c4{%stars}"
 
 announce.COMPLETE = "%b{%c%sec_c1{COMPLETE:}} %c01{[}%section_colored%c01{]} %c%sec_c3{%b{%relname}} %c01{by} %c%sec_c5{%u_count} %c01{racers -} %c%sec_c5{%t_mbytes}%c01{/}%c%sec_c5{%t_files}%c01{/}%c%sec_c5{%t_avgspeed}%c01{/}%c%sec_c5{%t_duration}"
 
@@ -353,7 +353,7 @@ announce.STATS_SPEEDS = "%b{%c02{STATS:}} %c01{Slowest:} %c04{%u_slowest_name} %
 
 announce.STATS_USER = "%b{%c02{STATS:}} %c01{[}%c03{%u_rank}%c01{]} %c04{%u_name}%c01{/}%c06{%u_group} %c01{-} %c05{%b{%{u_files}f}} %c01{-} %c05{%b{%{u_mb}MB}} %c01{-} %c05{%b{%{u_pct}%}} %c01{-} %c05{%u_speed}"
 
-announce.STATS_END = "%b{%c02{STATS:}} -----------====>>>>           %c03{END}          <<<<====-----------\n "
+announce.STATS_END = "%b{%c02{STATS:}} -----------====>>>>           %c03{END}          <<<<====-----------"
 
 announce.NUKE = "%b{%c04{NUKE:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{by} %c04{%u_name}"
 
@@ -374,3 +374,15 @@ announce.DF_TOTAL = "%b{%c02{DF:}} %c06{%b{TOTAL}} %c01{-} %c03{%free} %c01{free
 announce.DF_EMPTY = "%b{%c02{DF:}} %c04{No slave disk status received yet.}"
 
 announce.DF_NOMATCH = "%b{%c02{DF:}} %c04{No slave matched} %c05{%filter}"
+
+announce.AFFILS_LIST = "%b{%c02{AFFILS:}} %c05{%groups}"
+announce.AFFIL_ENTRY = "%b{%c02{AFFIL:}} %c04{%group} %c01{-} %c05{%predir}"
+announce.AFFILS_EMPTY = "%b{%c02{AFFILS:}} %c04{No affils configured.}"
+announce.AFFILS_PRE_HELP = "%b{%c02{PRE:}} %c01{use} %c05{SITE PRE <releasename> <section>} %c01{in FTP.}"
+
+announce.ADMINCMD_OK = "%b{%c02{ADMIN:}} %c03{SITE %command} %c01{->} %c05{%response}"
+announce.ADMINCMD_LINE = "%b{%c02{ADMIN:}} %c05{%line}"
+announce.ADMINCMD_ERROR = "%b{%c02{ADMIN:}} %c04{SITE %command failed:} %c05{%response}"
+announce.ADMINCMD_DENIED = "%b{%c02{ADMIN:}} %c04{Staff command only.}"
+announce.ADMINCMD_BLOCKED = "%b{%c02{ADMIN:}} %c04{SITE %command is not allowed.}"
+announce.ADMINCMD_USAGE = "%b{%c02{ADMIN:}} %c01{Usage:} %c05{!site <command> [args]} %c01{or} %c05{!nuke/!unnuke}"

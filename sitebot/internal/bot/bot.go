@@ -14,6 +14,7 @@ import (
 	"goftpd/sitebot/internal/event"
 	"goftpd/sitebot/internal/irc"
 	"goftpd/sitebot/internal/plugin"
+	admincommanderplugin "goftpd/sitebot/plugins/admincommander"
 	affilsplugin "goftpd/sitebot/plugins/affils"
 	announceplugin "goftpd/sitebot/plugins/announce"
 	freeplugin "goftpd/sitebot/plugins/free"
@@ -153,7 +154,7 @@ func (b *Bot) initializePlugins() error {
 	}
 	if enabled, ok := b.Config.Plugins.Enabled["Affils"]; ok && enabled {
 		affils := affilsplugin.New()
-		cfg := map[string]interface{}{"debug": b.Debug}
+		cfg := map[string]interface{}{"debug": b.Debug, "theme_file": b.Config.Announce.ThemeFile}
 		for k, v := range b.Config.Plugins.Config {
 			cfg[k] = v
 		}
@@ -161,6 +162,19 @@ func (b *Bot) initializePlugins() error {
 			return err
 		}
 		if err := b.Plugins.Register(affils); err != nil {
+			return err
+		}
+	}
+	if enabled, ok := b.Config.Plugins.Enabled["AdminCommander"]; ok && enabled {
+		adminCommander := admincommanderplugin.New()
+		cfg := map[string]interface{}{"debug": b.Debug, "theme_file": b.Config.Announce.ThemeFile}
+		for k, v := range b.Config.Plugins.Config {
+			cfg[k] = v
+		}
+		if err := adminCommander.Initialize(cfg); err != nil {
+			return err
+		}
+		if err := b.Plugins.Register(adminCommander); err != nil {
 			return err
 		}
 	}

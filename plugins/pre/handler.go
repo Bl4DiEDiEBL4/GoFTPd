@@ -236,6 +236,10 @@ func (p *Plugin) handleAddAffil(ctx plugin.SiteContext, args []string) bool {
 
 	for _, affil := range cfg.Groups {
 		if strings.EqualFold(affil.Group, group) {
+			if err := ensureGroupFile(p.groupFile, group); err != nil {
+				ctx.Reply("550 Affil %s already exists, but could not ensure group files: %v\r\n", group, err)
+				return true
+			}
 			ctx.Reply("550 Affil %s already exists.\r\n", group)
 			return true
 		}
@@ -908,6 +912,7 @@ func ensureGroupFile(filePath, group string) error {
 	}
 	lines := strings.Split(string(data), "\n")
 	maxGID := 999
+	found := false
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -915,7 +920,7 @@ func ensureGroupFile(filePath, group string) error {
 		}
 		parts := strings.Split(line, ":")
 		if len(parts) >= 1 && strings.EqualFold(parts[0], group) {
-			return nil
+			found = true
 		}
 		if len(parts) >= 3 {
 			if gid, err := strconv.Atoi(strings.TrimSpace(parts[2])); err == nil && gid > maxGID {
@@ -926,11 +931,76 @@ func ensureGroupFile(filePath, group string) error {
 	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if !found {
+		f, err := os.OpenFile(filePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			return err
+		}
+		if _, err = fmt.Fprintf(f, "%s:%s:%d:\n", group, group, maxGID+1); err != nil {
+			_ = f.Close()
+			return err
+		}
+		if err = f.Close(); err != nil {
+			return err
+		}
+	}
+	return ensurePerGroupFile(filepath.Join(filepath.Dir(filePath), "groups"), group)
+}
+
+func ensurePerGroupFile(groupsDir, group string) error {
+	groupsDir = strings.TrimSpace(groupsDir)
+	group = strings.TrimSpace(group)
+	if groupsDir == "" || group == "" {
+		return fmt.Errorf("missing groups directory or group")
+	}
+	target := filepath.Join(groupsDir, group)
+	if _, err := os.Stat(target); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(groupsDir, 0755); err != nil {
+		return err
+	}
+	content, err := renderDefaultGroupFile(groupsDir, group)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	_, err = fmt.Fprintf(f, "%s:%s:%d:\n", group, group, maxGID+1)
-	return err
+	return os.WriteFile(target, []byte(content), 0644)
+}
+
+func renderDefaultGroupFile(groupsDir, group string) (string, error) {
+	for _, templatePath := range []string{
+		filepath.Join(groupsDir, "default.group"),
+		filepath.Join(groupsDir, "default.groups"),
+	} {
+		data, err := os.ReadFile(templatePath)
+		if err == nil {
+			content := strings.ReplaceAll(string(data), "%group", group)
+			content = strings.ReplaceAll(content, "{group}", group)
+			content = strings.ReplaceAll(content, "{{group}}", group)
+			if !hasGroupHeader(content) {
+				content = fmt.Sprintf("GROUP %s\n%s", group, content)
+			}
+			if !strings.HasSuffix(content, "\n") {
+				content += "\n"
+			}
+			return content, nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+	}
+	return fmt.Sprintf("GROUP %s\nSLOTS -1 0 0 0\nGROUPNFO\nSIMULT 0\n", group), nil
+}
+
+func hasGroupHeader(content string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		return strings.HasPrefix(strings.ToUpper(line), "GROUP ")
+	}
+	return false
 }

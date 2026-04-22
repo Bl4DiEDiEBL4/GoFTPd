@@ -209,8 +209,12 @@ func (sm *SlaveManager) ListDirectory(dirPath string) []*VFSFile {
 
 // DeleteFile deletes a file from all slaves and from VFS.
 func (sm *SlaveManager) DeleteFile(path string) error {
-	if !sm.vfs.FileExists(path) {
+	file := sm.vfs.GetFile(path)
+	if file == nil {
 		return fmt.Errorf("file not found: %s", path)
+	}
+	if sm.IsSlaveReadOnly(file.SlaveName) {
+		return fmt.Errorf("path is on read-only slave: %s", path)
 	}
 	sm.DeleteOnAllSlaves(path)
 	return nil
@@ -218,6 +222,11 @@ func (sm *SlaveManager) DeleteFile(path string) error {
 
 // RenameFile renames a file on all slaves and in VFS.
 func (sm *SlaveManager) RenameFile(from, toDir, toName string) {
+	file := sm.vfs.GetFile(from)
+	if file != nil && sm.IsSlaveReadOnly(file.SlaveName) {
+		log.Printf("[SlaveManager] Refusing rename of read-only path %s on slave %s", from, file.SlaveName)
+		return
+	}
 	sm.RenameOnAllSlaves(from, toDir, toName)
 	to := toDir
 	if to == "/" {

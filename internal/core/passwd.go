@@ -2,8 +2,6 @@ package core
 
 import (
 	"bufio"
-	"crypto/md5"
-	"crypto/subtle"
 	"fmt"
 	"os"
 	"strings"
@@ -41,28 +39,15 @@ func LoadPasswdFile(path string) (map[string]string, error) {
 }
 
 // VerifyPassword checks plaintext password against a hash.
-// Supported formats:
+// Supported format:
 //   - bcrypt: $2a$/$2b$/$2y$
-//   - Apache MD5 (apr1): $apr1$salt$hash
-//   - Plaintext (no $ prefix) — strongly discouraged, dev only
-// Unknown $-prefixed formats are REJECTED.
+//
+// Everything else is rejected. Older builds accepted unknown $-prefixed
+// hashes, but that effectively let any password through for those accounts.
 func VerifyPassword(plaintext, hash string) bool {
-	// bcrypt
 	if strings.HasPrefix(hash, "$2") {
 		return bcrypt.CompareHashAndPassword([]byte(hash), []byte(plaintext)) == nil
 	}
-	
-	// Apache MD5 (apr1)
-	if strings.HasPrefix(hash, "$apr1$") {
-		return verifyApr1(plaintext, hash)
-	}
-	
-	// Plaintext fallback (dev only — no $ prefix)
-	if !strings.HasPrefix(hash, "$") {
-		return subtle.ConstantTimeCompare([]byte(hash), []byte(plaintext)) == 1
-	}
-	
-	// Unknown $-prefixed format — REJECT
 	return false
 }
 
@@ -73,111 +58,6 @@ func HashPassword(plaintext string) (string, error) {
 		return "", err
 	}
 	return string(h), nil
-}
-
-// verifyApr1 verifies an Apache MD5 crypt hash ($apr1$salt$hash)
-// Implements Apache's modified MD5 crypt scheme
-func verifyApr1(password, hash string) bool {
-	parts := strings.SplitN(hash, "$", 4)
-	if len(parts) != 4 || parts[1] != "apr1" {
-		return false
-	}
-	salt := parts[2]
-	expected := parts[3]
-	
-	computed := apr1Crypt(password, salt)
-	return subtle.ConstantTimeCompare([]byte(computed), []byte(expected)) == 1
-}
-
-// apr1Crypt implements the Apache MD5 crypt algorithm
-func apr1Crypt(password, salt string) string {
-	pw := []byte(password)
-	s := []byte(salt)
-	
-	// Alt sum = md5(password + salt + password)
-	altSum := md5.Sum(append(append(append([]byte{}, pw...), s...), pw...))
-	
-	// Initial context: password + "$apr1$" + salt
-	ctx := md5.New()
-	ctx.Write(pw)
-	ctx.Write([]byte("$apr1$"))
-	ctx.Write(s)
-	
-	// Add altSum bytes, one byte per password char, cycling through altSum
-	for i := len(pw); i > 0; i -= 16 {
-		n := i
-		if n > 16 {
-			n = 16
-		}
-		ctx.Write(altSum[:n])
-	}
-	
-	// Weird bit manipulation
-	for i := len(pw); i > 0; i >>= 1 {
-		if i&1 == 1 {
-			ctx.Write([]byte{0})
-		} else {
-			ctx.Write(pw[:1])
-		}
-	}
-	
-	sum := ctx.Sum(nil)
-	
-	// 1000 iterations of mixing
-	for i := 0; i < 1000; i++ {
-		ctx := md5.New()
-		if i&1 == 1 {
-			ctx.Write(pw)
-		} else {
-			ctx.Write(sum)
-		}
-		if i%3 != 0 {
-			ctx.Write(s)
-		}
-		if i%7 != 0 {
-			ctx.Write(pw)
-		}
-		if i&1 == 1 {
-			ctx.Write(sum)
-		} else {
-			ctx.Write(pw)
-		}
-		sum = ctx.Sum(nil)
-	}
-	
-	// Custom base64 encoding (Apache/crypt style, not standard)
-	return apr1Base64(sum)
-}
-
-// apr1Base64 encodes bytes using the apr1/crypt base64 alphabet
-func apr1Base64(src []byte) string {
-	const alphabet = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-	
-	// Apache's specific byte ordering
-	order := [][3]int{
-		{0, 6, 12},
-		{1, 7, 13},
-		{2, 8, 14},
-		{3, 9, 15},
-		{4, 10, 5},
-	}
-	
-	var out strings.Builder
-	for _, o := range order {
-		v := uint32(src[o[0]])<<16 | uint32(src[o[1]])<<8 | uint32(src[o[2]])
-		for i := 0; i < 4; i++ {
-			out.WriteByte(alphabet[v&0x3f])
-			v >>= 6
-		}
-	}
-	// Last byte (index 11)
-	v := uint32(src[11])
-	for i := 0; i < 2; i++ {
-		out.WriteByte(alphabet[v&0x3f])
-		v >>= 6
-	}
-	
-	return out.String()
 }
 
 // LoadGroupFile reads standard /etc/group file (groupname:desc:gid:slots)

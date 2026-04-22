@@ -1,0 +1,8 @@
+# Default groupfile used when SITE ADDAFFIL creates etc/groups/<group>.
+# The GROUP line is added automatically when this template does not include it.
+# SLOTS: slots, leech slots, allotment slots, max allotment size.
+SLOTS -1 0 0 0
+# GROUPNFO: group info/description.
+GROUPNFO
+# SIMULT: maximum simultaneous logins for the group.
+SIMULT 0
