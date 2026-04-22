@@ -284,10 +284,7 @@ func (b *Bridge) MakeDir(dirPath, owner, group string) {
 
 	// 2. Tell the slave to actually create the folder on its physical disk.
 	// This ensures empty directories survive the 'remerge' process on restart.
-	slave := b.sm.SelectSlaveForDownload(filepath.Dir(dirPath))
-	if slave == nil {
-		slave = b.sm.SelectSlaveForUpload(dirPath)
-	}
+	slave := b.sm.SelectSlaveForUpload(dirPath)
 
 	if slave != nil {
 		index, err := IssueMakeDir(slave, dirPath)
@@ -300,7 +297,7 @@ func (b *Bridge) MakeDir(dirPath, owner, group string) {
 func (b *Bridge) Symlink(linkPath, targetPath string) error {
 	b.sm.GetVFS().AddSymlink(linkPath, targetPath)
 	var lastErr error
-	for _, slave := range b.sm.GetAvailableSlaves() {
+	for _, slave := range b.sm.GetWritableAvailableSlaves() {
 		targetArg := strings.TrimPrefix(filepath.ToSlash(filepath.Clean(targetPath)), "/")
 		index, err := IssueSymlink(slave, linkPath, targetArg)
 		if err != nil {
@@ -317,7 +314,7 @@ func (b *Bridge) Symlink(linkPath, targetPath string) error {
 func (b *Bridge) Chmod(path string, mode uint32) error {
 	b.sm.GetVFS().Chmod(path, mode)
 	var lastErr error
-	for _, slave := range b.sm.GetAvailableSlaves() {
+	for _, slave := range b.sm.GetWritableAvailableSlaves() {
 		index, err := IssueChmod(slave, path, mode)
 		if err != nil {
 			lastErr = err
@@ -441,6 +438,9 @@ func (b *Bridge) GetSFVInfo(sfvPath string) ([]core.SFVEntryInfo, error) {
 // WriteFile writes a small file to a slave.
 func (b *Bridge) WriteFile(filePath string, content []byte) error {
 	slave := b.sm.SelectSlaveForDownload(filePath)
+	if slave != nil && b.sm.IsSlaveReadOnly(slave.Name()) {
+		slave = nil
+	}
 	if slave == nil {
 		slave = b.sm.SelectSlaveForUpload(filePath)
 	}
@@ -475,6 +475,9 @@ func (b *Bridge) CreateSparseFile(filePath string, size int64, owner, group stri
 		return fmt.Errorf("invalid sparse file size: %d", size)
 	}
 	slave := b.sm.SelectSlaveForDownload(filePath)
+	if slave != nil && b.sm.IsSlaveReadOnly(slave.Name()) {
+		slave = nil
+	}
 	if slave == nil {
 		slave = b.sm.SelectSlaveForUpload(filePath)
 	}

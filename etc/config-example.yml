@@ -65,10 +65,14 @@ slave:
 #    weight:   Higher = more uploads routed here (default 1). Load balancer
 #              picks the slave with the lowest (activeTransfers / weight) score,
 #              tie-breaking on most free disk space.
+#    readonly: true means scan/download only. The slave is never selected for
+#              uploads, even if no other slave policy matches.
 #
 #  - A slave with no policy OR with empty sections+paths accepts everything.
-#  - If every policy excludes an upload, the master falls back to all available
-#    slaves (fail-open) rather than rejecting the upload.
+#  - If every policy excludes an upload, the master falls back to writable
+#    available slaves only. Read-only archive slaves stay excluded.
+#  - For an archive server, point the slave root at the existing archive tree,
+#    set readonly: true, then remerge/rescan so the master learns the files.
 # =============================================================================
 # slaves:
 #   - name: "SLAVE1"
@@ -80,6 +84,12 @@ slave:
 #     weight: 1
 #   - name: "SLAVE3"
 #     # no sections/paths = overflow/catch-all
+#     weight: 1
+#   - name: "ARCHIVE"
+#     # Merged into the same virtual /TV-1080P, /X265, etc. paths for listing
+#     # and downloads, but never used for uploads or new race dirs.
+#     sections: ["TV-1080P", "TV-720P", "X265", "BLURAY"]
+#     readonly: true
 #     weight: 1
 
 

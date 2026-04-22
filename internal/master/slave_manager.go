@@ -47,6 +47,7 @@ type SlaveRoutePolicy struct {
 	Sections []string // uppercased for matching
 	Paths    []string // glob patterns
 	Weight   int      // >= 1
+	ReadOnly bool     // scan/download only; never selected for uploads
 }
 
 func NewSlaveManager(host string, port int, tlsEnabled bool, tlsCert, tlsKey string) *SlaveManager {
@@ -345,6 +346,22 @@ func (sm *SlaveManager) GetAvailableSlaves() []*RemoteSlave {
 	return result
 }
 
+func (sm *SlaveManager) GetWritableAvailableSlaves() []*RemoteSlave {
+	slaves := sm.GetAvailableSlaves()
+	result := make([]*RemoteSlave, 0, len(slaves))
+	for _, rs := range slaves {
+		if !sm.IsSlaveReadOnly(rs.Name()) {
+			result = append(result, rs)
+		}
+	}
+	return result
+}
+
+func (sm *SlaveManager) IsSlaveReadOnly(name string) bool {
+	policy, ok := sm.getPolicy(name)
+	return ok && policy.ReadOnly
+}
+
 func (sm *SlaveManager) GetAllSlaves() []*RemoteSlave {
 	sm.slavesMu.RLock()
 	defer sm.slavesMu.RUnlock()
@@ -384,6 +401,9 @@ func (sm *SlaveManager) SelectSlaveForUpload(uploadPath string) *RemoteSlave {
 
 	for _, rs := range slaves {
 		policy, hasPolicy := sm.getPolicy(rs.Name())
+		if hasPolicy && policy.ReadOnly {
+			continue
+		}
 		if !hasPolicy {
 			// No policy = accepts everything
 			eligible = append(eligible, rs)
@@ -396,13 +416,19 @@ func (sm *SlaveManager) SelectSlaveForUpload(uploadPath string) *RemoteSlave {
 		}
 	}
 
-	// Fallback: if policies excluded everyone, use all available slaves.
-	// Better to upload somewhere than fail.
+	// Fallback: if policies excluded everyone, use all writable available
+	// slaves. Read-only archive slaves must never receive uploads.
 	if len(eligible) == 0 {
-		eligible = slaves
 		for _, rs := range slaves {
+			if policy, ok := sm.getPolicy(rs.Name()); ok && policy.ReadOnly {
+				continue
+			}
+			eligible = append(eligible, rs)
 			weights[rs.Name()] = 1
 		}
+	}
+	if len(eligible) == 0 {
+		return nil
 	}
 
 	var best *RemoteSlave
@@ -499,7 +525,7 @@ func (sm *SlaveManager) SelectSlaveForDownload(path string) *RemoteSlave {
 
 // DeleteOnAllSlaves deletes a path on all slaves ().
 func (sm *SlaveManager) DeleteOnAllSlaves(path string) {
-	for _, rs := range sm.GetAvailableSlaves() {
+	for _, rs := range sm.GetWritableAvailableSlaves() {
 		go func(slave *RemoteSlave) {
 			index, err := IssueDelete(slave, path)
 			if err != nil {
@@ -518,7 +544,7 @@ func (sm *SlaveManager) DeleteOnAllSlaves(path string) {
 
 // RenameOnAllSlaves renames on all slaves ().
 func (sm *SlaveManager) RenameOnAllSlaves(from, toDir, toName string) {
-	for _, rs := range sm.GetAvailableSlaves() {
+	for _, rs := range sm.GetWritableAvailableSlaves() {
 		go func(slave *RemoteSlave) {
 			index, err := IssueRename(slave, from, toDir, toName)
 			if err != nil {

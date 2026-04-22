@@ -36,6 +36,7 @@ type SlavePolicy struct {
 	Sections []string `yaml:"sections"` // e.g. ["TV-1080P", "MP3"] — case-insensitive
 	Paths    []string `yaml:"paths"`    // e.g. ["/TV-1080P/*", "/MOVIES/*"]
 	Weight   int      `yaml:"weight"`   // default 1; higher = more traffic
+	ReadOnly bool     `yaml:"readonly"` // true = scan/download only; never route uploads here
 }
 
 type MasterConfig struct {
