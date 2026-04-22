@@ -3,7 +3,6 @@ package affils
 import (
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -73,10 +72,6 @@ func (p *Plugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 	switch cmd {
 	case "affils", "affil":
 		return p.showAffils(evt), nil
-	case "addaffil":
-		return p.addAffil(evt), nil
-	case "delaffil":
-		return p.delAffil(evt), nil
 	case "pre":
 		return p.reply(evt, p.render("AFFILS_PRE_HELP", nil, "PRE: use SITE PRE <releasename> <section> in FTP.")), nil
 	default:
@@ -103,73 +98,6 @@ func (p *Plugin) showAffils(evt *event.Event) []plugin.Output {
 	return p.reply(evt, p.render("AFFILS_LIST", map[string]string{"groups": strings.Join(groups, ", ")}, "AFFILS: "+strings.Join(groups, ", ")))
 }
 
-func (p *Plugin) addAffil(evt *event.Event) []plugin.Output {
-	fields := strings.Fields(strings.TrimSpace(evt.Data["args"]))
-	if len(fields) < 1 {
-		return p.reply(evt, p.render("AFFILS_USAGE_ADD", nil, "AFFILS: Usage: !addaffil <group> [predir]"))
-	}
-	group := strings.TrimSpace(fields[0])
-	if !validAffilGroup(group) {
-		return p.reply(evt, p.render("AFFILS_INVALID", map[string]string{"group": group}, fmt.Sprintf("AFFILS: Invalid affil group %s.", group)))
-	}
-
-	cfg := p.currentAffilsFileConfig()
-	for _, affil := range cfg.Groups {
-		if strings.EqualFold(affil.Group, group) {
-			return p.reply(evt, p.render("AFFILS_EXISTS", affilVars(affil), fmt.Sprintf("AFFILS: %s already exists.", affil.Group)))
-		}
-	}
-
-	predir := path.Join(cleanAbs(cfg.Base), group)
-	if len(fields) > 1 && strings.TrimSpace(fields[1]) != "" {
-		predir = cleanAbs(fields[1])
-	}
-	affil := Affil{
-		Group:  group,
-		Predir: predir,
-		Permissions: map[string]interface{}{
-			"privpath":    "/site" + predir,
-			"owner_group": group,
-			"mode":        "0777",
-		},
-	}
-	cfg.Groups = append(cfg.Groups, affil)
-	cfg.Groups = sortedAffils(cfg.Groups)
-
-	if err := p.saveAffilsFileConfig(cfg); err != nil {
-		return p.reply(evt, p.render("AFFILS_ERROR", map[string]string{"error": err.Error()}, fmt.Sprintf("AFFILS: Could not update %s: %v", p.file, err)))
-	}
-	return p.reply(evt, p.render("AFFILS_ADDED", affilVars(affil), fmt.Sprintf("AFFILS: Added %s with predir %s.", group, predir)))
-}
-
-func (p *Plugin) delAffil(evt *event.Event) []plugin.Output {
-	fields := strings.Fields(strings.TrimSpace(evt.Data["args"]))
-	if len(fields) < 1 {
-		return p.reply(evt, p.render("AFFILS_USAGE_DEL", nil, "AFFILS: Usage: !delaffil <group>"))
-	}
-	group := strings.TrimSpace(fields[0])
-
-	cfg := p.currentAffilsFileConfig()
-	kept := make([]Affil, 0, len(cfg.Groups))
-	var removed *Affil
-	for _, affil := range cfg.Groups {
-		if strings.EqualFold(affil.Group, group) {
-			copy := affil
-			removed = &copy
-			continue
-		}
-		kept = append(kept, affil)
-	}
-	if removed == nil {
-		return p.reply(evt, p.render("AFFILS_NOTFOUND", map[string]string{"group": group}, fmt.Sprintf("AFFILS: %s not found.", group)))
-	}
-	cfg.Groups = kept
-	if err := p.saveAffilsFileConfig(cfg); err != nil {
-		return p.reply(evt, p.render("AFFILS_ERROR", map[string]string{"error": err.Error()}, fmt.Sprintf("AFFILS: Could not update %s: %v", p.file, err)))
-	}
-	return p.reply(evt, p.render("AFFILS_REMOVED", affilVars(*removed), fmt.Sprintf("AFFILS: Removed %s. Predir %s was left on disk.", removed.Group, removed.Predir)))
-}
-
 func (p *Plugin) currentAffils() []Affil {
 	return p.currentAffilsFileConfig().Groups
 }
@@ -184,30 +112,6 @@ func (p *Plugin) currentAffilsFileConfig() affilsFileConfig {
 		return cfg
 	}
 	return affilsFileConfig{Base: "/PRE", Groups: sortedAffils(append([]Affil(nil), p.affils...))}
-}
-
-func (p *Plugin) saveAffilsFileConfig(cfg affilsFileConfig) error {
-	if strings.TrimSpace(cfg.Base) == "" {
-		cfg.Base = "/PRE"
-	}
-	target := p.affilsWritePath()
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-		return err
-	}
-	return os.WriteFile(target, data, 0644)
-}
-
-func (p *Plugin) affilsWritePath() string {
-	for _, candidate := range affilsFileCandidates(p.file) {
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-	}
-	return affilsFileCandidates(p.file)[0]
 }
 
 func (p *Plugin) replies(evt *event.Event, lines ...string) []plugin.Output {
@@ -335,30 +239,6 @@ func boolConfig(raw interface{}) (bool, bool) {
 		}
 	}
 	return false, false
-}
-
-func cleanAbs(p string) string {
-	p = strings.TrimSpace(strings.ReplaceAll(p, "\\", "/"))
-	if p == "" {
-		return "/"
-	}
-	if !strings.HasPrefix(p, "/") {
-		p = "/" + p
-	}
-	return path.Clean(p)
-}
-
-func validAffilGroup(group string) bool {
-	group = strings.TrimSpace(group)
-	if group == "" || strings.ContainsAny(group, `/\:*?"<>|`) {
-		return false
-	}
-	for _, r := range group {
-		if r <= 32 {
-			return false
-		}
-	}
-	return true
 }
 
 func loadAffilsFile(filePath string) (affilsFileConfig, error) {

@@ -336,6 +336,7 @@ plugins:
     News: true
     Free: true
     Affils: true
+    AdminCommander: false
   config:
     debug: true
 
@@ -401,9 +402,37 @@ plugins:
       # reply_target supports "channel", "notice", or a fixed "#channel".
       reply_target: "channel"
       show_predirs: false
-      # IRC commands:
+      # IRC command:
       #   !affils
-      #   !addaffil <group> [predir]   # updates this affils file only
-      #   !delaffil <group>            # leaves existing predir on disk
-      # Use FTP SITE ADDAFFIL/DELAFFIL when you also want permissions/group
-      # files updated by the daemon.
+      # This plugin is display-only. Use AdminCommander below for privileged
+      # SITE commands such as ADDAFFIL, DELAFFIL, NUKE, and UNNUKE.
+
+    admin_commander:
+      # Staff-only IRC gateway for real FTP SITE commands. The sitebot logs in
+      # as this FTP user and sends SITE <command>, so the daemon owns all admin
+      # logic instead of duplicating it in IRC plugins.
+      #
+      # Examples:
+      #   !site addaffil GROUP
+      #   !site delaffil GROUP
+      #   !nuke Release.Name-GRP 3 bad.files
+      #   !unnuke Release.Name-GRP fixed
+      host: "127.0.0.1"
+      port: 2121
+      user: "goftpd"
+      password: "change-me"
+      tls: true
+      insecure_skip_verify: true
+      timeout_seconds: 10
+      staff_channels: *chan_staff
+      staff_hosts: []
+      # Only these SITE subcommands can be called from IRC. Use ["*"] only if
+      # the staff channel is fully trusted and the FTP user is intentionally
+      # allowed to run every SITE admin command.
+      allowed_commands:
+        - ADDAFFIL
+        - DELAFFIL
+        - NUKE
+        - UNNUKE
+      # reply_target supports "channel", "notice", or a fixed "#channel".
+      reply_target: "channel"
