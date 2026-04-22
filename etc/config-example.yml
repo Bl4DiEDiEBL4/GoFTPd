@@ -212,6 +212,7 @@ plugins:
     #   SITE REQFILL <number|Release.Name-GRP>
     #   SITE REQDEL <number|Release.Name-GRP>
     #   SITE REQWIPE <number|Release.Name-GRP>
+    # Enabling the plugin creates this base directory on startup.
     dir: "/REQUESTS"
     reqfile: "/REQUESTS/.requests"
     request_head: "REQ-"

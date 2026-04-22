@@ -3,10 +3,12 @@ package request
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"path"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"goftpd/internal/plugin"
 	"goftpd/internal/timeutil"
@@ -29,6 +31,7 @@ type Plugin struct {
 	proxyUsers                []string
 	sitename                  string
 	debug                     bool
+	stopCh                    chan struct{}
 }
 
 type requestEntry struct {
@@ -54,6 +57,7 @@ func New() *Plugin {
 		reqwipeFlags: "1",
 		proxyUsers:   []string{"goftpd"},
 		sitename:     "GoFTPd",
+		stopCh:       make(chan struct{}),
 	}
 }
 
@@ -111,12 +115,20 @@ func (p *Plugin) Init(svc *plugin.Services, cfg map[string]interface{}) error {
 	} else if strings.TrimSpace(p.reqFile) == "" {
 		p.reqFile = path.Join(p.dir, ".requests")
 	}
+	go p.ensureBaseDirOnStartup()
 	return nil
 }
 
 func (p *Plugin) OnEvent(evt *plugin.Event) error { return nil }
 
-func (p *Plugin) Stop() error { return nil }
+func (p *Plugin) Stop() error {
+	select {
+	case <-p.stopCh:
+	default:
+		close(p.stopCh)
+	}
+	return nil
+}
 
 func (p *Plugin) SiteCommands() []string {
 	return []string{"REQUEST", "REQUESTS", "REQFILL", "REQFILLED", "REQDEL", "REQWIPE"}
@@ -435,6 +447,31 @@ func (p *Plugin) ensureBaseDir(ctx plugin.SiteContext) {
 	}
 	p.svc.Bridge.MakeDir(p.dir, owner, group)
 	_ = p.svc.Bridge.Chmod(p.dir, 0777)
+}
+
+func (p *Plugin) ensureBaseDirOnStartup() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for attempt := 0; attempt < 60; attempt++ {
+		if p.svc != nil && p.svc.Bridge != nil {
+			p.ensureBaseDir(nil)
+			if p.dirExists(p.dir) {
+				if p.debug {
+					log.Printf("[REQUEST] ensured request dir %s", p.dir)
+				}
+				return
+			}
+			if p.debug {
+				log.Printf("[REQUEST] request dir %s not ready yet", p.dir)
+			}
+		}
+		select {
+		case <-p.stopCh:
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 func (p *Plugin) findRequest(entries []requestEntry, key string) int {
