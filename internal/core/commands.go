@@ -393,7 +393,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		parent := path.Dir(targetPath)
 		isSectionDir := parent == "/" || parent == "."
 		isSubFolder := isSceneSubfolder(dirName)
-		aclPath := path.Join(s.Config.ACLBasePath, targetPath)
 		skipDupeCheck := s.ACLEngine != nil && s.ACLEngine.CanPerformRuleOnly(s.User, "NODUPECHECK", aclPath)
 		dupeEligible := !isSectionDir && !isSubFolder && !skipDupeCheck
 
