@@ -122,7 +122,7 @@ func (h *Handler) createMissingFiles() bool {
 		if mb <= 0 {
 			continue
 		}
-		filePath := path.Join(h.dir, fmt.Sprintf("%dMB", mb))
+		filePath := path.Join(h.dir, fmt.Sprintf("%dMB.dat", mb))
 		size := int64(mb) * 1024 * 1024
 		if h.svc.Bridge.GetFileSize(filePath) == size {
 			continue
