@@ -161,6 +161,7 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 #    mediainfo - runs mediainfo on uploaded audio/sample files and emits
 #                AUDIOINFO / MEDIAINFO events for the sitebot
 #    pre     - handles SITE PRE for affil staging dirs and PREBW announces
+#    request - handles SITE REQUEST/REQUESTS/REQFILL/REQDEL/REQWIPE
 #    speedtest - creates /SPEEDTEST/100MB, 500MB, 1000MB and
 #                emits SPEEDTEST announces without applying credits
 #
@@ -202,6 +203,27 @@ plugins:
     enabled: true
     dir: "/SPEEDTEST"
     files_mb: [100, 500, 1000]
+    debug: false
+  request:
+    enabled: true
+    # TUR-style request manager:
+    #   SITE REQUEST Release.Name-GRP
+    #   SITE REQUESTS
+    #   SITE REQFILL <number|Release.Name-GRP>
+    #   SITE REQDEL <number|Release.Name-GRP>
+    #   SITE REQWIPE <number|Release.Name-GRP>
+    dir: "/REQUESTS"
+    reqfile: "/REQUESTS/.requests"
+    request_head: "REQ-"
+    filled_head: "FILLED-"
+    allow_space: false
+    replace_with: "_"
+    bad_chars: '*{^~/,+&\'
+    max_requests: 30
+    show_on_request: false
+    show_on_fill: false
+    do_not_create_dir_until_filled: false
+    reqwipe_flags: "1"
     debug: false
   pre:
     enabled: true

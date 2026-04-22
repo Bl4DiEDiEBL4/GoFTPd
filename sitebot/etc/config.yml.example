@@ -415,6 +415,11 @@ plugins:
       # Examples:
       #   !site addaffil GROUP
       #   !site delaffil GROUP
+      #   !request Release.Name-GRP
+      #   !requests
+      #   !reqfill 1
+      #   !reqdel 1
+      #   !reqwipe 1
       #   !nuke Release.Name-GRP 3 bad.files
       #   !unnuke Release.Name-GRP fixed
       host: "127.0.0.1"
@@ -463,5 +468,12 @@ plugins:
         - ADDAFFIL
         - DELAFFIL
         - AFFILS
+        # REQUEST plugin SITE commands
+        - REQUEST
+        - REQUESTS
+        - REQFILL
+        - REQFILLED
+        - REQDEL
+        - REQWIPE
       # reply_target supports "channel", "notice", or a fixed "#channel".
       reply_target: "channel"

@@ -25,6 +25,7 @@ import (
 	"goftpd/plugins/imdb"
 	"goftpd/plugins/mediainfo"
 	"goftpd/plugins/pre"
+	"goftpd/plugins/request"
 	"goftpd/plugins/speedtest"
 	"goftpd/plugins/tvmaze"
 	"gopkg.in/yaml.v3"
@@ -243,6 +244,8 @@ func main() {
 			p = mediainfo.New()
 		case "pre":
 			p = pre.New()
+		case "request":
+			p = request.New()
 		case "speedtest":
 			p = speedtest.New()
 		default:
@@ -513,6 +516,11 @@ func protectedVFSDirs(cfg *core.Config) []string {
 					add(path.Join(base, group))
 				}
 			}
+		}
+	}
+	if requestCfg := cfg.Plugins["request"]; requestCfg != nil {
+		if dir, ok := requestCfg["dir"].(string); ok && strings.TrimSpace(dir) != "" {
+			add(dir)
 		}
 	}
 	out := make([]string, 0, len(seen))

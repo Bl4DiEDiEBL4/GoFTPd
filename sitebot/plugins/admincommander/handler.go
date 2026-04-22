@@ -103,19 +103,50 @@ func (p *Plugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 	cmd := strings.ToLower(strings.TrimSpace(evt.Data["command"]))
 	args := strings.TrimSpace(evt.Data["args"])
 	siteArgs := ""
+	displayArgs := ""
 	switch cmd {
 	case "site":
 		siteArgs = args
+		displayArgs = args
+	case "request":
+		if args == "" {
+			return p.reply(evt, p.render("ADMINCMD_USAGE", map[string]string{"command": cmd}, "ADMIN: Usage: !request <request> [-for:<user>]")), nil
+		}
+		siteArgs = "REQUEST -by:" + evt.User + " " + args
+		displayArgs = "REQUEST " + args
+	case "requests":
+		siteArgs = "REQUESTS " + args
+		displayArgs = siteArgs
+	case "reqfill", "reqfilled":
+		if args == "" {
+			return p.reply(evt, p.render("ADMINCMD_USAGE", map[string]string{"command": cmd}, "ADMIN: Usage: !reqfill <number|request>")), nil
+		}
+		siteArgs = "REQFILL " + args
+		displayArgs = siteArgs
+	case "reqdel":
+		if args == "" {
+			return p.reply(evt, p.render("ADMINCMD_USAGE", map[string]string{"command": cmd}, "ADMIN: Usage: !reqdel <number|request>")), nil
+		}
+		siteArgs = "REQDEL " + args
+		displayArgs = siteArgs
+	case "reqwipe":
+		if args == "" {
+			return p.reply(evt, p.render("ADMINCMD_USAGE", map[string]string{"command": cmd}, "ADMIN: Usage: !reqwipe <number|request>")), nil
+		}
+		siteArgs = "REQWIPE " + args
+		displayArgs = siteArgs
 	case "nuke":
 		if args == "" {
 			return p.reply(evt, p.render("ADMINCMD_USAGE", map[string]string{"command": cmd}, "ADMIN: Usage: !site <command> [args], !nuke <release> <multiplier> <reason>, or !unnuke <release> [reason]")), nil
 		}
 		siteArgs = "NUKE " + args
+		displayArgs = siteArgs
 	case "unnuke":
 		if args == "" {
 			return p.reply(evt, p.render("ADMINCMD_USAGE", map[string]string{"command": cmd}, "ADMIN: Usage: !site <command> [args], !nuke <release> <multiplier> <reason>, or !unnuke <release> [reason]")), nil
 		}
 		siteArgs = "UNNUKE " + args
+		displayArgs = siteArgs
 	default:
 		return nil, nil
 	}
@@ -127,6 +158,10 @@ func (p *Plugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 	if siteArgs == "" {
 		return p.reply(evt, p.render("ADMINCMD_USAGE", map[string]string{"command": cmd}, "ADMIN: Usage: !site <command> [args], !nuke <release> <multiplier> <reason>, or !unnuke <release> [reason]")), nil
 	}
+	if displayArgs == "" {
+		displayArgs = siteArgs
+	}
+	displayArgs = normalizeSiteArgs(displayArgs)
 	siteCommand := firstWord(siteArgs)
 	if !p.allowedCommand(siteCommand) {
 		return p.reply(evt, p.render("ADMINCMD_BLOCKED", map[string]string{"command": siteCommand}, fmt.Sprintf("ADMIN: SITE %s is not allowed.", siteCommand))), nil
@@ -135,7 +170,7 @@ func (p *Plugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 	responseLines, err := p.runSITE(siteArgs)
 	response := responseText(responseLines)
 	vars := map[string]string{
-		"command":  siteArgs,
+		"command":  displayArgs,
 		"response": response,
 		"error":    "",
 		"user":     evt.User,
@@ -147,9 +182,9 @@ func (p *Plugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 			response = err.Error()
 		}
 		vars["response"] = response
-		return p.reply(evt, p.render("ADMINCMD_ERROR", vars, "ADMIN: SITE "+siteArgs+" failed: "+response)), nil
+		return p.reply(evt, p.render("ADMINCMD_ERROR", vars, "ADMIN: SITE "+displayArgs+" failed: "+response)), nil
 	}
-	return p.commandResponse(evt, siteArgs, responseLines), nil
+	return p.commandResponse(evt, displayArgs, responseLines), nil
 }
 
 func (p *Plugin) runSITE(siteArgs string) ([]string, error) {
@@ -356,6 +391,12 @@ func defaultAllowedCommands() []string {
 		"ADDAFFIL",
 		"DELAFFIL",
 		"AFFILS",
+		"REQUEST",
+		"REQUESTS",
+		"REQFILL",
+		"REQFILLED",
+		"REQDEL",
+		"REQWIPE",
 	}
 }
 
