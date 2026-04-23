@@ -616,7 +616,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			return false
 		}
 		s.DataListen = l
-		s.PassthruSlave = nil 
+		s.PassthruSlave = nil
 		s.PassthruXferIdx = 0
 		ip := strings.ReplaceAll(s.Config.PublicIP, ".", ",")
 		response := fmt.Sprintf("227 Entering Passive Mode (%s,%d,%d)\r\n", ip, port/256, port%256)
@@ -743,8 +743,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					var statusName string
 					if present >= total {
 						totalMB := float64(totalBytes) / (1024 * 1024)
-						statusName = fmt.Sprintf("[%s] - ( %.0fM %dF - COMPLETE ) - [%s]",
-							siteName, totalMB, total, siteName)
+						statusName = completeStatusName(siteName, s.CurrentDir, totalMB, total, bridge)
 					} else {
 						pct := (present * 100) / total
 						bar := "["
@@ -905,8 +904,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 
 					var statusName string
 					if present >= total {
-						statusName = fmt.Sprintf("[%s] - ( %.0fM %dF - COMPLETE ) - [%s]",
-							siteName, totalMB, total, siteName)
+						statusName = completeStatusName(siteName, s.CurrentDir, totalMB, total, bridge)
 					} else {
 						bar := "["
 						barWidth := 20
@@ -987,7 +985,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			listPath := filepath.Join(s.Config.StoragePath, s.CurrentDir)
 			files, err := os.ReadDir(listPath)
 			if err == nil {
-				
+
 				for _, f := range files {
 					if strings.HasPrefix(f.Name(), ".") {
 						continue
@@ -1021,7 +1019,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			s.showGlobalStats("226", false)
 		}
-		
+
 		fmt.Fprintf(s.Conn, "226 Directory listing complete.\r\n")
 		return false
 
@@ -1759,4 +1757,70 @@ func expectedFileLabel(dirPath string) string {
 	default:
 		return "file(s)"
 	}
+}
+
+func completeStatusName(siteName, dirPath string, totalMB float64, totalFiles int, bridge MasterBridge) string {
+	extra := musicCompleteExtra(dirPath, bridge)
+	if extra != "" {
+		return fmt.Sprintf("[%s] - ( %.0fM %dF - COMPLETE - %s ) - [%s]",
+			siteName, totalMB, totalFiles, extra, siteName)
+	}
+	return fmt.Sprintf("[%s] - ( %.0fM %dF - COMPLETE ) - [%s]",
+		siteName, totalMB, totalFiles, siteName)
+}
+
+func musicCompleteExtra(dirPath string, bridge MasterBridge) string {
+	if bridge == nil || !isMusicSection(dirPath) {
+		return ""
+	}
+	info := bridge.GetDirMediaInfo(dirPath)
+	if len(info) == 0 {
+		return ""
+	}
+	genre := firstNonEmpty(info, "genre", "g_genre")
+	year := firstNonEmpty(info, "year", "g_recordeddate", "g_recorded_date", "g_originalreleaseddate", "g_original_released_date")
+	year = normalizeYearForBanner(year)
+	switch {
+	case genre != "" && year != "":
+		return genre + " " + year
+	case genre != "":
+		return genre
+	default:
+		return year
+	}
+}
+
+func isMusicSection(dirPath string) bool {
+	section := strings.ToUpper(strings.Trim(path.Clean(dirPath), "/"))
+	if idx := strings.Index(section, "/"); idx >= 0 {
+		section = section[:idx]
+	}
+	return section == "MP3" || section == "FLAC"
+}
+
+func firstNonEmpty(values map[string]string, keys ...string) string {
+	for _, key := range keys {
+		if value := strings.TrimSpace(values[key]); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func normalizeYearForBanner(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) >= 4 {
+		year := value[:4]
+		allDigits := true
+		for _, r := range year {
+			if r < '0' || r > '9' {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits {
+			return year
+		}
+	}
+	return value
 }

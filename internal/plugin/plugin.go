@@ -70,9 +70,9 @@ type Event struct {
 // the PluginManager when it calls Init(). Plugins should store the pointer
 // and use it in OnEvent callbacks.
 type Services struct {
-	Bridge MasterBridge // VFS/slave access — WriteFile, ReadFile, PluginListDir, etc.
-	Debug  bool         // Global debug flag
-	Logger *log.Logger  // Optional logger (may be nil — fall back to log.Printf)
+	Bridge    MasterBridge // VFS/slave access — WriteFile, ReadFile, PluginListDir, etc.
+	Debug     bool         // Global debug flag
+	Logger    *log.Logger  // Optional logger (may be nil — fall back to log.Printf)
 	EmitEvent func(eventType, path, filename, section string, size int64, speed float64, data map[string]string)
 }
 
@@ -132,6 +132,7 @@ type MasterBridge interface {
 	WriteFile(path string, content []byte) error
 	ReadFile(path string) ([]byte, error)
 	ProbeMediaInfo(path, binary string, timeoutSeconds int) (map[string]string, error)
+	CacheMediaInfo(path string, fields map[string]string)
 	FileExists(path string) bool
 	GetFileSize(path string) int64
 	PluginGetVFSRaceStats(dirPath string) (users []RaceUser, groups []RaceGroup, totalBytes int64, present int, total int)

@@ -704,6 +704,10 @@ func (b *Bridge) CacheSFV(dirPath string, sfvName string, entries []core.SFVEntr
 	log.Printf("[Bridge] Cached SFV for %s: %d entries", dirPath, len(entries))
 }
 
+func (b *Bridge) CacheMediaInfo(dirPath string, fields map[string]string) {
+	b.sm.GetVFS().SetMediaInfo(dirPath, fields)
+}
+
 // GetVFSRaceStats returns race statistics for a directory,
 // counting ONLY files that are listed in the cached SFV data.
 func (b *Bridge) GetVFSRaceStats(dirPath string) ([]core.VFSRaceUser, []core.VFSRaceGroup, int64, int, int) {
@@ -783,6 +787,10 @@ func (b *Bridge) GetSFVData(dirPath string) map[string]uint32 {
 		return nil
 	}
 	return meta.SFVEntries
+}
+
+func (b *Bridge) GetDirMediaInfo(dirPath string) map[string]string {
+	return b.sm.GetVFS().GetMediaInfo(dirPath)
 }
 
 func (b *Bridge) SearchDirs(query string, limit int) []core.VFSSearchResult {

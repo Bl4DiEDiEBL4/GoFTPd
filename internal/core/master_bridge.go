@@ -81,6 +81,9 @@ type MasterBridge interface {
 	// Returns nil if no SFV is cached for this directory.
 	GetSFVData(dirPath string) map[string]uint32
 
+	// GetDirMediaInfo returns cached release-level mediainfo fields for a directory.
+	GetDirMediaInfo(dirPath string) map[string]string
+
 	// SearchDirs searches the master's VFS for directories matching query.
 	SearchDirs(query string, limit int) []VFSSearchResult
 

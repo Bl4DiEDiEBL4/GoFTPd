@@ -182,6 +182,7 @@ func (h *Handler) probe(j job) {
 	fields["path"] = j.relPath
 	fields["relname"] = j.relName
 	fields["section"] = j.section
+	h.svc.Bridge.CacheMediaInfo(j.relPath, fields)
 	if h.debug {
 		log.Printf("[MEDIAINFO] emitting %s for %s (%d fields)", j.eventType, j.filePath, len(fields))
 	}

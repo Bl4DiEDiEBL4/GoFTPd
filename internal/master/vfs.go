@@ -24,8 +24,8 @@ type VFSFile struct {
 	SlaveName    string
 	Owner        string
 	Group        string
-	Seen         bool // Used to detect and purge deleted ghost files
-	XferTime     int64 // transfer time in milliseconds (for speed calc)
+	Seen         bool   // Used to detect and purge deleted ghost files
+	XferTime     int64  // transfer time in milliseconds (for speed calc)
 	Checksum     uint32 // CRC32 from transfer
 }
 
@@ -34,6 +34,7 @@ type VFSFile struct {
 type VFSDirMeta struct {
 	SFVEntries map[string]uint32 // filename -> CRC32 from parsed SFV
 	SFVName    string            // name of the .sfv file
+	MediaInfo  map[string]string // cached release media fields, e.g. genre/year
 }
 
 type VFSSearchResult struct {
@@ -44,7 +45,8 @@ type VFSSearchResult struct {
 }
 
 // VirtualFileSystem maintains the master's view of files across all slaves.
-//  / VirtualFileSystemDirectory.
+//
+//	/ VirtualFileSystemDirectory.
 type VirtualFileSystem struct {
 	files         map[string]*VFSFile
 	dirMeta       map[string]*VFSDirMeta // dir path -> metadata (SFV cache etc)
@@ -512,6 +514,7 @@ func cleanVFSPath(p string) string {
 	}
 	return p
 }
+
 // SetSFVData caches parsed SFV entries on a directory (like drftpd's pluginMetaData).
 func (vfs *VirtualFileSystem) SetSFVData(dirPath string, sfvName string, entries map[string]uint32) {
 	vfs.mu.Lock()
@@ -524,10 +527,48 @@ func (vfs *VirtualFileSystem) SetSFVData(dirPath string, sfvName string, entries
 			normalized[name] = crc
 		}
 	}
-	vfs.dirMeta[dirPath] = &VFSDirMeta{
-		SFVEntries: normalized,
-		SFVName:    sfvName,
+	meta := vfs.dirMeta[dirPath]
+	if meta == nil {
+		meta = &VFSDirMeta{}
+		vfs.dirMeta[dirPath] = meta
 	}
+	meta.SFVEntries = normalized
+	meta.SFVName = sfvName
+}
+
+// SetMediaInfo caches release-level mediainfo fields on a directory.
+func (vfs *VirtualFileSystem) SetMediaInfo(dirPath string, fields map[string]string) {
+	vfs.mu.Lock()
+	defer vfs.mu.Unlock()
+	dirPath = filepath.Clean(dirPath)
+	meta := vfs.dirMeta[dirPath]
+	if meta == nil {
+		meta = &VFSDirMeta{}
+		vfs.dirMeta[dirPath] = meta
+	}
+	meta.MediaInfo = make(map[string]string, len(fields))
+	for k, v := range fields {
+		k = strings.TrimSpace(k)
+		v = strings.TrimSpace(v)
+		if k != "" && v != "" {
+			meta.MediaInfo[k] = v
+		}
+	}
+}
+
+// GetMediaInfo returns cached release-level mediainfo fields.
+func (vfs *VirtualFileSystem) GetMediaInfo(dirPath string) map[string]string {
+	vfs.mu.RLock()
+	defer vfs.mu.RUnlock()
+	meta := vfs.dirMeta[filepath.Clean(dirPath)]
+	if meta == nil || len(meta.MediaInfo) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(meta.MediaInfo))
+	for k, v := range meta.MediaInfo {
+		out[k] = v
+	}
+	return out
 }
 
 // GetSFVData returns cached SFV entries for a directory, or nil if not cached.
