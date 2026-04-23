@@ -505,7 +505,6 @@ plugins:
         - USERS
         - USER
         - SEEN
-        - LASTON
         - LASTLOGIN
         - GROUPS
         - GROUP

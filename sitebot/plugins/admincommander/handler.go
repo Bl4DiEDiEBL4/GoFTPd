@@ -343,7 +343,6 @@ func defaultAllowedCommands() []string {
 		"USERS",
 		"USER",
 		"SEEN",
-		"LASTON",
 		"LASTLOGIN",
 		"GROUPS",
 		"GROUP",

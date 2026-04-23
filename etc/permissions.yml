@@ -50,14 +50,92 @@
 rules:
   # ---------------------------------------------------------------------------
   # SITE commands: command-level ACLs, glftpd-style.
-  # Put specific commands before the wildcard. Examples:
-  #   sitecmd ADDUSER 1
-  #   sitecmd GADDUSER 1
-  #   sitecmd READD 1
-  #   sitecmd RENUSER 1
-  #   sitecmd REQUEST *
+  # This starter layout keeps SITE HELP aligned with what users can really run:
+  #   - normal users get basic info/search/request commands
+  #   - affils/staff can get PRE-style workflow commands
+  #   - siteops keep the account/admin commands
+  #
+  # Tweak the affil/staff group names to fit your site, for example:
+  #   required: "3 =iND =STAFF =SiteOP"
+  #
+  # Put specific commands before the wildcard.
   # Use !*, !flag, !=group, or !@nick to block.
   # ---------------------------------------------------------------------------
+  # Basic user-facing SITE commands.
+  - type: sitecmd
+    path: HELP
+    required: "*"
+  - type: sitecmd
+    path: RULES
+    required: "*"
+  - type: sitecmd
+    path: BW
+    required: "*"
+  - type: sitecmd
+    path: USER
+    required: "*"
+  - type: sitecmd
+    path: SEEN
+    required: "*"
+  - type: sitecmd
+    path: LASTLOGIN
+    required: "*"
+  - type: sitecmd
+    path: GROUPS
+    required: "*"
+  - type: sitecmd
+    path: GROUP
+    required: "*"
+  - type: sitecmd
+    path: GINFO
+    required: "*"
+  - type: sitecmd
+    path: TRAFFIC
+    required: "*"
+  - type: sitecmd
+    path: SEARCH
+    required: "*"
+  - type: sitecmd
+    path: RACE
+    required: "*"
+  - type: sitecmd
+    path: XDUPE
+    required: "*"
+  - type: sitecmd
+    path: INVITE
+    required: "*"
+  - type: sitecmd
+    path: REQUEST
+    required: "*"
+  - type: sitecmd
+    path: REQUESTS
+    required: "*"
+  - type: sitecmd
+    path: REQFILL
+    required: "*"
+  - type: sitecmd
+    path: REQFILLED
+    required: "*"
+  - type: sitecmd
+    path: REQDEL
+    required: "*"
+
+  # Affil/staff workflow commands.
+  # Adjust the example groups/flags to fit your site.
+  - type: sitecmd
+    path: PRE
+    required: "3 =iND =STAFF =SiteOP"
+  - type: sitecmd
+    path: AFFILS
+    required: "3 =iND =STAFF =SiteOP"
+  - type: sitecmd
+    path: WHO
+    required: "=STAFF =SiteOP"
+  - type: sitecmd
+    path: SWHO
+    required: "=STAFF =SiteOP"
+
+  # Siteop/admin-only SITE commands.
   - type: sitecmd
     path: ADDUSER
     required: "1"
@@ -101,12 +179,6 @@ rules:
     path: GRPDEL
     required: "1"
   - type: sitecmd
-    path: WHO
-    required: "1"
-  - type: sitecmd
-    path: SWHO
-    required: "1"
-  - type: sitecmd
     path: USERS
     required: "1"
   - type: sitecmd
@@ -142,9 +214,11 @@ rules:
   - type: sitecmd
     path: REQWIPE
     required: "1"
+
+  # Anything not explicitly listed above is denied.
   - type: sitecmd
     path: '*'
-    required: "*"
+    required: "!*"
 
   # ---------------------------------------------------------------------------
   # Private paths: only matching users may enter or see these areas.

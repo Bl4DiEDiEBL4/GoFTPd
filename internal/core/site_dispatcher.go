@@ -41,8 +41,10 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 		return s.HandleSiteUsers(remainingArgs)
 	case "USER":
 		return s.HandleSiteUser(remainingArgs)
-	case "SEEN", "LASTON", "LASTLOGIN":
+	case "SEEN":
 		return s.HandleSiteSeen(remainingArgs)
+	case "LASTLOGIN":
+		return s.HandleSiteLastLogin(remainingArgs)
 	case "GROUPS":
 		return s.HandleSiteGroups(remainingArgs)
 	case "GROUP", "GINFO":

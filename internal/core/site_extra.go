@@ -90,6 +90,24 @@ func (s *Session) HandleSiteSeen(args []string) bool {
 	return false
 }
 
+func (s *Session) HandleSiteLastLogin(args []string) bool {
+	if len(args) < 1 || strings.TrimSpace(args[0]) == "" {
+		fmt.Fprintf(s.Conn, "501 Usage: SITE LASTLOGIN <username>\r\n")
+		return false
+	}
+	u, err := user.LoadUser(args[0], s.GroupMap)
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 User %s not found.\r\n", args[0])
+		return false
+	}
+	if u.LastLogin <= 0 {
+		fmt.Fprintf(s.Conn, "200 %s has never logged in.\r\n", u.Name)
+		return false
+	}
+	fmt.Fprintf(s.Conn, "200 %s last logged in at %s (%s ago).\r\n", u.Name, formatUnixTime(u.LastLogin), formatAge(u.LastLogin))
+	return false
+}
+
 func (s *Session) HandleSiteGroups(args []string) bool {
 	groups := make([]string, 0, len(s.GroupMap))
 	for group := range s.GroupMap {

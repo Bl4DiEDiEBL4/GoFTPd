@@ -25,7 +25,8 @@ var baseSiteHelpEntries = []siteHelpEntry{
 	{Command: "BW", Usage: "[user] | SLAVE [name]", Summary: "Show live bandwidth summary", Area: "Info"},
 	{Command: "USERS", Usage: "", Summary: "List users", Area: "Info"},
 	{Command: "USER", Usage: "<user>", Summary: "Show user details", Area: "Info"},
-	{Command: "SEEN", Usage: "<user>", Summary: "Show last login", Area: "Info", Aliases: []string{"LASTON", "LASTLOGIN"}},
+	{Command: "SEEN", Usage: "<user>", Summary: "Show whether a user is online or when they were last seen", Area: "Info"},
+	{Command: "LASTLOGIN", Usage: "<user>", Summary: "Show the stored last login time", Area: "Info"},
 	{Command: "GROUPS", Usage: "", Summary: "List groups", Area: "Info"},
 	{Command: "GROUP", Usage: "<group>", Summary: "Show group details", Area: "Info", Aliases: []string{"GINFO"}},
 	{Command: "GRPNFO", Usage: "<group>", Summary: "Show group file", Area: "Info"},
@@ -166,6 +167,7 @@ func (s *Session) siteHelpEntries() map[string]siteHelpEntry {
 			aliasEntry := entry
 			aliasEntry.Command = alias
 			aliasEntry.Aliases = nil
+			aliasEntry.Area = ""
 			if aliasEntry.Usage == "" {
 				aliasEntry.Usage = entry.Usage
 			}
