@@ -46,6 +46,7 @@ type SFVConfig struct {
 type IncompleteConfig struct {
 	Enabled               bool   `yaml:"enabled"`
 	Indicator             string `yaml:"indicator"`
+	NoSFVIndicator        string `yaml:"no_sfv_indicator"`
 	NFOIndicator          string `yaml:"nfo_indicator"`
 	CDIndicator           string `yaml:"cd_indicator"`
 	MarkEmptyDirsOnRescan bool   `yaml:"mark_empty_dirs_on_rescan"`

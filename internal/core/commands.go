@@ -1640,9 +1640,9 @@ func incompleteMarkerName(pattern, relname string) string {
 		return ""
 	}
 	if strings.Contains(pattern, "%0") {
-		return strings.ReplaceAll(pattern, "%0", relname)
+		return path.Base(strings.ReplaceAll(pattern, "%0", relname))
 	}
-	return pattern
+	return path.Base(pattern)
 }
 
 func incompleteMarkerName2(pattern, relname, child string) string {
@@ -1659,10 +1659,10 @@ func isIncompleteMarkerName(pattern, name string) bool {
 		return strings.HasPrefix(strings.ToLower(name), "[incomplete]")
 	}
 	if strings.Contains(pattern, "%0") {
-		prefix := strings.SplitN(pattern, "%0", 2)[0]
+		prefix := path.Base(strings.SplitN(pattern, "%0", 2)[0])
 		return prefix != "" && strings.HasPrefix(name, prefix)
 	}
-	return name == pattern
+	return name == path.Base(pattern)
 }
 
 func incompleteMarkerEntries(bridge MasterBridge, cfg *Config, pattern, dirPath string, entries []MasterFileEntry) []MasterFileEntry {
@@ -1698,6 +1698,21 @@ func incompleteMarkerEntries(bridge MasterBridge, cfg *Config, pattern, dirPath 
 		}
 		if total > 0 && present < total {
 			marker := incompleteMarkerName(pattern, e.Name)
+			if marker != "" && !existing[marker] {
+				out = append(out, MasterFileEntry{
+					Name:       marker,
+					IsSymlink:  true,
+					LinkTarget: releasePath,
+					ModTime:    e.ModTime,
+					Owner:      "GoFTPd",
+					Group:      "GoFTPd",
+				})
+				existing[marker] = true
+			}
+		}
+		noSFVPattern := zipscript.NoSFVIndicator(cfg.Zipscript)
+		if noSFVPattern != "" && !hasSFVEntry(bridge.ListDir(releasePath)) {
+			marker := incompleteMarkerName(noSFVPattern, e.Name)
 			if marker != "" && !existing[marker] {
 				out = append(out, MasterFileEntry{
 					Name:       marker,
@@ -1762,6 +1777,18 @@ func hasNFOEntry(entries []MasterFileEntry) bool {
 			continue
 		}
 		if strings.HasSuffix(strings.ToLower(entry.Name), ".nfo") {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSFVEntry(entries []MasterFileEntry) bool {
+	for _, entry := range entries {
+		if entry.IsDir {
+			continue
+		}
+		if strings.HasSuffix(strings.ToLower(entry.Name), ".sfv") {
 			return true
 		}
 	}

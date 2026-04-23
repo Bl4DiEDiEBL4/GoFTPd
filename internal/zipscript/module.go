@@ -91,6 +91,13 @@ func NFOIndicator(cfg Config) string {
 	return strings.TrimSpace(cfg.Incomplete.NFOIndicator)
 }
 
+func NoSFVIndicator(cfg Config) string {
+	if !IncompleteEnabled(cfg) {
+		return ""
+	}
+	return strings.TrimSpace(cfg.Incomplete.NoSFVIndicator)
+}
+
 func CDIndicator(cfg Config) string {
 	if !IncompleteEnabled(cfg) {
 		return ""

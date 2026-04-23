@@ -1,6 +1,7 @@
 package dateddirs
 
 import (
+	"fmt"
 	"log"
 	"path"
 	"strings"
@@ -40,7 +41,7 @@ func (h *Handler) Init(svc *plugin.Services, cfg map[string]interface{}) error {
 	h.svc = svc
 	h.enabled = boolConfig(cfg, "enabled", false)
 	h.sections = stringSliceConfig(cfg, "sections")
-	h.format = normalizeFormat(stringConfig(cfg, "format", "0102"))
+	h.format = normalizeFormat(stringConfig(cfg, "format", "MM-DD"))
 	h.todaySymlink = boolConfig(cfg, "today_symlink", true)
 	h.symlinkPrefix = stringConfig(cfg, "symlink_prefix", "!Today_")
 	h.readOnlyAfterMinutes = intConfig(cfg, "readonly_after_minutes", 60)
@@ -83,8 +84,8 @@ func (h *Handler) apply(now time.Time) {
 	if h.svc == nil || h.svc.Bridge == nil || !h.enabled {
 		return
 	}
-	today := now.Format(h.format)
-	yesterday := now.AddDate(0, 0, -1).Format(h.format)
+	today := formatDateDir(now, h.format)
+	yesterday := formatDateDir(now.AddDate(0, 0, -1), h.format)
 
 	h.mu.Lock()
 	lastDay := h.lastDay
@@ -176,9 +177,39 @@ func (h *Handler) pathMode(targetPath string, mode uint32) bool {
 
 func normalizeFormat(format string) string {
 	if strings.TrimSpace(format) == "" {
-		return "0102"
+		return "MM-DD"
 	}
-	return strings.NewReplacer("%Y", "2006", "%y", "06", "%m", "01", "%d", "02").Replace(format)
+	return strings.TrimSpace(format)
+}
+
+func formatDateDir(t time.Time, format string) string {
+	format = strings.TrimSpace(format)
+	if format == "" {
+		format = "MM-DD"
+	}
+
+	replacer := strings.NewReplacer(
+		"WW-YYYY", "{WEEK2}-{ISOYEAR4}",
+		"YYYY-WW", "{ISOYEAR4}-{WEEK2}",
+		"YYYY", "{YEAR4}",
+		"YY", "{YEAR2}",
+		"MM", "{MONTH2}",
+		"DD", "{DAY2}",
+		"WW", "{WEEK2}",
+	)
+	tokenized := replacer.Replace(format)
+	if tokenized == format {
+		tokenized = "{MONTH2}-{DAY2}"
+	}
+	isoYear, isoWeek := t.ISOWeek()
+	return strings.NewReplacer(
+		"{YEAR4}", t.Format("2006"),
+		"{YEAR2}", t.Format("06"),
+		"{MONTH2}", t.Format("01"),
+		"{DAY2}", t.Format("02"),
+		"{WEEK2}", fmt.Sprintf("%02d", isoWeek),
+		"{ISOYEAR4}", fmt.Sprintf("%04d", isoYear),
+	).Replace(tokenized)
 }
 
 func minutesSinceMidnight(t time.Time) int {
