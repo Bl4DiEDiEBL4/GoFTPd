@@ -359,11 +359,11 @@ zipscript:
       - "/XXX-SD/*"
 
   incomplete:
-    enabled: true                    # enable virtual incomplete / missing-NFO markers
-    indicator: "../[incomplete]-%0"  # shown for releases with missing SFV files
-    no_sfv_indicator: "../[no-sfv]-%0" # shown when a release dir has files but no .sfv yet
-    nfo_indicator: "../[no-nfo]-%0"  # shown when a cleanup release has no .nfo
-    cd_indicator: "../../[incomplete]-(%0)-%1" # shown for incomplete CD1 / DISC2 style child dirs
+    enabled: true                    # enable virtual incomplete / missing-file markers in section listings
+    indicator: "[incomplete]-%0"     # shown for releases with missing SFV payload files
+    no_sfv_indicator: "[no-sfv]-%0"  # shown when a release dir has files but no .sfv yet
+    nfo_indicator: "[no-nfo]-%0"     # shown when a release_check release has no .nfo
+    cd_indicator: "[incomplete]-(%0)-%1" # shown for incomplete CD1 / DISC2 style child dirs
     mark_empty_dirs_on_rescan: true  # empty rescanned release dirs also get incomplete markers
 
   allowed_files:
