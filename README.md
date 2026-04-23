@@ -219,7 +219,7 @@ Implemented daemon SITE commands include:
 | Area | Commands |
 |------|----------|
 | Info | `HELP`, `RULES`, `WHO`, `SWHO`, `USERS`, `USER`, `SEEN`, `LASTON`, `LASTLOGIN`, `GROUPS`, `GROUP`, `GINFO`, `GRPNFO`, `TRAFFIC` |
-| Users/groups | `ADDUSER`, `DELUSER`, `CHPASS`, `ADDIP`, `DELIP`, `FLAGS`, `CHGRP`, `CHPGRP`, `GADMIN`, `GRPADD`, `GRPDEL`, `GRP` |
+| Users/groups | `ADDUSER`, `GADDUSER`, `DELUSER`, `READD`, `RENUSER`, `CHPASS`, `ADDIP`, `DELIP`, `FLAGS`, `CHGRP`, `CHPGRP`, `GADMIN`, `GRPADD`, `GRPDEL`, `GRP` |
 | Release/admin | `NUKE`, `UNNUKE`, `UNDUPE`, `WIPE`, `KICK`, `REHASH`, `REMERGE`, `CHMOD` |
 | Search/rescan | `SEARCH`, `RACE`, `RESCAN`, `XDUPE` |
 | IRC/sitebot | `INVITE` |
@@ -227,6 +227,17 @@ Implemented daemon SITE commands include:
 
 Command access is controlled through `sitecmd` ACL rules in
 `etc/permissions.yml`.
+
+Account command notes:
+
+- `GADDUSER <user> <pass> <group> [ident@ip ...]` creates a user and places it
+  in the given group immediately.
+- `DELUSER <user>` now moves the user into `etc/users/.deleted/` instead of
+  permanently removing the account file.
+- `READD <user> [newpass]` restores a user deleted with `DELUSER`. If the old
+  password hash was preserved, `newpass` is optional.
+- `RENUSER <olduser> <newuser>` renames both the user file and the passwd
+  entry.
 
 ## Sitebot
 

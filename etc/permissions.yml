@@ -52,6 +52,9 @@ rules:
   # SITE commands: command-level ACLs, glftpd-style.
   # Put specific commands before the wildcard. Examples:
   #   sitecmd ADDUSER 1
+  #   sitecmd GADDUSER 1
+  #   sitecmd READD 1
+  #   sitecmd RENUSER 1
   #   sitecmd REQUEST *
   # Use !*, !flag, !=group, or !@nick to block.
   # ---------------------------------------------------------------------------
@@ -59,7 +62,16 @@ rules:
     path: ADDUSER
     required: "1"
   - type: sitecmd
+    path: GADDUSER
+    required: "1"
+  - type: sitecmd
     path: DELUSER
+    required: "1"
+  - type: sitecmd
+    path: READD
+    required: "1"
+  - type: sitecmd
+    path: RENUSER
     required: "1"
   - type: sitecmd
     path: CHPASS

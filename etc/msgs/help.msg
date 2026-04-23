@@ -15,6 +15,14 @@
 214- TRAFFIC       - Show traffic stats
 214- CHMOD         - Change file permissions
 214- ADDUSER       - Add a new user
+214- GADDUSER      - Add a new user to a group
+214- DELUSER       - Delete a user (restorable)
+214- READD         - Restore a deleted user
+214- RENUSER       - Rename a user
+214- CHPASS        - Change a user's password
+214- ADDIP         - Add IP(s) to a user
+214- DELIP         - Delete IP(s) from a user
+214- FLAGS         - Change user flags
 214- NUKE          - Nuke a release
 214- UNNUKE        - Unnuke a release
 214- UNDUPE        - Remove release from dupe DB
