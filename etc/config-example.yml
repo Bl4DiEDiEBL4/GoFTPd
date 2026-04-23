@@ -192,6 +192,7 @@ show_diz:
   .imdb:    "*"
   .tvmaze:  "*"
   .requests: "*"
+  file_id.diz: "*"
 
 
 # =============================================================================
@@ -241,9 +242,32 @@ zipscript:
     complete_banner: true      # show [SITE] - ( ... COMPLETE ... ) - [SITE]
     music_complete_genre: true # add genre/year on MP3/FLAC COMPLETE banner
     announce_norace: true      # emit COMPLETE for first payload in non-SFV dirs too
+    announce_subdirs: true     # announce helper release subdirs like Sample, Proof, and Subs; set false to suppress them entirely
+
+  hooks:
+    on_complete:
+      enabled: false           # run an external command after a release completes
+      command: "/usr/bin/python3"
+      args: ["/goftpd/bin/on_complete.py"]
+      timeout_seconds: 30
+      extra_env:
+        EXAMPLE: "1"
+      # Exported env vars include:
+      #   GOFTPD_EVENT=COMPLETE
+      #   GOFTPD_PATH / GOFTPD_DIR
+      #   GOFTPD_RELNAME
+      #   GOFTPD_RELEASE_NAME
+      #   GOFTPD_RELEASE_SUBDIR
+      #   GOFTPD_SECTION
+      #   GOFTPD_SECTION_ROOT
+      #   GOFTPD_TOTAL_BYTES / GOFTPD_TOTAL_MB / GOFTPD_TOTAL_FILES
+      #   GOFTPD_DURATION_MS / GOFTPD_DURATION
+      #   GOFTPD_AVG_SPEED_MB
+      #   GOFTPD_USER_COUNT
+      # plus GOFTPD_<KEY> for zipscript race vars such as T_MBYTES/T_FILES/etc.
 
   sfv:
-    force_first: false         # require the .sfv before other payload files
+    force_first: false         # pzs-ng style: allow payload before .sfv; the release is checked once the .sfv lands
     deny_double_sfv: true      # reject a second .sfv in the same release dir
     delete_bad_crc: true       # delete uploaded files that fail SFV CRC
     ignore_zero_size: true     # delete zero-byte uploads instead of keeping them
@@ -297,11 +321,16 @@ zipscript:
       - "/XXX-HD/*"
       - "/XXX-IMAGESETS/*"
       - "/XXX-SD/*"
+    zip:
+      - "/0DAY/*/*"
+      - "/EBOOKS/*/*"
+      - "/XXX-IMAGESETS/*"
     nocheck:
       - "/PRIVATE/*"
       - "/LINKS/*"
       - "/PRE/*"
       - "/REQUESTS/*"
+    ignored_release_subdirs: ["Sample", "Proof", "Subs", "Subtitles", "Covers"] # helper dirs inside a release that should not get NEW/RACE/COMPLETE or marker handling
     # release_check controls where the stricter "this should end up as a proper
     # complete release" behavior applies:
     #   - incomplete markers
@@ -359,11 +388,11 @@ zipscript:
       - "/XXX-SD/*"
 
   incomplete:
-    enabled: true                    # enable virtual incomplete / missing-NFO markers
-    indicator: "../[incomplete]-%0"  # shown for releases with missing SFV files
-    no_sfv_indicator: "../[no-sfv]-%0" # shown when a release dir has files but no .sfv yet
-    nfo_indicator: "../[no-nfo]-%0"  # shown when a cleanup release has no .nfo
-    cd_indicator: "../../[incomplete]-(%0)-%1" # shown for incomplete CD1 / DISC2 style child dirs
+    enabled: true                    # enable virtual incomplete / missing-file markers in section listings
+    indicator: "[incomplete]-%0"     # shown for releases with missing SFV payload files
+    no_sfv_indicator: "[no-sfv]-%0"  # shown when a release dir has files but no .sfv yet
+    nfo_indicator: "[no-nfo]-%0"     # shown when a release_check release has no .nfo
+    cd_indicator: "[incomplete]-(%0)-%1" # shown for incomplete CD1 / DISC2 style child dirs
     mark_empty_dirs_on_rescan: true  # empty rescanned release dirs also get incomplete markers
 
   allowed_files:
@@ -398,7 +427,7 @@ plugins:
   dateddirs:
     enabled: true
     sections: ["EBOOKS", "MP3", "FLAC", "0DAY", "XXX-0DAY"]
-    format: "MM-DD" # readable tokens only: MM=month, DD=day, YY=2-digit year, YYYY=4-digit year, WW=ISO week (examples: MM-DD, YYYY-MM-DD, WW-YYYY)
+    format: "MMDD" # readable tokens only: MM=month, DD=day, YY=2-digit year, YYYY=4-digit year, WW=ISO week (examples: MMDD, YYYY-MM-DD, WW-YYYY)
     today_symlink: true
     symlink_prefix: "!Today_"
     readonly_after_minutes: 60

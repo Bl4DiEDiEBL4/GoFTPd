@@ -333,7 +333,7 @@ func (b *Bot) onRegistered() {
 			opered = true
 		}
 		// Give server time to process OPER and apply oper privileges before
-		// we try SAJOIN. UnrealIRCd's OPER → +o is near-instant but still
+		// we try SAJOIN. UnrealIRCd's OPER â†’ +o is near-instant but still
 		// needs a roundtrip. Default 1500ms, overridable via autojoin_delay_ms.
 		delay := b.Config.IRC.AutoJoinDelay
 		if delay <= 0 {
@@ -353,7 +353,7 @@ func (b *Bot) onRegistered() {
 	}
 
 	// Join all configured channels. When oper'd, use SAJOIN to bypass +i
-	// (invite-only) and +R (registered-only) modes — this is how scene
+	// (invite-only) and +R (registered-only) modes â€” this is how scene
 	// bots get into staff/ops channels without needing a permanent invite.
 	// Follow up with SAMODE +o so the bot has channel ops and can kick/ban
 	// / manage the channel later if needed.
@@ -441,6 +441,27 @@ func pathMatches(pattern, p string) bool {
 	}
 	return strings.HasPrefix(strings.ToLower(p), strings.ToLower(strings.TrimRight(pattern, "*")))
 }
+
+func (b *Bot) resolveSection(pathValue, fallback string) string {
+	best := strings.TrimSpace(fallback)
+	bestScore := -1
+	for _, sec := range b.Config.Sections {
+		for _, pat := range sec.Paths {
+			if !pathMatches(pat, pathValue) {
+				continue
+			}
+			score := len(strings.TrimRight(strings.TrimSpace(pat), "*"))
+			if score > bestScore {
+				best = sec.Name
+				bestScore = score
+			}
+		}
+	}
+	if strings.TrimSpace(best) == "" {
+		return fallback
+	}
+	return best
+}
 func (b *Bot) routeChannels(evt *event.Event, outType string) []string {
 	if chs := b.Config.Announce.TypeRoutes[outType]; len(chs) > 0 {
 		return nonEmptyChannels(chs)
@@ -476,12 +497,13 @@ func nonEmptyChannels(channels []string) []string {
 	return out
 }
 func (b *Bot) handleEvent(evt *event.Event) {
-	// Special case: INVITE events don't go to plugins — we send an IRC
+	// Special case: INVITE events don't go to plugins â€” we send an IRC
 	// INVITE command directly for each channel the user is allowed into.
 	if evt.Type == event.EventInvite {
 		b.handleInviteEvent(evt)
 		return
 	}
+	evt.Section = b.resolveSection(evt.Path, evt.Section)
 	log.Printf("[Bot] handleEvent %s section=%s path=%s file=%s user=%s", evt.Type, evt.Section, evt.Path, evt.Filename, evt.User)
 	outs, err := b.Plugins.ProcessEvent(evt)
 	if err != nil {
@@ -521,7 +543,7 @@ func (b *Bot) handleEvent(evt *event.Event) {
 		}
 		channels := b.routeChannels(evt, out.Type)
 		if len(channels) == 0 {
-			log.Printf("[Bot] %s output dropped — routeChannels returned empty for section=%s outType=%s", evt.Type, evt.Section, out.Type)
+			log.Printf("[Bot] %s output dropped â€” routeChannels returned empty for section=%s outType=%s", evt.Type, evt.Section, out.Type)
 			continue
 		}
 		for _, line := range strings.Split(out.Text, "\n") {
@@ -575,7 +597,7 @@ func (b *Bot) handleInviteEvent(evt *event.Event) {
 		} else if b.Debug {
 			log.Printf("[Bot] Sent SAJOIN/INVITE %s to %s", nick, ch)
 		}
-		// Small pacing gap — SAJOIN+INVITE per channel is 2 lines, over 3
+		// Small pacing gap â€” SAJOIN+INVITE per channel is 2 lines, over 3
 		// channels that's 6 rapid commands. IRC servers often throttle or
 		// drop bursts. 300ms keeps us well under any reasonable flood limit.
 		time.Sleep(300 * time.Millisecond)

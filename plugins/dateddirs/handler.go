@@ -41,7 +41,7 @@ func (h *Handler) Init(svc *plugin.Services, cfg map[string]interface{}) error {
 	h.svc = svc
 	h.enabled = boolConfig(cfg, "enabled", false)
 	h.sections = stringSliceConfig(cfg, "sections")
-	h.format = normalizeFormat(stringConfig(cfg, "format", "MM-DD"))
+	h.format = normalizeFormat(stringConfig(cfg, "format", "MMDD"))
 	h.todaySymlink = boolConfig(cfg, "today_symlink", true)
 	h.symlinkPrefix = stringConfig(cfg, "symlink_prefix", "!Today_")
 	h.readOnlyAfterMinutes = intConfig(cfg, "readonly_after_minutes", 60)
@@ -177,7 +177,7 @@ func (h *Handler) pathMode(targetPath string, mode uint32) bool {
 
 func normalizeFormat(format string) string {
 	if strings.TrimSpace(format) == "" {
-		return "MM-DD"
+		return "MMDD"
 	}
 	return strings.TrimSpace(format)
 }
@@ -185,7 +185,7 @@ func normalizeFormat(format string) string {
 func formatDateDir(t time.Time, format string) string {
 	format = strings.TrimSpace(format)
 	if format == "" {
-		format = "MM-DD"
+		format = "MMDD"
 	}
 
 	replacer := strings.NewReplacer(
@@ -199,7 +199,7 @@ func formatDateDir(t time.Time, format string) string {
 	)
 	tokenized := replacer.Replace(format)
 	if tokenized == format {
-		tokenized = "{MONTH2}-{DAY2}"
+		tokenized = "{MONTH2}{DAY2}"
 	}
 	isoYear, isoWeek := t.ISOWeek()
 	return strings.NewReplacer(

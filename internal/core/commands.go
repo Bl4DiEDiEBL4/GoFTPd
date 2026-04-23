@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -1170,56 +1171,37 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					speedMB = (float64(fileSize) / 1024.0 / 1024.0) / (float64(xferMs) / 1000.0)
 				}
 				data := map[string]string{}
+				if subdir := zipscript.ReleaseSubdirLabel(s.Config.Zipscript, s.CurrentDir); subdir != "" {
+					data["release_subdir"] = subdir
+					data["release_name"] = path.Base(path.Dir(s.CurrentDir))
+					if !zipscript.AnnounceReleaseSubdirs(s.Config.Zipscript) {
+						data["skip_release_announce"] = "true"
+					}
+				}
 				if strings.HasSuffix(strings.ToLower(fileName), ".sfv") {
 					if sfvEntries := bridge.GetSFVData(s.CurrentDir); sfvEntries != nil {
 						data["t_filecount"] = fmt.Sprintf("%d", len(sfvEntries))
 						data["t_file_label"] = zipscript.ExpectedFileLabel(s.Config.Zipscript, s.CurrentDir)
 					}
 				}
-				if zipscript.IsRacePayloadFileForDir(s.Config.Zipscript, s.CurrentDir, fileName) {
-					data["file_mbytes"] = mbString(fileSize)
-					if sfvEntries := bridge.GetSFVData(s.CurrentDir); sfvEntries != nil {
-						users, _, totalBytes, present, total := bridge.GetVFSRaceStats(s.CurrentDir)
-						if total > 0 {
-							data["relname"] = path.Base(s.CurrentDir)
-							data["t_files"] = fmt.Sprintf("%d", total)
-							data["t_present"] = fmt.Sprintf("%d", present)
-							data["t_filesleft"] = fmt.Sprintf("%d", maxInt(0, total-present))
-							data["t_totalmb"] = fmt.Sprintf("%.1f", float64(totalBytes)/1024.0/1024.0)
-							data["t_avgspeed"] = fmt.Sprintf("%.2fMB/s", currentRaceSpeedMB(s.CurrentDir, totalBytes, bridge))
-							data["t_timeleft"] = estimateRaceTimeLeft(s.CurrentDir, totalBytes, present, total, bridge)
-							estBytes := fileSize * int64(total)
-							data["t_mbytes"] = fmt.Sprintf("%.0fMB", float64(estBytes)/1024.0/1024.0)
-							if len(users) > 0 {
-								leader := users[0]
-								for _, u := range users {
-									if u.Files > leader.Files {
-										leader = u
-									}
-								}
-								data["leader_name"] = leader.Name
-								data["leader_group"] = leader.Group
-								data["leader_files"] = fmt.Sprintf("%d", leader.Files)
-								data["leader_mb"] = fmt.Sprintf("%.1f", float64(leader.Bytes)/1024.0/1024.0)
-								data["leader_pct"] = fmt.Sprintf("%d", leader.Percent)
-								data["leader_speed"] = fmt.Sprintf("%.2fMB/s", leader.Speed/1024.0/1024.0)
-							}
-						}
-					}
-				}
+				raceUsers, raceTotalBytes, raceTotalFiles, raceComplete := populateUploadRaceData(bridge, s.Config, s.CurrentDir, fileName, fileSize, data)
 				s.emitEvent(EventUpload, filePath, fileName, fileSize, speedMB, data)
 				if shouldAnnounceNoRace(s.Config, s.CurrentDir, existingNames, fileName) {
 					go emitRaceEndAfter(s, nil, fileSize, 1, xferMs, 0)
 				}
-				if sfvEntries := bridge.GetSFVData(s.CurrentDir); sfvEntries != nil {
-					users, _, totalBytes, present, total := bridge.GetVFSRaceStats(s.CurrentDir)
-					if total > 0 && present >= total && zipscript.CanTriggerRaceEndForDir(s.Config.Zipscript, s.CurrentDir, sfvEntries, fileName) {
+				if zipscript.UsesZip(s.Config.Zipscript, s.CurrentDir) {
+					expectedZipParts := zipExpectedPartsFromDIZ(bridge, s.CurrentDir)
+					if shouldEmitZipRaceEnd(s.Config, s.CurrentDir, fileName) && zipDirComplete(bridge.ListDir(s.CurrentDir), expectedZipParts) && raceTotalFiles > 0 {
+						go emitRaceEndAfter(s, raceUsers, raceTotalBytes, raceTotalFiles, xferMs, zipscript.MediaInfoGraceDelayForDir(s.Config.Zipscript, s.CurrentDir, fileName))
+					}
+				} else if sfvEntries := bridge.GetSFVData(s.CurrentDir); sfvEntries != nil {
+					if raceComplete && zipscript.CanTriggerRaceEndForDir(s.Config.Zipscript, s.CurrentDir, sfvEntries, fileName) {
 						// Race complete: fire COMPLETE/STATS sequence in a
 						// goroutine so the client gets 226 immediately. The
 						// FIFO writes + plugin dispatches were stacking up on
 						// the connection's hot path and delaying the final
 						// transfer ack by the time it took to do all that work.
-						go emitRaceEndAfter(s, users, totalBytes, total, xferMs, zipscript.MediaInfoGraceDelayForDir(s.Config.Zipscript, s.CurrentDir, fileName))
+						go emitRaceEndAfter(s, raceUsers, raceTotalBytes, raceTotalFiles, xferMs, zipscript.MediaInfoGraceDelayForDir(s.Config.Zipscript, s.CurrentDir, fileName))
 					}
 				}
 
@@ -1327,55 +1309,35 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					speedMB = (float64(fileSize) / 1024.0 / 1024.0) / (float64(xferMs) / 1000.0)
 				}
 				data := map[string]string{}
+				if subdir := zipscript.ReleaseSubdirLabel(s.Config.Zipscript, s.CurrentDir); subdir != "" {
+					data["release_subdir"] = subdir
+					data["release_name"] = path.Base(path.Dir(s.CurrentDir))
+					if !zipscript.AnnounceReleaseSubdirs(s.Config.Zipscript) {
+						data["skip_release_announce"] = "true"
+					}
+				}
 				if strings.HasSuffix(strings.ToLower(fileName), ".sfv") {
 					if sfvEntries := bridge.GetSFVData(s.CurrentDir); sfvEntries != nil {
 						data["t_filecount"] = fmt.Sprintf("%d", len(sfvEntries))
 						data["t_file_label"] = zipscript.ExpectedFileLabel(s.Config.Zipscript, s.CurrentDir)
 					}
 				}
-				if zipscript.IsRacePayloadFileForDir(s.Config.Zipscript, s.CurrentDir, fileName) {
-					data["file_mbytes"] = mbString(fileSize)
-					if sfvEntries := bridge.GetSFVData(s.CurrentDir); sfvEntries != nil {
-						users, _, totalBytes, present, total := bridge.GetVFSRaceStats(s.CurrentDir)
-						if total > 0 {
-							data["relname"] = path.Base(s.CurrentDir)
-							data["t_files"] = fmt.Sprintf("%d", total)
-							data["t_present"] = fmt.Sprintf("%d", present)
-							data["t_filesleft"] = fmt.Sprintf("%d", maxInt(0, total-present))
-							data["t_totalmb"] = fmt.Sprintf("%.1f", float64(totalBytes)/1024.0/1024.0)
-							data["t_avgspeed"] = fmt.Sprintf("%.2fMB/s", currentRaceSpeedMB(s.CurrentDir, totalBytes, bridge))
-							data["t_timeleft"] = estimateRaceTimeLeft(s.CurrentDir, totalBytes, present, total, bridge)
-							estBytes := fileSize * int64(total)
-							data["t_mbytes"] = fmt.Sprintf("%.0fMB", float64(estBytes)/1024.0/1024.0)
-							if len(users) > 0 {
-								leader := users[0]
-								for _, u := range users {
-									if u.Files > leader.Files {
-										leader = u
-									}
-								}
-								data["leader_name"] = leader.Name
-								data["leader_group"] = leader.Group
-								data["leader_files"] = fmt.Sprintf("%d", leader.Files)
-								data["leader_mb"] = fmt.Sprintf("%.1f", float64(leader.Bytes)/1024.0/1024.0)
-								data["leader_pct"] = fmt.Sprintf("%d", leader.Percent)
-								data["leader_speed"] = fmt.Sprintf("%.2fMB/s", leader.Speed/1024.0/1024.0)
-							}
-						}
-					}
-				}
+				raceUsers, raceTotalBytes, raceTotalFiles, raceComplete := populateUploadRaceData(bridge, s.Config, s.CurrentDir, fileName, fileSize, data)
 				s.emitEvent(EventUpload, filePath, fileName, fileSize, speedMB, data)
 				if shouldAnnounceNoRace(s.Config, s.CurrentDir, existingNames, fileName) {
 					go emitRaceEndAfter(s, nil, fileSize, 1, xferMs, 0)
 				}
-				if sfvEntries := bridge.GetSFVData(s.CurrentDir); sfvEntries != nil {
-					users, _, totalBytes, present, total := bridge.GetVFSRaceStats(s.CurrentDir)
-					if total > 0 && present >= total && zipscript.CanTriggerRaceEndForDir(s.Config.Zipscript, s.CurrentDir, sfvEntries, fileName) {
-						// Async — see explanation at the other emitRaceEnd call.
-						go emitRaceEndAfter(s, users, totalBytes, total, xferMs, zipscript.MediaInfoGraceDelayForDir(s.Config.Zipscript, s.CurrentDir, fileName))
+				if zipscript.UsesZip(s.Config.Zipscript, s.CurrentDir) {
+					expectedZipParts := zipExpectedPartsFromDIZ(bridge, s.CurrentDir)
+					if shouldEmitZipRaceEnd(s.Config, s.CurrentDir, fileName) && zipDirComplete(bridge.ListDir(s.CurrentDir), expectedZipParts) && raceTotalFiles > 0 {
+						go emitRaceEndAfter(s, raceUsers, raceTotalBytes, raceTotalFiles, xferMs, zipscript.MediaInfoGraceDelayForDir(s.Config.Zipscript, s.CurrentDir, fileName))
+					}
+				} else if sfvEntries := bridge.GetSFVData(s.CurrentDir); sfvEntries != nil {
+					if raceComplete && zipscript.CanTriggerRaceEndForDir(s.Config.Zipscript, s.CurrentDir, sfvEntries, fileName) {
+						// Async - see explanation at the other emitRaceEnd call.
+						go emitRaceEndAfter(s, raceUsers, raceTotalBytes, raceTotalFiles, xferMs, zipscript.MediaInfoGraceDelayForDir(s.Config.Zipscript, s.CurrentDir, fileName))
 					}
 				}
-
 				fmt.Fprintf(s.Conn, "226 Transfer complete.\r\n")
 			} else {
 				fmt.Fprintf(s.Conn, "550 Master not initialized\r\n")
@@ -1680,6 +1642,9 @@ func incompleteMarkerEntries(bridge MasterBridge, cfg *Config, pattern, dirPath 
 			continue
 		}
 		releasePath := path.Join(dirPath, e.Name)
+		if zipscript.IsIgnoredReleaseSubdir(cfg.Zipscript, releasePath) {
+			continue
+		}
 		_, _, _, present, total := bridge.GetVFSRaceStats(releasePath)
 		emptyDir := false
 		if total <= 0 {
@@ -1711,7 +1676,7 @@ func incompleteMarkerEntries(bridge MasterBridge, cfg *Config, pattern, dirPath 
 			}
 		}
 		noSFVPattern := zipscript.NoSFVIndicator(cfg.Zipscript)
-		if noSFVPattern != "" && !hasSFVEntry(bridge.ListDir(releasePath)) {
+		if noSFVPattern != "" && !zipscript.UsesZip(cfg.Zipscript, releasePath) && !hasSFVEntry(bridge.ListDir(releasePath)) {
 			marker := incompleteMarkerName(noSFVPattern, e.Name)
 			if marker != "" && !existing[marker] {
 				out = append(out, MasterFileEntry{
@@ -2003,7 +1968,10 @@ func shouldAnnounceNoRace(cfg *Config, dirPath string, existingNames []string, f
 	if cfg == nil || !cfg.Zipscript.Enabled || !cfg.Zipscript.Race.AnnounceNoRace {
 		return false
 	}
-	if zipscript.UsesSFV(cfg.Zipscript, dirPath) || zipscript.IsIgnoredType(cfg.Zipscript, fileName) {
+	if zipscript.IsIgnoredReleaseSubdir(cfg.Zipscript, dirPath) && !zipscript.AnnounceReleaseSubdirs(cfg.Zipscript) {
+		return false
+	}
+	if zipscript.UsesRace(cfg.Zipscript, dirPath) || zipscript.IsIgnoredType(cfg.Zipscript, fileName) {
 		return false
 	}
 	if strings.HasPrefix(strings.TrimSpace(fileName), ".") {
@@ -2017,4 +1985,238 @@ func shouldAnnounceNoRace(cfg *Config, dirPath string, existingNames []string, f
 		return false
 	}
 	return true
+}
+
+func isZipPayloadName(name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	return strings.HasSuffix(name, ".zip")
+}
+
+func zipDirRaceStats(entries []MasterFileEntry, expectedTotal int) ([]VFSRaceUser, int64, int) {
+	userMap := make(map[string]*VFSRaceUser)
+	totalBytes := int64(0)
+	total := 0
+	for _, e := range entries {
+		if e.IsDir || e.IsSymlink || strings.HasPrefix(strings.TrimSpace(e.Name), ".") || !isZipPayloadName(e.Name) {
+			continue
+		}
+		total++
+		totalBytes += e.Size
+		owner := e.Owner
+		if owner == "" {
+			owner = "unknown"
+		}
+		group := e.Group
+		if group == "" {
+			group = "NoGroup"
+		}
+		us := userMap[owner]
+		if us == nil {
+			us = &VFSRaceUser{Name: owner, Group: group}
+			userMap[owner] = us
+		}
+		us.Files++
+		us.Bytes += e.Size
+		if e.XferTime > 0 {
+			fileSpeed := float64(e.Size) / (float64(e.XferTime) / 1000.0)
+			us.Speed += fileSpeed
+			if fileSpeed > us.PeakSpeed {
+				us.PeakSpeed = fileSpeed
+			}
+			if us.SlowSpeed == 0 || fileSpeed < us.SlowSpeed {
+				us.SlowSpeed = fileSpeed
+			}
+			us.DurationMs += e.XferTime
+		}
+	}
+	users := make([]VFSRaceUser, 0, len(userMap))
+	for _, us := range userMap {
+		percentBase := total
+		if expectedTotal > 0 {
+			percentBase = expectedTotal
+		}
+		if percentBase > 0 {
+			us.Percent = (us.Files * 100) / percentBase
+		}
+		if us.Files > 0 {
+			us.Speed = us.Speed / float64(us.Files)
+		}
+		users = append(users, *us)
+	}
+	sort.Slice(users, func(i, j int) bool {
+		if users[i].Files != users[j].Files {
+			return users[i].Files > users[j].Files
+		}
+		if users[i].Bytes != users[j].Bytes {
+			return users[i].Bytes > users[j].Bytes
+		}
+		return strings.ToLower(users[i].Name) < strings.ToLower(users[j].Name)
+	})
+	return users, totalBytes, total
+}
+
+func zipDirCurrentPartState(entries []MasterFileEntry) (total int, highestDigit int, highestLetter int, mode string, ok bool) {
+	total = 0
+	highestDigit = 0
+	highestLetter = 0
+	mode = ""
+	for _, e := range entries {
+		if e.IsDir || e.IsSymlink || strings.HasPrefix(strings.TrimSpace(e.Name), ".") || !isZipPayloadName(e.Name) {
+			continue
+		}
+		total++
+		base := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(e.Name)), ".zip")
+		if m := regexp.MustCompile(`(\d+)$`).FindStringSubmatch(base); len(m) == 2 {
+			n, err := strconv.Atoi(m[1])
+			if err != nil || n <= 0 {
+				return 0, 0, 0, "", false
+			}
+			if mode == "" {
+				mode = "digit"
+			}
+			if mode != "digit" {
+				return 0, 0, 0, "", false
+			}
+			if n > highestDigit {
+				highestDigit = n
+			}
+			continue
+		}
+		if m := regexp.MustCompile(`([a-z])$`).FindStringSubmatch(base); len(m) == 2 {
+			n := int(m[1][0]-'a') + 1
+			if n <= 0 {
+				return 0, 0, 0, "", false
+			}
+			if mode == "" {
+				mode = "letter"
+			}
+			if mode != "letter" {
+				return 0, 0, 0, "", false
+			}
+			if n > highestLetter {
+				highestLetter = n
+			}
+			continue
+		}
+		return 0, 0, 0, "", false
+	}
+	if total == 0 || mode == "" {
+		return 0, 0, 0, "", false
+	}
+	return total, highestDigit, highestLetter, mode, true
+}
+
+func zipExpectedPartsFromDIZ(bridge MasterBridge, dirPath string) int {
+	content, err := bridge.ReadFile(path.Join(dirPath, "file_id.diz"))
+	if err != nil || len(content) == 0 {
+		return 0
+	}
+	m := regexp.MustCompile(`(?i)disk\s*\[\s*\d+\s*/\s*(\d+)\s*\]`).FindStringSubmatch(string(content))
+	if len(m) != 2 {
+		return 0
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
+}
+
+func zipDirComplete(entries []MasterFileEntry, expected int) bool {
+	total, highestDigit, highestLetter, mode, ok := zipDirCurrentPartState(entries)
+	if !ok {
+		return false
+	}
+	if expected > 0 {
+		return total == expected
+	}
+	switch mode {
+	case "digit":
+		return total > 0 && highestDigit == total
+	case "letter":
+		return total > 0 && highestLetter == total
+	default:
+		return false
+	}
+}
+
+func populateUploadRaceData(bridge MasterBridge, cfg *Config, dirPath, fileName string, fileSize int64, data map[string]string) ([]VFSRaceUser, int64, int, bool) {
+	if !zipscript.IsRacePayloadFileForDir(cfg.Zipscript, dirPath, fileName) {
+		return nil, 0, 0, false
+	}
+	data["file_mbytes"] = mbString(fileSize)
+	if zipscript.UsesZip(cfg.Zipscript, dirPath) {
+		expected := zipExpectedPartsFromDIZ(bridge, dirPath)
+		users, totalBytes, total := zipDirRaceStats(bridge.ListDir(dirPath), expected)
+		if total > 0 {
+			data["relname"] = path.Base(dirPath)
+			if expected > 0 {
+				data["t_files"] = fmt.Sprintf("%d", expected)
+				data["t_present"] = fmt.Sprintf("%d", total)
+				data["t_filesleft"] = fmt.Sprintf("%d", maxInt(0, expected-total))
+			} else {
+				delete(data, "t_files")
+				delete(data, "t_present")
+				delete(data, "t_filesleft")
+			}
+			data["t_totalmb"] = fmt.Sprintf("%.1f", float64(totalBytes)/1024.0/1024.0)
+			data["t_avgspeed"] = fmt.Sprintf("%.2fMB/s", currentRaceSpeedMB(dirPath, totalBytes, bridge))
+			if expected > 0 && expected > total {
+				data["t_timeleft"] = "N/A"
+			} else if expected > 0 {
+				data["t_timeleft"] = "0s"
+			} else {
+				delete(data, "t_timeleft")
+			}
+			data["t_mbytes"] = fmt.Sprintf("%.0fMB", float64(totalBytes)/1024.0/1024.0)
+			if len(users) > 0 {
+				leader := users[0]
+				data["leader_name"] = leader.Name
+				data["leader_group"] = leader.Group
+				data["leader_files"] = fmt.Sprintf("%d", leader.Files)
+				data["leader_mb"] = fmt.Sprintf("%.1f", float64(leader.Bytes)/1024.0/1024.0)
+				data["leader_pct"] = fmt.Sprintf("%d", leader.Percent)
+				data["leader_speed"] = fmt.Sprintf("%.2fMB/s", leader.Speed/1024.0/1024.0)
+			}
+			return users, totalBytes, total, expected == 0 || total >= expected
+		}
+		return nil, 0, 0, false
+	}
+	if sfvEntries := bridge.GetSFVData(dirPath); sfvEntries != nil {
+		users, _, totalBytes, present, total := bridge.GetVFSRaceStats(dirPath)
+		if total > 0 {
+			data["relname"] = path.Base(dirPath)
+			data["t_files"] = fmt.Sprintf("%d", total)
+			data["t_present"] = fmt.Sprintf("%d", present)
+			data["t_filesleft"] = fmt.Sprintf("%d", maxInt(0, total-present))
+			data["t_totalmb"] = fmt.Sprintf("%.1f", float64(totalBytes)/1024.0/1024.0)
+			data["t_avgspeed"] = fmt.Sprintf("%.2fMB/s", currentRaceSpeedMB(dirPath, totalBytes, bridge))
+			data["t_timeleft"] = estimateRaceTimeLeft(dirPath, totalBytes, present, total, bridge)
+			estBytes := fileSize * int64(total)
+			data["t_mbytes"] = fmt.Sprintf("%.0fMB", float64(estBytes)/1024.0/1024.0)
+			if len(users) > 0 {
+				leader := users[0]
+				for _, u := range users {
+					if u.Files > leader.Files {
+						leader = u
+					}
+				}
+				data["leader_name"] = leader.Name
+				data["leader_group"] = leader.Group
+				data["leader_files"] = fmt.Sprintf("%d", leader.Files)
+				data["leader_mb"] = fmt.Sprintf("%.1f", float64(leader.Bytes)/1024.0/1024.0)
+				data["leader_pct"] = fmt.Sprintf("%d", leader.Percent)
+				data["leader_speed"] = fmt.Sprintf("%.2fMB/s", leader.Speed/1024.0/1024.0)
+			}
+			return users, totalBytes, total, present >= total
+		}
+	}
+	return nil, 0, 0, false
+}
+
+func shouldEmitZipRaceEnd(cfg *Config, dirPath, fileName string) bool {
+	if cfg == nil || !zipscript.UsesZip(cfg.Zipscript, dirPath) {
+		return false
+	}
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(fileName)), ".zip")
 }

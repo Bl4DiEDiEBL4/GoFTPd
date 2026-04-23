@@ -71,11 +71,6 @@ sections:
 # #goftpd-foreign
 #########################
 
-  - name: "FOREIGN"
-    channels: *chan_foreign
-    paths:
-      - "/FOREIGN/*"
-
   - name: "TV-CZ"
     channels: *chan_foreign
     paths:

@@ -129,6 +129,7 @@ type MasterFileEntry struct {
 	Owner      string
 	Group      string
 	Slave      string
+	XferTime   int64
 }
 
 // VFSSearchResult is one SITE SEARCH directory result from the master's VFS.

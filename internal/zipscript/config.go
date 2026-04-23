@@ -10,6 +10,7 @@ type Config struct {
 	Incomplete   IncompleteConfig   `yaml:"incomplete"`
 	AllowedFiles AllowedFilesConfig `yaml:"allowed_files"`
 	Audio        AudioConfig        `yaml:"audio"`
+	Hooks        HooksConfig        `yaml:"hooks"`
 
 	// Legacy flat keys kept for compatibility with the first pass.
 	LegacyRaceStats          bool `yaml:"race_stats"`
@@ -20,19 +21,22 @@ type Config struct {
 }
 
 type SectionsConfig struct {
-	SFV               []string `yaml:"sfv"`
-	NoCheck           []string `yaml:"nocheck"`
-	ReleaseCheck      []string `yaml:"release_check"`
-	LegacyCleanupPath []string `yaml:"cleanup"`
+	SFV                   []string `yaml:"sfv"`
+	Zip                   []string `yaml:"zip"`
+	NoCheck               []string `yaml:"nocheck"`
+	ReleaseCheck          []string `yaml:"release_check"`
+	IgnoredReleaseSubdirs []string `yaml:"ignored_release_subdirs"`
+	LegacyCleanupPath     []string `yaml:"cleanup"`
 }
 
 type RaceConfig struct {
-	Enabled            bool `yaml:"enabled"`
-	MaxUsersInTop      int  `yaml:"max_users_in_top"`
-	MaxGroupsInTop     int  `yaml:"max_groups_in_top"`
-	CompleteBanner     bool `yaml:"complete_banner"`
-	MusicCompleteGenre bool `yaml:"music_complete_genre"`
-	AnnounceNoRace     bool `yaml:"announce_norace"`
+	Enabled            bool  `yaml:"enabled"`
+	MaxUsersInTop      int   `yaml:"max_users_in_top"`
+	MaxGroupsInTop     int   `yaml:"max_groups_in_top"`
+	CompleteBanner     bool  `yaml:"complete_banner"`
+	MusicCompleteGenre bool  `yaml:"music_complete_genre"`
+	AnnounceNoRace     bool  `yaml:"announce_norace"`
+	AnnounceSubdirs    *bool `yaml:"announce_subdirs"`
 }
 
 type SFVConfig struct {
@@ -79,6 +83,18 @@ type AudioSortConfig struct {
 	Artist bool `yaml:"artist"`
 	Year   bool `yaml:"year"`
 	Group  bool `yaml:"group"`
+}
+
+type HooksConfig struct {
+	OnComplete CommandHookConfig `yaml:"on_complete"`
+}
+
+type CommandHookConfig struct {
+	Enabled        bool              `yaml:"enabled"`
+	Command        string            `yaml:"command"`
+	Args           []string          `yaml:"args"`
+	TimeoutSeconds int               `yaml:"timeout_seconds"`
+	ExtraEnv       map[string]string `yaml:"extra_env"`
 }
 
 func (c *Config) ApplyDefaults() {
