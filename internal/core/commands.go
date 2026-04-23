@@ -1863,7 +1863,7 @@ func activeIncompleteIndicator(cfg *Config) string {
 	if cfg == nil {
 		return ""
 	}
-	return zipscript.IncompleteIndicator(cfg.Zipscript, cfg.IncompleteIndicator)
+	return zipscript.IncompleteIndicator(cfg.Zipscript, "")
 }
 
 func trimRaceUsers(cfg *Config, users []VFSRaceUser) []VFSRaceUser {

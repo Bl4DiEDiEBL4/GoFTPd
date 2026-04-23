@@ -195,14 +195,6 @@ show_diz:
 
 
 # =============================================================================
-#  Incomplete indicator — marker symlink shown in the section/dated dir for
-#  incomplete releases. %0 is replaced with the release name. Leave empty to
-#  disable the marker symlink. The progress bar inside the release is separate.
-# =============================================================================
-incomplete_indicator: "[incomplete]-%0"
-
-
-# =============================================================================
 #  NUKE
 # =============================================================================
 nuke_max_multiplier: 50         # Highest multiplier a siteop can nuke with
