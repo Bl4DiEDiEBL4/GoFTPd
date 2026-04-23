@@ -1992,7 +1992,7 @@ func isZipPayloadName(name string) bool {
 	return strings.HasSuffix(name, ".zip")
 }
 
-func zipDirRaceStats(entries []MasterFileEntry) ([]VFSRaceUser, int64, int) {
+func zipDirRaceStats(entries []MasterFileEntry, expectedTotal int) ([]VFSRaceUser, int64, int) {
 	userMap := make(map[string]*VFSRaceUser)
 	totalBytes := int64(0)
 	total := 0
@@ -2031,8 +2031,12 @@ func zipDirRaceStats(entries []MasterFileEntry) ([]VFSRaceUser, int64, int) {
 	}
 	users := make([]VFSRaceUser, 0, len(userMap))
 	for _, us := range userMap {
-		if total > 0 {
-			us.Percent = (us.Files * 100) / total
+		percentBase := total
+		if expectedTotal > 0 {
+			percentBase = expectedTotal
+		}
+		if percentBase > 0 {
+			us.Percent = (us.Files * 100) / percentBase
 		}
 		if us.Files > 0 {
 			us.Speed = us.Speed / float64(us.Files)
@@ -2142,25 +2146,27 @@ func populateUploadRaceData(bridge MasterBridge, cfg *Config, dirPath, fileName 
 	}
 	data["file_mbytes"] = mbString(fileSize)
 	if zipscript.UsesZip(cfg.Zipscript, dirPath) {
-		users, totalBytes, total := zipDirRaceStats(bridge.ListDir(dirPath))
+		expected := zipExpectedPartsFromDIZ(bridge, dirPath)
+		users, totalBytes, total := zipDirRaceStats(bridge.ListDir(dirPath), expected)
 		if total > 0 {
-			expected := zipExpectedPartsFromDIZ(bridge, dirPath)
 			data["relname"] = path.Base(dirPath)
 			if expected > 0 {
 				data["t_files"] = fmt.Sprintf("%d", expected)
 				data["t_present"] = fmt.Sprintf("%d", total)
 				data["t_filesleft"] = fmt.Sprintf("%d", maxInt(0, expected-total))
 			} else {
-				data["t_files"] = fmt.Sprintf("%d", total)
-				data["t_present"] = fmt.Sprintf("%d", total)
-				data["t_filesleft"] = "0"
+				delete(data, "t_files")
+				delete(data, "t_present")
+				delete(data, "t_filesleft")
 			}
 			data["t_totalmb"] = fmt.Sprintf("%.1f", float64(totalBytes)/1024.0/1024.0)
 			data["t_avgspeed"] = fmt.Sprintf("%.2fMB/s", currentRaceSpeedMB(dirPath, totalBytes, bridge))
 			if expected > 0 && expected > total {
 				data["t_timeleft"] = "N/A"
-			} else {
+			} else if expected > 0 {
 				data["t_timeleft"] = "0s"
+			} else {
+				delete(data, "t_timeleft")
 			}
 			data["t_mbytes"] = fmt.Sprintf("%.0fMB", float64(totalBytes)/1024.0/1024.0)
 			if len(users) > 0 {

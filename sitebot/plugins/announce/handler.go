@@ -296,8 +296,10 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 						if fileType == "audio" {
 							key = "UPDATE_TRACK"
 						} else if fileType == "zip" {
-							key = "UPDATE_ZIP"
+							key = "UPDATE_ZIP_UNKNOWN"
 						}
+					} else if fileType == "zip" && strings.TrimSpace(vars["t_files"]) == "" {
+						key = "UPDATE_ZIP_UNKNOWN"
 					}
 					outs = append(outs, plugin.Output{Type: "RACE", Text: p.render(key, vars, fallback)})
 				} else {
