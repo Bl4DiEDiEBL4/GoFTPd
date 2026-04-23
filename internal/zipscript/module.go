@@ -106,6 +106,7 @@ func ValidateUpload(cfg Config, dirPath, fileName string, existingNames []string
 	lowerName := strings.ToLower(strings.TrimSpace(fileName))
 	isSFV := strings.HasSuffix(lowerName, ".sfv")
 	hasSFV := false
+	inSFV := false
 	for _, name := range existingNames {
 		if strings.HasSuffix(strings.ToLower(strings.TrimSpace(name)), ".sfv") {
 			hasSFV = true
@@ -113,13 +114,16 @@ func ValidateUpload(cfg Config, dirPath, fileName string, existingNames []string
 				return errors.New("zipscript: .sfv already exists in this release")
 			}
 		}
+		if raceEntryKey(name) == raceEntryKey(fileName) {
+			inSFV = true
+		}
 	}
 
 	if cfg.SFV.ForceFirst && !hasSFV && !isSFV && !IsIgnoredType(cfg, fileName) {
 		return errors.New("zipscript: upload the .sfv first")
 	}
 
-	if !IsAllowedType(cfg, fileName) {
+	if !inSFV && !IsAllowedTypeForDir(cfg, dirPath, fileName) {
 		return fmt.Errorf("zipscript: file type %q is not allowed here", normalizedExt(fileName))
 	}
 
@@ -140,8 +144,15 @@ func IsIgnoredType(cfg Config, fileName string) bool {
 }
 
 func IsAllowedType(cfg Config, fileName string) bool {
+	return IsAllowedTypeForDir(cfg, "", fileName)
+}
+
+func IsAllowedTypeForDir(cfg Config, dirPath, fileName string) bool {
 	ext := normalizedExt(fileName)
 	if ext == "" {
+		return true
+	}
+	if isPrimaryAudioPayload(dirPath, ext) {
 		return true
 	}
 	if scenePayloadExts[ext] || regexp.MustCompile(`^r\d\d$`).MatchString(ext) {
@@ -159,6 +170,21 @@ func IsAllowedType(cfg Config, fileName string) bool {
 		}
 	}
 	return false
+}
+
+func isPrimaryAudioPayload(dirPath, ext string) bool {
+	section := strings.ToUpper(strings.Trim(path.Clean(dirPath), "/"))
+	if idx := strings.Index(section, "/"); idx >= 0 {
+		section = section[:idx]
+	}
+	switch section {
+	case "MP3":
+		return ext == "mp3"
+	case "FLAC":
+		return ext == "flac"
+	default:
+		return false
+	}
 }
 
 func ExpectedFileLabel(cfg Config, dirPath string) string {
