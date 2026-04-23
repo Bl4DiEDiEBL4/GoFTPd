@@ -53,17 +53,21 @@ func UsesSFV(cfg Config, dirPath string) bool {
 	return pathMatchesAny(dirPath, cfg.Sections.SFV)
 }
 
-func UsesCleanup(cfg Config, dirPath string) bool {
+func UsesReleaseCheck(cfg Config, dirPath string) bool {
 	if !cfg.Enabled {
 		return false
 	}
 	if pathMatchesAny(dirPath, cfg.Sections.NoCheck) {
 		return false
 	}
-	if len(cfg.Sections.Cleanup) == 0 {
+	if len(cfg.Sections.ReleaseCheck) == 0 {
 		return UsesSFV(cfg, dirPath)
 	}
-	return pathMatchesAny(dirPath, cfg.Sections.Cleanup)
+	return pathMatchesAny(dirPath, cfg.Sections.ReleaseCheck)
+}
+
+func UsesCleanup(cfg Config, dirPath string) bool {
+	return UsesReleaseCheck(cfg, dirPath)
 }
 
 func IncompleteEnabled(cfg Config) bool {

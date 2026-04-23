@@ -310,10 +310,61 @@ zipscript:
       - "/LINKS/*"
       - "/PRE/*"
       - "/REQUESTS/*"
-    cleanup:
+    # release_check controls where the stricter "this should end up as a proper
+    # complete release" behavior applies:
+    #   - incomplete markers
+    #   - missing-NFO markers
+    #   - other release-completeness checks
+    #
+    # If left empty, it falls back to the sfv list above.
+    # Older configs may still use `cleanup:`; that alias is still accepted.
+    release_check:
+      - "/0DAY/*/*"
       - "/APPS/*"
       - "/BLURAY/*"
+      - "/BLURAY-UHD/*"
+      - "/DVDR/*"
+      - "/EBOOKS/*/*"
+      - "/FLAC/*/*"
+      - "/FOREIGN/TV-CZ/*"
+      - "/FOREIGN/TV-DE/*"
+      - "/FOREIGN/TV-DK/*"
+      - "/FOREIGN/TV-ES/*"
+      - "/FOREIGN/TV-FI/*"
+      - "/FOREIGN/TV-FR/*"
+      - "/FOREIGN/TV-IT/*"
+      - "/FOREIGN/TV-NL/*"
+      - "/FOREIGN/TV-NO/*"
+      - "/FOREIGN/TV-PL/*"
+      - "/FOREIGN/TV-SE/*"
+      - "/FOREIGN/TV-SK/*"
+      - "/FOREIGN/X264-HD-FOREIGN/*"
+      - "/FOREIGN/X264-SD-FOREIGN/*"
+      - "/FOREIGN/X265-FOREIGN/*"
+      - "/GAMES/*"
+      - "/MBLURAY/*"
+      - "/MDVDR/*"
+      - "/MVID/*"
+      - "/MP3/*/*"
+      - "/NSW/*"
+      - "/PRE/*/*"
+      - "/PS5/*"
+      - "/REQUESTS/*/*"
       - "/TV-1080P/*"
+      - "/TV-2160P/*"
+      - "/TV-720P/*"
+      - "/TV-BLURAY/*"
+      - "/TV-HDRIP/*"
+      - "/TV-SD/*"
+      - "/TV-SPORTS/*"
+      - "/X264-HD-1080P/*"
+      - "/X264-HD-720P/*"
+      - "/X264-SD/*"
+      - "/X265/*"
+      - "/XXX-0DAY/*/*"
+      - "/XXX-HD/*"
+      - "/XXX-IMAGESETS/*"
+      - "/XXX-SD/*"
 
   incomplete:
     enabled: true                    # enable virtual incomplete / missing-NFO markers

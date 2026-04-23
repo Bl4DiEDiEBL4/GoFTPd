@@ -20,9 +20,10 @@ type Config struct {
 }
 
 type SectionsConfig struct {
-	SFV     []string `yaml:"sfv"`
-	NoCheck []string `yaml:"nocheck"`
-	Cleanup []string `yaml:"cleanup"`
+	SFV               []string `yaml:"sfv"`
+	NoCheck           []string `yaml:"nocheck"`
+	ReleaseCheck      []string `yaml:"release_check"`
+	LegacyCleanupPath []string `yaml:"cleanup"`
 }
 
 type RaceConfig struct {
@@ -99,6 +100,9 @@ func (c *Config) ApplyDefaults() {
 	}
 	if c.LegacyIgnoreZeroSize {
 		c.SFV.IgnoreZeroSize = true
+	}
+	if len(c.Sections.ReleaseCheck) == 0 && len(c.Sections.LegacyCleanupPath) > 0 {
+		c.Sections.ReleaseCheck = append([]string(nil), c.Sections.LegacyCleanupPath...)
 	}
 
 	// Preserve current behavior unless explicitly configured otherwise.
