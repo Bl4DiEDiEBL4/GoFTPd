@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"goftpd/internal/timeutil"
+	"goftpd/internal/zipscript"
 	"gopkg.in/yaml.v3"
 )
 
@@ -117,8 +118,9 @@ type Config struct {
 	IncompleteIndicator string `yaml:"incomplete_indicator"`
 
 	// Nuke
-	NukeMaxMultiplier int    `yaml:"nuke_max_multiplier"`
-	NukeDirStyle      string `yaml:"nukedir_style"`
+	NukeMaxMultiplier int              `yaml:"nuke_max_multiplier"`
+	NukeDirStyle      string           `yaml:"nukedir_style"`
+	Zipscript         zipscript.Config `yaml:"zipscript"`
 
 	// Plugins
 	Plugins         map[string]map[string]interface{} `yaml:"plugins"`
@@ -172,6 +174,7 @@ func LoadConfig(filePath string) (*Config, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, err
 	}
+	cfg.Zipscript.ApplyDefaults()
 	cfg.configPath = filePath
 	return cfg, nil
 }
@@ -220,6 +223,8 @@ func (c *Config) Rehash() (string, error) {
 	// Release management
 	c.NukeMaxMultiplier = fresh.NukeMaxMultiplier
 	c.NukeDirStyle = fresh.NukeDirStyle
+	c.Zipscript = fresh.Zipscript
+	c.Zipscript.ApplyDefaults()
 
 	// Invite + sitebot pointer
 	c.InviteChannels = fresh.InviteChannels

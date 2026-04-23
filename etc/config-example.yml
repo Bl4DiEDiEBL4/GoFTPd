@@ -214,6 +214,9 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 #  events (MKDIR, UPLOAD, DELETE, NUKE, etc.) and has access to the master
 #  bridge for reading/writing files on slaves.
 #
+#  The built-in zipscript module is configured separately under `zipscript:`.
+#  It handles SFV/race/COMPLETE-banner logic inside the daemon hot path.
+#
 #  Built-in plugins:
 #    dateddirs - creates daily race dirs, !Today_<SECTION> symlinks,
 #                read-only old date dirs, and NEWDAY events
@@ -235,6 +238,14 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 #  Section matching is case-insensitive substring — "TV" matches TV-1080P,
 #  TV-720P, TV-UHD, etc. Only plugins where enabled=true are loaded.
 # =============================================================================
+zipscript:
+  enabled: true                # master-side zipscript module on/off
+  race_stats: true             # enables race tracking derived labels/stats
+  complete_banner: true        # show [SITE] - ( ... COMPLETE ... ) - [SITE]
+  music_complete_genre: true   # add genre/year on MP3/FLAC COMPLETE banner
+  delete_bad_crc: true         # delete uploaded files that fail SFV CRC
+  ignore_zero_size: true       # delete zero-byte uploads instead of keeping them
+
 plugins:
   dateddirs:
     enabled: true
