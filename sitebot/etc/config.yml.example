@@ -514,7 +514,10 @@ plugins:
         - TRAFFIC
         # Users / groups
         - ADDUSER
+        - GADDUSER
         - DELUSER
+        - READD
+        - RENUSER
         - CHPASS
         - ADDIP
         - DELIP

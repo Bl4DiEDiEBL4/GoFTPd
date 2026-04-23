@@ -55,8 +55,14 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 	// Admin / User & Group Management (site_admin.go)
 	case "ADDUSER":
 		return s.HandleSiteAddUser(remainingArgs)
+	case "GADDUSER":
+		return s.HandleSiteGAddUser(remainingArgs)
 	case "DELUSER":
 		return s.HandleSiteDelUser(remainingArgs)
+	case "READD":
+		return s.HandleSiteReAdd(remainingArgs)
+	case "RENUSER":
+		return s.HandleSiteRenUser(remainingArgs)
 	case "CHPASS":
 		return s.HandleSiteChPass(remainingArgs)
 	case "ADDIP":
@@ -142,7 +148,10 @@ func requiredSiteCommandFlags(command string) string {
 		"SWHO",
 		"BW",
 		"ADDUSER",
+		"GADDUSER",
 		"DELUSER",
+		"READD",
+		"RENUSER",
 		"CHPASS",
 		"ADDIP",
 		"DELIP",

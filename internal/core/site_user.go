@@ -12,6 +12,69 @@ import (
 )
 
 const defaultUserTemplate = "etc/users/default.user"
+const deletedUsersDir = "etc/users/.deleted"
+
+func deletedUserPath(username string) string {
+	return filepath.Join(deletedUsersDir, username)
+}
+
+func deletedUserPasswdPath(username string) string {
+	return filepath.Join(deletedUsersDir, username+".passwd")
+}
+
+func createUserFromArgs(s *Session, username, plaintextPassword, primaryGroup string, ipArgs []string) (*user.User, string, error) {
+	hashedPass, err := HashPassword(plaintextPassword)
+	if err != nil {
+		return nil, "", err
+	}
+
+	var ips []string
+	for _, ip := range ipArgs {
+		if !strings.Contains(ip, "@") {
+			ip = "*@" + ip
+		}
+		ips = append(ips, ip)
+	}
+	if len(ips) == 0 {
+		ips = []string{"*@*"}
+	}
+
+	newUser, err := user.LoadTemplate(username, defaultUserTemplate, s.GroupMap)
+	if err != nil {
+		newUser = &user.User{
+			Name:          username,
+			Flags:         "3",
+			Tagline:       "No Tagline Set",
+			HomeRoot:      "/site",
+			HomeDir:       "/",
+			Groups:        map[string]int{"NoGroup": 0},
+			PrimaryGroup:  "NoGroup",
+			Credits:       15000,
+			Ratio:         3,
+			UploadSlots:   6,
+			DownloadSlots: 3,
+		}
+	}
+	newUser.Name = username
+	newUser.Password = hashedPass
+	newUser.IPs = ips
+	newUser.Added = time.Now().Unix()
+	if newUser.Groups == nil {
+		newUser.Groups = make(map[string]int)
+	}
+	if primaryGroup != "" {
+		newUser.PrimaryGroup = primaryGroup
+		if gid, ok := s.GroupMap[primaryGroup]; ok {
+			newUser.GID = gid
+		}
+		newUser.Groups[primaryGroup] = 0
+	} else if newUser.PrimaryGroup != "" {
+		if _, ok := newUser.Groups[newUser.PrimaryGroup]; !ok {
+			newUser.Groups[newUser.PrimaryGroup] = 0
+		}
+	}
+	return newUser, hashedPass, nil
+}
 
 func (s *Session) HandleSiteAddUser(args []string) bool {
 	if !s.User.HasFlag("1") {
@@ -29,58 +92,44 @@ func (s *Session) HandleSiteAddUser(args []string) bool {
 		return false
 	}
 
-	hashedPass, err := HashPassword(args[1])
+	newUser, hashedPass, err := createUserFromArgs(s, args[0], args[1], "", args[2:])
 	if err != nil {
 		fmt.Fprintf(s.Conn, "550 Failed to hash password: %v\r\n", err)
 		return false
-	}
-
-	var ips []string
-	if len(args) > 2 {
-		for _, ip := range args[2:] {
-			if !strings.Contains(ip, "@") {
-				ip = "*@" + ip
-			}
-			ips = append(ips, ip)
-		}
-	}
-	if len(ips) == 0 {
-		ips = []string{"*@*"}
-	}
-
-	newUser, err := user.LoadTemplate(args[0], defaultUserTemplate, s.GroupMap)
-	if err != nil {
-		newUser = &user.User{
-			Name:         args[0],
-			Flags:        "3",
-			Tagline:      "No Tagline Set",
-			HomeRoot:     "/site",
-			HomeDir:      "/",
-			Groups:       map[string]int{"NoGroup": 0},
-			PrimaryGroup: "NoGroup",
-			Credits:      15000,
-			Ratio:        3,
-			UploadSlots:   6,
-			DownloadSlots: 3,
-		}
-	}
-	newUser.Name = args[0]
-	newUser.Password = hashedPass
-	newUser.IPs = ips
-	newUser.Added = time.Now().Unix()
-	if newUser.Groups == nil {
-		newUser.Groups = make(map[string]int)
-	}
-	if newUser.PrimaryGroup != "" {
-		if _, ok := newUser.Groups[newUser.PrimaryGroup]; !ok {
-			newUser.Groups[newUser.PrimaryGroup] = 0
-		}
 	}
 	newUser.Save()
 
 	AddUserToPasswd(args[0], hashedPass, s.Config.PasswdFile)
 
-	fmt.Fprintf(s.Conn, "200 User %s added with %d IP(s).\r\n", args[0], len(ips))
+	fmt.Fprintf(s.Conn, "200 User %s added with %d IP(s).\r\n", args[0], len(newUser.IPs))
+	return false
+}
+
+func (s *Session) HandleSiteGAddUser(args []string) bool {
+	if !s.User.HasFlag("1") {
+		fmt.Fprintf(s.Conn, "550 Access denied.\r\n")
+		return false
+	}
+	if len(args) < 3 {
+		fmt.Fprintf(s.Conn, "501 Usage: SITE GADDUSER <user> <pass> <group> [ident@ip ...]\r\n")
+		return false
+	}
+	if _, ok := s.GroupMap[args[2]]; !ok {
+		fmt.Fprintf(s.Conn, "550 Group %s not found.\r\n", args[2])
+		return false
+	}
+	if _, err := user.LoadUser(args[0], s.GroupMap); err == nil {
+		fmt.Fprintf(s.Conn, "550 User %s already exists.\r\n", args[0])
+		return false
+	}
+	newUser, hashedPass, err := createUserFromArgs(s, args[0], args[1], args[2], args[3:])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Failed to hash password: %v\r\n", err)
+		return false
+	}
+	newUser.Save()
+	AddUserToPasswd(args[0], hashedPass, s.Config.PasswdFile)
+	fmt.Fprintf(s.Conn, "200 User %s added to group %s with %d IP(s).\r\n", args[0], args[2], len(newUser.IPs))
 	return false
 }
 
@@ -100,7 +149,9 @@ func (s *Session) HandleSiteGrpAdd(args []string) bool {
 	}
 	nextGID := 100
 	for _, gid := range s.GroupMap {
-		if gid >= nextGID { nextGID = gid + 100 }
+		if gid >= nextGID {
+			nextGID = gid + 100
+		}
 	}
 	groupPath := filepath.Join("etc", "groups", groupName)
 	groupContent := fmt.Sprintf("GROUP %s\nSLOTS -1 0 0 0\nGROUPNFO %s\nSIMULT 0\n", groupName, desc)
@@ -264,6 +315,7 @@ func (s *Session) HandleSiteGAdmin(args []string) bool {
 	fmt.Fprintf(s.Conn, "200 Gadmin set.\r\n")
 	return false
 }
+
 // HandleSiteChPass changes a user's password.
 // Usage: SITE CHPASS <user> <newpass>
 func (s *Session) HandleSiteChPass(args []string) bool {
@@ -275,23 +327,23 @@ func (s *Session) HandleSiteChPass(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE CHPASS <user> <newpass>\r\n")
 		return false
 	}
-	
+
 	u, err := user.LoadUser(args[0], s.GroupMap)
 	if err != nil {
 		fmt.Fprintf(s.Conn, "550 User %s not found.\r\n", args[0])
 		return false
 	}
-	
+
 	hashedPass, err := HashPassword(args[1])
 	if err != nil {
 		fmt.Fprintf(s.Conn, "550 Failed to hash password: %v\r\n", err)
 		return false
 	}
-	
+
 	u.Password = hashedPass
 	u.Save()
 	AddUserToPasswd(args[0], hashedPass, s.Config.PasswdFile)
-	
+
 	fmt.Fprintf(s.Conn, "200 Password changed for %s.\r\n", args[0])
 	return false
 }
@@ -307,13 +359,13 @@ func (s *Session) HandleSiteAddIP(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE ADDIP <user> <ident@ip> [ident@ip ...]\r\n")
 		return false
 	}
-	
+
 	u, err := user.LoadUser(args[0], s.GroupMap)
 	if err != nil {
 		fmt.Fprintf(s.Conn, "550 User %s not found.\r\n", args[0])
 		return false
 	}
-	
+
 	added := 0
 	for _, ip := range args[1:] {
 		if !strings.Contains(ip, "@") {
@@ -332,7 +384,7 @@ func (s *Session) HandleSiteAddIP(args []string) bool {
 			added++
 		}
 	}
-	
+
 	u.Save()
 	fmt.Fprintf(s.Conn, "200 Added %d IP(s) to %s (total: %d).\r\n", added, args[0], len(u.IPs))
 	return false
@@ -349,13 +401,13 @@ func (s *Session) HandleSiteDelIP(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE DELIP <user> <ident@ip> [ident@ip ...]\r\n")
 		return false
 	}
-	
+
 	u, err := user.LoadUser(args[0], s.GroupMap)
 	if err != nil {
 		fmt.Fprintf(s.Conn, "550 User %s not found.\r\n", args[0])
 		return false
 	}
-	
+
 	removed := 0
 	for _, ip := range args[1:] {
 		if !strings.Contains(ip, "@") {
@@ -369,7 +421,7 @@ func (s *Session) HandleSiteDelIP(args []string) bool {
 			}
 		}
 	}
-	
+
 	u.Save()
 	fmt.Fprintf(s.Conn, "200 Removed %d IP(s) from %s (remaining: %d).\r\n", removed, args[0], len(u.IPs))
 	return false
@@ -390,17 +442,105 @@ func (s *Session) HandleSiteDelUser(args []string) bool {
 		fmt.Fprintf(s.Conn, "550 Cannot delete yourself.\r\n")
 		return false
 	}
-	
-	// Delete user file
+
 	userPath := filepath.Join("etc", "users", args[0])
-	if err := os.Remove(userPath); err != nil {
+	if _, err := os.Stat(userPath); err != nil {
 		fmt.Fprintf(s.Conn, "550 User %s not found.\r\n", args[0])
 		return false
 	}
-	
-	// Remove from passwd file
+	if err := os.MkdirAll(deletedUsersDir, 0755); err != nil {
+		fmt.Fprintf(s.Conn, "550 Failed to prepare deleted-user store: %v\r\n", err)
+		return false
+	}
+	if passwds, err := LoadPasswdFile(s.Config.PasswdFile); err == nil {
+		if hash, ok := passwds[args[0]]; ok && hash != "" {
+			_ = os.WriteFile(deletedUserPasswdPath(args[0]), []byte(hash+"\n"), 0600)
+		}
+	}
+	if err := os.Rename(userPath, deletedUserPath(args[0])); err != nil {
+		fmt.Fprintf(s.Conn, "550 Failed to delete user %s: %v\r\n", args[0], err)
+		return false
+	}
 	RemoveUserFromPasswd(args[0], s.Config.PasswdFile)
-	
-	fmt.Fprintf(s.Conn, "200 User %s deleted.\r\n", args[0])
+	fmt.Fprintf(s.Conn, "200 User %s deleted (can be restored with SITE READD).\r\n", args[0])
+	return false
+}
+
+func (s *Session) HandleSiteReAdd(args []string) bool {
+	if !s.User.HasFlag("1") {
+		fmt.Fprintf(s.Conn, "550 Access denied.\r\n")
+		return false
+	}
+	if len(args) < 1 {
+		fmt.Fprintf(s.Conn, "501 Usage: SITE READD <user> [newpass]\r\n")
+		return false
+	}
+	if _, err := user.LoadUser(args[0], s.GroupMap); err == nil {
+		fmt.Fprintf(s.Conn, "550 User %s already exists.\r\n", args[0])
+		return false
+	}
+	deletedPath := deletedUserPath(args[0])
+	if _, err := os.Stat(deletedPath); err != nil {
+		fmt.Fprintf(s.Conn, "550 Deleted user %s not found.\r\n", args[0])
+		return false
+	}
+	if err := os.Rename(deletedPath, filepath.Join("etc", "users", args[0])); err != nil {
+		fmt.Fprintf(s.Conn, "550 Failed to restore user %s: %v\r\n", args[0], err)
+		return false
+	}
+
+	hash := ""
+	if data, err := os.ReadFile(deletedUserPasswdPath(args[0])); err == nil {
+		hash = strings.TrimSpace(string(data))
+		_ = os.Remove(deletedUserPasswdPath(args[0]))
+	}
+	if hash == "" && len(args) > 1 {
+		var err error
+		hash, err = HashPassword(args[1])
+		if err != nil {
+			fmt.Fprintf(s.Conn, "550 Failed to hash password: %v\r\n", err)
+			return false
+		}
+	}
+	if hash == "" {
+		fmt.Fprintf(s.Conn, "550 No stored password available. Use SITE READD <user> <newpass>.\r\n")
+		return false
+	}
+	AddUserToPasswd(args[0], hash, s.Config.PasswdFile)
+	fmt.Fprintf(s.Conn, "200 User %s restored.\r\n", args[0])
+	return false
+}
+
+func (s *Session) HandleSiteRenUser(args []string) bool {
+	if !s.User.HasFlag("1") {
+		fmt.Fprintf(s.Conn, "550 Access denied.\r\n")
+		return false
+	}
+	if len(args) < 2 {
+		fmt.Fprintf(s.Conn, "501 Usage: SITE RENUSER <olduser> <newuser>\r\n")
+		return false
+	}
+	oldName, newName := args[0], args[1]
+	u, err := user.LoadUser(oldName, s.GroupMap)
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 User %s not found.\r\n", oldName)
+		return false
+	}
+	if _, err := user.LoadUser(newName, s.GroupMap); err == nil {
+		fmt.Fprintf(s.Conn, "550 User %s already exists.\r\n", newName)
+		return false
+	}
+	oldPath := filepath.Join("etc", "users", oldName)
+	u.Name = newName
+	if err := u.Save(); err != nil {
+		fmt.Fprintf(s.Conn, "550 Failed to save renamed user: %v\r\n", err)
+		return false
+	}
+	_ = os.Remove(oldPath)
+	if err := RenameUserInPasswd(oldName, newName, s.Config.PasswdFile); err != nil {
+		fmt.Fprintf(s.Conn, "550 Failed to rename passwd entry: %v\r\n", err)
+		return false
+	}
+	fmt.Fprintf(s.Conn, "200 User %s renamed to %s.\r\n", oldName, newName)
 	return false
 }

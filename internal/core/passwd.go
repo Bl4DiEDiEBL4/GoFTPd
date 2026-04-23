@@ -20,13 +20,13 @@ func LoadPasswdFile(path string) (map[string]string, error) {
 
 	passwds := make(map[string]string)
 	scanner := bufio.NewScanner(file)
-	
+
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		
+
 		parts := strings.Split(line, ":")
 		if len(parts) >= 2 {
 			username := parts[0]
@@ -34,7 +34,7 @@ func LoadPasswdFile(path string) (map[string]string, error) {
 			passwds[username] = hash
 		}
 	}
-	
+
 	return passwds, scanner.Err()
 }
 
@@ -101,7 +101,7 @@ func AddGroupToFile(groupName string, desc string, gid int) error {
 }
 
 // Password and user management functions
-	
+
 // Min helper function
 
 // GetUsernameByUID looks up username from UID in passwd file
@@ -143,14 +143,15 @@ func GetGroupnameByGID(gid int, groupMap map[string]int) string {
 	}
 	return fmt.Sprintf("%d", gid)
 }
+
 // AddUserToPasswd appends a new user entry to the passwd file.
 // If the user already exists, it replaces the hash.
 func AddUserToPasswd(username, hash, path string) error {
 	existing, _ := os.ReadFile(path)
 	lines := strings.Split(string(existing), "\n")
-	
+
 	newLine := fmt.Sprintf("%s:%s:100:300:%s:/site:/bin/false", username, hash, time.Now().Format("02-01-06"))
-	
+
 	found := false
 	for i, line := range lines {
 		if strings.HasPrefix(line, username+":") {
@@ -166,7 +167,7 @@ func AddUserToPasswd(username, hash, path string) error {
 		}
 		lines = append(lines, newLine)
 	}
-	
+
 	return os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0600)
 }
 
@@ -177,13 +178,40 @@ func RemoveUserFromPasswd(username, path string) error {
 		return err
 	}
 	lines := strings.Split(string(existing), "\n")
-	
+
 	kept := make([]string, 0, len(lines))
 	for _, line := range lines {
 		if !strings.HasPrefix(line, username+":") {
 			kept = append(kept, line)
 		}
 	}
-	
+
 	return os.WriteFile(path, []byte(strings.Join(kept, "\n")), 0600)
+}
+
+// RenameUserInPasswd renames a passwd entry while preserving the existing hash and fields.
+func RenameUserInPasswd(oldUsername, newUsername, path string) error {
+	existing, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(existing), "\n")
+	changed := false
+	for i, line := range lines {
+		if !strings.HasPrefix(line, oldUsername+":") {
+			continue
+		}
+		parts := strings.Split(line, ":")
+		if len(parts) == 0 {
+			continue
+		}
+		parts[0] = newUsername
+		lines[i] = strings.Join(parts, ":")
+		changed = true
+		break
+	}
+	if !changed {
+		return fmt.Errorf("user %s not found in passwd", oldUsername)
+	}
+	return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0600)
 }
