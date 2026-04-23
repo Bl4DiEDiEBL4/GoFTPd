@@ -14,6 +14,12 @@ type MediaInfoProvider interface {
 	GetDirMediaInfo(dirPath string) map[string]string
 }
 
+type AudioSortLink struct {
+	DirPath  string
+	LinkPath string
+	Target   string
+}
+
 var scenePayloadExts = map[string]bool{
 	"rar":  true,
 	"zip":  true,
@@ -321,6 +327,36 @@ func ValidateAudioRelease(cfg Config, fields map[string]string) []string {
 	return reasons
 }
 
+func AudioSortLinks(cfg Config, releasePath string, fields map[string]string) []AudioSortLink {
+	if !cfg.Enabled || !cfg.Audio.Enabled || len(fields) == 0 {
+		return nil
+	}
+	relName := strings.TrimSpace(path.Base(path.Clean(releasePath)))
+	if relName == "" || relName == "." || relName == "/" {
+		return nil
+	}
+	var out []AudioSortLink
+	add := func(enabled bool, basePath, bucket string) {
+		basePath = normalizePath(basePath)
+		bucket = sanitizeSortBucket(bucket)
+		if !enabled || basePath == "/" || bucket == "" {
+			return
+		}
+		dirPath := path.Join(basePath, bucket)
+		out = append(out, AudioSortLink{
+			DirPath:  dirPath,
+			LinkPath: path.Join(dirPath, relName),
+			Target:   normalizePath(releasePath),
+		})
+	}
+
+	add(cfg.Audio.Sort.Genre, cfg.Audio.GenrePath, firstNonEmpty(fields, "genre", "g_genre"))
+	add(cfg.Audio.Sort.Artist, cfg.Audio.ArtistPath, firstNonEmpty(fields, "artist", "g_performer", "g_album_performer", "g_track_name"))
+	add(cfg.Audio.Sort.Year, cfg.Audio.YearPath, normalizeYearForBanner(firstNonEmpty(fields, "year", "g_recordeddate", "g_recorded_date")))
+	add(cfg.Audio.Sort.Group, cfg.Audio.GroupPath, releaseGroupName(relName))
+	return out
+}
+
 func isMediaInfoFile(fileName string) bool {
 	name := strings.ToLower(strings.TrimSpace(fileName))
 	for _, suffix := range []string{".mp3", ".flac", ".m4a", ".wav", ".mkv", ".mp4", ".avi", ".m2ts"} {
@@ -434,6 +470,28 @@ func normalizePattern(p string) string {
 	return p
 }
 
+func sanitizeSortBucket(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	var b strings.Builder
+	lastUnderscore := false
+	for _, r := range name {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			lastUnderscore = false
+		case r == '-' || r == '_' || r == '.' || r == ' ':
+			if !lastUnderscore {
+				b.WriteByte('_')
+				lastUnderscore = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "_")
+}
+
 func normalizedExt(name string) string {
 	base := strings.ToLower(strings.TrimSpace(path.Base(name)))
 	if base == "" {
@@ -481,4 +539,12 @@ func stringInSliceFold(v string, values []string) bool {
 		}
 	}
 	return false
+}
+
+func releaseGroupName(relName string) string {
+	relName = strings.TrimSpace(relName)
+	if idx := strings.LastIndex(relName, "-"); idx >= 0 && idx < len(relName)-1 {
+		return relName[idx+1:]
+	}
+	return ""
 }

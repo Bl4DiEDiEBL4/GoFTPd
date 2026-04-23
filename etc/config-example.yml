@@ -255,7 +255,7 @@ zipscript:
     deny_double_sfv: true      # reject a second .sfv in the same release dir
     delete_bad_crc: true       # delete uploaded files that fail SFV CRC
     ignore_zero_size: true     # delete zero-byte uploads instead of keeping them
-    allow_resume: false        # reserved for a future real REST/APPE resume path
+    allow_resume: false        # allow REST resume for STOR / RETR when enabled
 
   sections:
     sfv:
@@ -279,7 +279,7 @@ zipscript:
     enabled: true                    # enable virtual incomplete / missing-NFO markers
     indicator: "../[incomplete]-%0"  # shown for releases with missing SFV files
     nfo_indicator: "../[no-nfo]-%0"  # shown when a cleanup release has no .nfo
-    cd_indicator: "../../[incomplete]-(%0)-%1" # reserved for future multi-disc markers
+    cd_indicator: "../../[incomplete]-(%0)-%1" # shown for incomplete CD1 / DISC2 style child dirs
     mark_empty_dirs_on_rescan: true  # empty rescanned release dirs also get incomplete markers
 
   allowed_files:
@@ -300,11 +300,15 @@ zipscript:
       - "Contemporary Christian"
       - "Christian Rock"
     allowed_genres: []          # used when allowed_genre_check is true
+    genre_path: "/music.by.genre"   # sort-tree root for genre links
+    artist_path: "/music.by.artist" # sort-tree root for artist links
+    year_path: "/music.by.year"     # sort-tree root for year links
+    group_path: "/music.by.group"   # sort-tree root for release group links
     sort:
-      genre: false              # reserved for future genre sort-tree support
-      artist: false             # reserved for future artist sort-tree support
-      year: false               # reserved for future year sort-tree support
-      group: false              # reserved for future group sort-tree support
+      genre: false              # create <genre_path>/<Genre>/<Release> symlinks
+      artist: false             # create <artist_path>/<Artist>/<Release> symlinks
+      year: false               # create <year_path>/<Year>/<Release> symlinks
+      group: false              # create <group_path>/<Group>/<Release> symlinks
 
 plugins:
   dateddirs:

@@ -65,6 +65,10 @@ type AudioConfig struct {
 	AllowedYears            []int           `yaml:"allowed_years"`
 	BannedGenres            []string        `yaml:"banned_genres"`
 	AllowedGenres           []string        `yaml:"allowed_genres"`
+	GenrePath               string          `yaml:"genre_path"`
+	ArtistPath              string          `yaml:"artist_path"`
+	YearPath                string          `yaml:"year_path"`
+	GroupPath               string          `yaml:"group_path"`
 	Sort                    AudioSortConfig `yaml:"sort"`
 }
 

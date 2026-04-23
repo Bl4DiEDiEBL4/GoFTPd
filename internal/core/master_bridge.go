@@ -16,11 +16,11 @@ type MasterBridge interface {
 
 	// UploadFile routes an upload from the FTP client data connection to a slave.
 	// owner and group are set on the VFS entry for directory listings.
-	UploadFile(filePath string, clientData net.Conn, owner, group string) (int64, uint32, error)
+	UploadFile(filePath string, clientData net.Conn, owner, group string, position int64) (int64, uint32, error)
 
 	// DownloadFile routes a download from a slave to the FTP client data connection.
 	// The bridge finds which slave has the file, tells it to send, then bridges data.
-	DownloadFile(filePath string, clientData net.Conn) error
+	DownloadFile(filePath string, clientData net.Conn, position int64) error
 
 	// DeleteFile deletes a file on all slaves and from the VFS.
 	DeleteFile(filePath string) error
@@ -100,7 +100,7 @@ type MasterBridge interface {
 	StartRemergeAll() (started int, errors []string)
 
 	// Passthrough PORT: tell slave to connect out to remote address and receive file
-	SlaveConnectAndReceive(filePath, remoteAddr, owner, group string) (int64, uint32, int64, error)
+	SlaveConnectAndReceive(filePath, remoteAddr, owner, group string, position int64) (int64, uint32, int64, error)
 
 	// Passthrough: ask a slave to listen and return its IP:port + transfer index.
 	// sslClientMode selects the TLS role for secure FXP passive sockets.
@@ -111,10 +111,10 @@ type MasterBridge interface {
 	SlaveListenForDownloadPassthrough(filePath string, encrypted bool, sslClientMode bool) (slaveIP string, port int, transferIdx int32, slaveName string, err error)
 
 	// Passthrough: tell slave to receive a file, wait for completion, return size/checksum
-	SlaveReceivePassthrough(filePath string, transferIdx int32, slaveName string, owner, group string) (int64, uint32, int64, error)
+	SlaveReceivePassthrough(filePath string, transferIdx int32, slaveName string, owner, group string, position int64) (int64, uint32, int64, error)
 
 	// Passthrough: tell slave to send a file, wait for completion
-	SlaveSendPassthrough(filePath string, transferIdx int32, slaveName string) error
+	SlaveSendPassthrough(filePath string, transferIdx int32, slaveName string, position int64) error
 }
 
 // MasterFileEntry is a file/dir entry returned by MasterBridge.ListDir.

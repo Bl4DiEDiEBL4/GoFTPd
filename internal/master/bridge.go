@@ -105,8 +105,16 @@ func (b *Bridge) PluginListDir(dirPath string) []plugin.FileEntry {
 // In  the FTP client connects directly to the slave's PASV port.
 // Here we bridge through the master since the client already connected to us.
 // A PRET-based optimization (redirect client to slave) can be added later.
-func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group string) (int64, uint32, error) {
-	slave := b.sm.SelectSlaveForUpload(filePath)
+func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group string, position int64) (int64, uint32, error) {
+	var slave *RemoteSlave
+	if position > 0 {
+		slave = b.sm.SelectSlaveForDownload(filePath)
+		if slave == nil {
+			return 0, 0, fmt.Errorf("resume target not found: %s", filePath)
+		}
+	} else {
+		slave = b.sm.SelectSlaveForUpload(filePath)
+	}
 	if slave == nil {
 		return 0, 0, fmt.Errorf("no available slave")
 	}
@@ -140,7 +148,7 @@ func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group s
 	}
 
 	// Tell slave to receive the file
-	recvIdx, err := IssueReceive(slave, filePath, 'I', 0, "master",
+	recvIdx, err := IssueReceive(slave, filePath, 'I', position, "master",
 		transferResp.Info.TransferIndex, 0, 0)
 	if err != nil {
 		slaveConn.Close()
@@ -168,12 +176,22 @@ func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group s
 		return written, checksum, fmt.Errorf("upload bridge: %w", err)
 	}
 
-	log.Printf("[Bridge] Uploaded %s to slave %s (%d bytes, %dms, CRC=%08X)", filePath, slave.Name(), written, xferTime, checksum)
+	finalSize := written
+	if position > 0 {
+		finalSize += position
+		finalChecksum, err := b.ChecksumFile(filePath)
+		if err != nil {
+			return written, checksum, fmt.Errorf("resume checksum: %w", err)
+		}
+		checksum = finalChecksum
+	}
+
+	log.Printf("[Bridge] Uploaded %s to slave %s (%d bytes, %dms, CRC=%08X, offset=%d)", filePath, slave.Name(), finalSize, xferTime, checksum, position)
 
 	// Add file to VFS with transfer timing and checksum
 	b.sm.GetVFS().AddFile(filePath, VFSFile{
 		Path:         filePath,
-		Size:         written,
+		Size:         finalSize,
 		IsDir:        false,
 		LastModified: time.Now().Unix(),
 		SlaveName:    slave.Name(),
@@ -184,12 +202,12 @@ func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group s
 	})
 
 	if b.raceDB != nil {
-		if err := b.raceDB.RecordUpload(filePath, owner, group, written, xferTime, checksum); err != nil {
+		if err := b.raceDB.RecordUpload(filePath, owner, group, finalSize, xferTime, checksum); err != nil {
 			log.Printf("[Bridge] Race DB upload sync failed for %s: %v", filePath, err)
 		}
 	}
 
-	return written, checksum, nil
+	return finalSize, checksum, nil
 }
 
 // DownloadFile routes a download from a slave to the FTP client.
@@ -200,7 +218,7 @@ func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group s
 //  3. Connect from master to slave's data port
 //  4. Tell slave to SEND the file
 //  5. Bridge data: read from slave, write to clientData
-func (b *Bridge) DownloadFile(filePath string, clientData net.Conn) error {
+func (b *Bridge) DownloadFile(filePath string, clientData net.Conn, position int64) error {
 	slave := b.sm.SelectSlaveForDownload(filePath)
 	if slave == nil {
 		return fmt.Errorf("file not found on any available slave: %s", filePath)
@@ -231,7 +249,7 @@ func (b *Bridge) DownloadFile(filePath string, clientData net.Conn) error {
 	}
 
 	// Tell slave to send the file
-	sendIdx, err := IssueSend(slave, filePath, 'I', 0, "master",
+	sendIdx, err := IssueSend(slave, filePath, 'I', position, "master",
 		transferResp.Info.TransferIndex, 0, 0)
 	if err != nil {
 		slaveConn.Close()
@@ -253,7 +271,7 @@ func (b *Bridge) DownloadFile(filePath string, clientData net.Conn) error {
 		return fmt.Errorf("download bridge: %w", err)
 	}
 
-	log.Printf("[Bridge] Downloaded %s from slave %s (%d bytes)", filePath, slave.Name(), written)
+	log.Printf("[Bridge] Downloaded %s from slave %s (%d bytes, offset=%d)", filePath, slave.Name(), written, position)
 	return nil
 }
 
@@ -863,7 +881,7 @@ func (b *Bridge) SlaveListenForDownloadPassthrough(filePath string, encrypted bo
 
 // SlaveReceivePassthrough tells a slave to receive a file (client already connected directly).
 // Waits for the slave to finish and returns size, checksum, duration.
-func (b *Bridge) SlaveReceivePassthrough(filePath string, transferIdx int32, slaveName string, owner, group string) (int64, uint32, int64, error) {
+func (b *Bridge) SlaveReceivePassthrough(filePath string, transferIdx int32, slaveName string, owner, group string, position int64) (int64, uint32, int64, error) {
 	slave := b.sm.GetSlave(slaveName)
 	if slave == nil {
 		return 0, 0, 0, fmt.Errorf("slave %s not found", slaveName)
@@ -872,7 +890,7 @@ func (b *Bridge) SlaveReceivePassthrough(filePath string, transferIdx int32, sla
 	slave.IncActiveTransfers()
 	defer slave.DecActiveTransfers()
 
-	recvIdx, err := IssueReceive(slave, filePath, 'I', 0, "master", transferIdx, 0, 0)
+	recvIdx, err := IssueReceive(slave, filePath, 'I', position, "master", transferIdx, 0, 0)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("issue receive: %w", err)
 	}
@@ -892,38 +910,47 @@ func (b *Bridge) SlaveReceivePassthrough(filePath string, transferIdx int32, sla
 		return status.Transferred, status.Checksum, status.Elapsed, fmt.Errorf("%s", status.Error)
 	}
 
+	finalSize := status.Transferred
+	finalChecksum := status.Checksum
+	if position > 0 {
+		finalSize += position
+		if checksum, err := b.ChecksumFile(filePath); err == nil {
+			finalChecksum = checksum
+		}
+	}
+
 	b.sm.GetVFS().AddFile(filePath, VFSFile{
 		Path:         filePath,
-		Size:         status.Transferred,
+		Size:         finalSize,
 		IsDir:        false,
 		LastModified: time.Now().Unix(),
 		SlaveName:    slaveName,
 		Owner:        owner,
 		Group:        group,
 		XferTime:     status.Elapsed,
-		Checksum:     status.Checksum,
+		Checksum:     finalChecksum,
 	})
 
 	log.Printf("[Passthrough] Upload %s on %s (%d bytes, %dms, CRC=%08X)",
-		filePath, slaveName, status.Transferred, status.Elapsed, status.Checksum)
+		filePath, slaveName, finalSize, status.Elapsed, finalChecksum)
 
 	if b.raceDB != nil {
-		if err := b.raceDB.RecordUpload(filePath, owner, group, status.Transferred, status.Elapsed, status.Checksum); err != nil {
+		if err := b.raceDB.RecordUpload(filePath, owner, group, finalSize, status.Elapsed, finalChecksum); err != nil {
 			log.Printf("[Passthrough] RaceDB record failed: %v", err)
 		}
 	}
 
-	return status.Transferred, status.Checksum, status.Elapsed, nil
+	return finalSize, finalChecksum, status.Elapsed, nil
 }
 
 // SlaveSendPassthrough tells a slave to send a file (client already connected directly).
-func (b *Bridge) SlaveSendPassthrough(filePath string, transferIdx int32, slaveName string) error {
+func (b *Bridge) SlaveSendPassthrough(filePath string, transferIdx int32, slaveName string, position int64) error {
 	slave := b.sm.GetSlave(slaveName)
 	if slave == nil {
 		return fmt.Errorf("slave %s not found", slaveName)
 	}
 
-	sendIdx, err := IssueSend(slave, filePath, 'I', 0, "master", transferIdx, 0, 0)
+	sendIdx, err := IssueSend(slave, filePath, 'I', position, "master", transferIdx, 0, 0)
 	if err != nil {
 		return fmt.Errorf("issue send: %w", err)
 	}
@@ -946,8 +973,13 @@ func (b *Bridge) SlaveSendPassthrough(filePath string, transferIdx int32, slaveN
 
 // SlaveConnectAndReceive tells a slave to connect out to a remote address (PORT mode passthrough)
 // and receive a file. The slave connects directly to the remote site — master doesn't touch the data.
-func (b *Bridge) SlaveConnectAndReceive(filePath, remoteAddr, owner, group string) (int64, uint32, int64, error) {
-	slave := b.sm.SelectSlaveForUpload(filePath)
+func (b *Bridge) SlaveConnectAndReceive(filePath, remoteAddr, owner, group string, position int64) (int64, uint32, int64, error) {
+	var slave *RemoteSlave
+	if position > 0 {
+		slave = b.sm.SelectSlaveForDownload(filePath)
+	} else {
+		slave = b.sm.SelectSlaveForUpload(filePath)
+	}
 	if slave == nil {
 		return 0, 0, 0, fmt.Errorf("no available slave")
 	}
@@ -981,7 +1013,7 @@ func (b *Bridge) SlaveConnectAndReceive(filePath, remoteAddr, owner, group strin
 	}
 
 	// Tell slave to receive the file on this connection
-	recvIdx, err := IssueReceive(slave, filePath, 'I', 0, remoteAddr,
+	recvIdx, err := IssueReceive(slave, filePath, 'I', position, remoteAddr,
 		transferResp.Info.TransferIndex, 0, 0)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("issue receive: %w", err)
@@ -1014,28 +1046,37 @@ func (b *Bridge) SlaveConnectAndReceive(filePath, remoteAddr, owner, group strin
 		}
 		status := rt.GetStatus()
 
+		finalSize := status.Transferred
+		finalChecksum := status.Checksum
+		if position > 0 {
+			finalSize += position
+			if checksum, err := b.ChecksumFile(filePath); err == nil {
+				finalChecksum = checksum
+			}
+		}
+
 		b.sm.GetVFS().AddFile(filePath, VFSFile{
 			Path:         filePath,
-			Size:         status.Transferred,
+			Size:         finalSize,
 			IsDir:        false,
 			LastModified: time.Now().Unix(),
 			SlaveName:    slave.Name(),
 			Owner:        owner,
 			Group:        group,
 			XferTime:     status.Elapsed,
-			Checksum:     status.Checksum,
+			Checksum:     finalChecksum,
 		})
 
 		log.Printf("[Passthrough-PORT] Upload %s on %s (%d bytes, %dms, CRC=%08X)",
-			filePath, slave.Name(), status.Transferred, status.Elapsed, status.Checksum)
+			filePath, slave.Name(), finalSize, status.Elapsed, finalChecksum)
 
 		if b.raceDB != nil {
-			if err := b.raceDB.RecordUpload(filePath, owner, group, status.Transferred, status.Elapsed, status.Checksum); err != nil {
+			if err := b.raceDB.RecordUpload(filePath, owner, group, finalSize, status.Elapsed, finalChecksum); err != nil {
 				log.Printf("[Passthrough-PORT] RaceDB record failed: %v", err)
 			}
 		}
 
-		return status.Transferred, status.Checksum, status.Elapsed, nil
+		return finalSize, finalChecksum, status.Elapsed, nil
 	}
 
 	return 0, 0, 0, fmt.Errorf("transfer status not available")

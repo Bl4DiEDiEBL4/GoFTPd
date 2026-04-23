@@ -21,7 +21,6 @@ const (
 )
 
 // Transfer represents a data transfer on the slave side.
-// 
 type Transfer struct {
 	listener      net.Listener // non-nil for passive (LISTEN)
 	conn          net.Conn     // non-nil for active (CONNECT) or after passive accept
@@ -30,13 +29,13 @@ type Transfer struct {
 	encrypted     bool
 	sslClientMode bool
 
-	direction     byte
-	started       time.Time
-	finished      time.Time
-	transferred   int64
-	checksum      uint32
-	abortReason   string
-	mu            sync.Mutex
+	direction   byte
+	started     time.Time
+	finished    time.Time
+	transferred int64
+	checksum    uint32
+	abortReason string
+	mu          sync.Mutex
 }
 
 func NewTransfer(listener net.Listener, conn net.Conn, idx int32, slave *Slave, encrypted bool, sslClientMode bool) *Transfer {
@@ -53,7 +52,7 @@ func NewTransfer(listener net.Listener, conn net.Conn, idx int32, slave *Slave, 
 
 // ReceiveFile receives data from the FTP client and writes to disk.
 // ().
-func (t *Transfer) ReceiveFile(path string) protocol.TransferStatus {
+func (t *Transfer) ReceiveFile(path string, position int64) protocol.TransferStatus {
 	t.mu.Lock()
 	t.direction = TransferReceiving
 	t.started = time.Now()
@@ -81,7 +80,19 @@ func (t *Transfer) ReceiveFile(path string) protocol.TransferStatus {
 		return t.errorStatus(fmt.Sprintf("cannot create file: %v", err))
 	}
 
-	file, err := os.Create(fullPath)
+	var file *os.File
+	if position > 0 {
+		file, err = os.OpenFile(fullPath, os.O_WRONLY, 0644)
+		if err != nil {
+			return t.errorStatus(fmt.Sprintf("resume open failed: %v", err))
+		}
+		if _, err := file.Seek(position, io.SeekStart); err != nil {
+			file.Close()
+			return t.errorStatus(fmt.Sprintf("resume seek failed: %v", err))
+		}
+	} else {
+		file, err = os.Create(fullPath)
+	}
 	if err != nil {
 		return t.errorStatus(fmt.Sprintf("create failed: %v", err))
 	}
@@ -114,7 +125,7 @@ func (t *Transfer) ReceiveFile(path string) protocol.TransferStatus {
 		}
 	}
 
-	log.Printf("[Transfer] Received %s (%d bytes, CRC32=%08X)", path, t.transferred, h.Sum32())
+	log.Printf("[Transfer] Received %s (%d bytes, CRC32=%08X, offset=%d)", path, t.transferred, h.Sum32(), position)
 
 	return protocol.TransferStatus{
 		TransferIndex: t.transferIndex,
@@ -127,7 +138,7 @@ func (t *Transfer) ReceiveFile(path string) protocol.TransferStatus {
 
 // SendFile sends a file from disk to the FTP client.
 // ().
-func (t *Transfer) SendFile(path string) protocol.TransferStatus {
+func (t *Transfer) SendFile(path string, position int64) protocol.TransferStatus {
 	t.mu.Lock()
 	t.direction = TransferSending
 	t.started = time.Now()
@@ -160,6 +171,11 @@ func (t *Transfer) SendFile(path string) protocol.TransferStatus {
 		return t.errorStatus(fmt.Sprintf("open failed: %v", err))
 	}
 	defer file.Close()
+	if position > 0 {
+		if _, err := file.Seek(position, io.SeekStart); err != nil {
+			return t.errorStatus(fmt.Sprintf("resume seek failed: %v", err))
+		}
+	}
 
 	// Transfer with CRC32
 	h := crc32.NewIEEE()
@@ -189,7 +205,7 @@ func (t *Transfer) SendFile(path string) protocol.TransferStatus {
 		}
 	}
 
-	log.Printf("[Transfer] Sent %s (%d bytes, CRC32=%08X)", path, t.transferred, h.Sum32())
+	log.Printf("[Transfer] Sent %s (%d bytes, CRC32=%08X, offset=%d)", path, t.transferred, h.Sum32(), position)
 
 	return protocol.TransferStatus{
 		TransferIndex: t.transferIndex,

@@ -26,32 +26,31 @@ const (
 	actualTimeout = 60 * time.Second
 )
 
-// Slave is the slave daemon, 
+// Slave is the slave daemon,
 // It connects to a master, sends its name, then enters a command/response loop.
 type Slave struct {
-	name          string
-	masterHost    string
-	masterPort    int
-	roots         []string // local filesystem roots (1, slave.root.2)
-	pasvPortMin   int
-	pasvPortMax   int
-	pasvNext       uint32
-	tlsEnabled    bool
-	tlsCert       string
-	tlsKey        string
-	bindIP        string
+	name        string
+	masterHost  string
+	masterPort  int
+	roots       []string // local filesystem roots (1, slave.root.2)
+	pasvPortMin int
+	pasvPortMax int
+	pasvNext    uint32
+	tlsEnabled  bool
+	tlsCert     string
+	tlsKey      string
+	bindIP      string
 
-	conn          net.Conn
-	stream        *protocol.ObjectStream
-	writeMu       sync.Mutex // protects stream writes (gob is not thread-safe)
-	transfers     sync.Map   // transferIndex (int32) -> *Transfer
+	conn            net.Conn
+	stream          *protocol.ObjectStream
+	writeMu         sync.Mutex // protects stream writes (gob is not thread-safe)
+	transfers       sync.Map   // transferIndex (int32) -> *Transfer
 	nextTransferIdx int32
 
 	online        atomic.Bool
 	lastWriteTime atomic.Int64 // UnixMilli of last successful write
 	timeout       time.Duration
 }
-
 
 // writeObject sends an object to the master with mutex protection.
 // gob encoding is not thread-safe, so all writes must be serialized.
@@ -220,7 +219,8 @@ func (s *Slave) listenForCommands() error {
 }
 
 // handleCommand dispatches a command to the appropriate handler.
-//  -> BasicHandler.handleXxx
+//
+//	-> BasicHandler.handleXxx
 func (s *Slave) handleCommand(ac *protocol.AsyncCommand) interface{} {
 	switch ac.Name {
 	case "ping":
@@ -273,7 +273,7 @@ func (s *Slave) handleCommand(ac *protocol.AsyncCommand) interface{} {
 
 	case "createSparseFile":
 		return s.handleCreateSparseFile(ac)
-		
+
 	case "makedir":
 		return s.handleMakeDir(ac)
 
@@ -329,7 +329,7 @@ func (s *Slave) handleDelete(ac *protocol.AsyncCommand) interface{} {
 }
 
 func (s *Slave) handleRename(ac *protocol.AsyncCommand) interface{} {
-	// Args: [from, toDir, toName] 
+	// Args: [from, toDir, toName]
 	if len(ac.Args) < 3 {
 		return &protocol.AsyncResponseError{Index: ac.Index, Message: "rename: need from, toDir, toName"}
 	}
@@ -454,7 +454,6 @@ func (s *Slave) handleChecksum(ac *protocol.AsyncCommand) interface{} {
 }
 
 // handleListen - slave opens a passive port and waits for a connection.
-// 
 func (s *Slave) handleListen(ac *protocol.AsyncCommand) interface{} {
 	listener, err := s.listenOnPortRange()
 	if err != nil {
@@ -491,7 +490,6 @@ func parseListenFlags(args []string) (encrypted bool, sslClientMode bool) {
 }
 
 // handleConnect - slave connects out to a given address (active mode).
-// 
 func (s *Slave) handleConnect(ac *protocol.AsyncCommand) interface{} {
 	if len(ac.Args) < 1 {
 		return &protocol.AsyncResponseError{Index: ac.Index, Message: "connect: missing address"}
@@ -556,7 +554,7 @@ func (s *Slave) handleConnect(ac *protocol.AsyncCommand) interface{} {
 }
 
 // handleReceive - slave receives (uploads) a file from the FTP client via the data connection.
-// 
+//
 // Args: [type, position, transferIndex, inetAddress, path, minSpeed, maxSpeed]
 func (s *Slave) handleReceive(ac *protocol.AsyncCommand) interface{} {
 	if len(ac.Args) < 5 {
@@ -564,6 +562,8 @@ func (s *Slave) handleReceive(ac *protocol.AsyncCommand) interface{} {
 	}
 
 	var transferIdx int32
+	var position int64
+	fmt.Sscanf(ac.Args[1], "%d", &position)
 	fmt.Sscanf(ac.Args[2], "%d", &transferIdx)
 	path := ac.Args[4]
 
@@ -577,12 +577,12 @@ func (s *Slave) handleReceive(ac *protocol.AsyncCommand) interface{} {
 	s.writeObject(&protocol.AsyncResponse{Index: ac.Index})
 
 	// Actually receive the file - this blocks until done
-	status := t.ReceiveFile(path)
+	status := t.ReceiveFile(path, position)
 	return &protocol.AsyncResponseTransferStatus{Status: status}
 }
 
 // handleSend - slave sends (downloads) a file to the FTP client via the data connection.
-// 
+//
 // Args: [type, position, transferIndex, inetAddress, path, minSpeed, maxSpeed]
 func (s *Slave) handleSend(ac *protocol.AsyncCommand) interface{} {
 	if len(ac.Args) < 5 {
@@ -590,6 +590,8 @@ func (s *Slave) handleSend(ac *protocol.AsyncCommand) interface{} {
 	}
 
 	var transferIdx int32
+	var position int64
+	fmt.Sscanf(ac.Args[1], "%d", &position)
 	fmt.Sscanf(ac.Args[2], "%d", &transferIdx)
 	path := ac.Args[4]
 
@@ -603,7 +605,7 @@ func (s *Slave) handleSend(ac *protocol.AsyncCommand) interface{} {
 	s.writeObject(&protocol.AsyncResponse{Index: ac.Index})
 
 	// Actually send the file
-	status := t.SendFile(path)
+	status := t.SendFile(path, position)
 	return &protocol.AsyncResponseTransferStatus{Status: status}
 }
 
@@ -628,7 +630,6 @@ func (s *Slave) handleAbort(ac *protocol.AsyncCommand) interface{} {
 }
 
 // handleRemerge - slave scans its roots and sends all files to master.
-// 
 func (s *Slave) handleRemerge(ac *protocol.AsyncCommand) interface{} {
 	basePath := "/"
 	if len(ac.Args) > 0 {
@@ -733,7 +734,6 @@ func (s *Slave) handleRemerge(ac *protocol.AsyncCommand) interface{} {
 }
 
 // handleSFVFile - slave parses an SFV file and sends the entries to master.
-// 
 func (s *Slave) handleSFVFile(ac *protocol.AsyncCommand) interface{} {
 	if len(ac.Args) < 1 {
 		return &protocol.AsyncResponseError{Index: ac.Index, Message: "sfvFile: missing path"}

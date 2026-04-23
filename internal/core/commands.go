@@ -288,6 +288,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			fmt.Fprintf(s.Conn, "504 Resume disabled by zipscript.\r\n")
 			return false
 		}
+		s.RestOffset = offset
 		fmt.Fprintf(s.Conn, "350 REST position set.\r\n")
 
 	case "PWD":
@@ -1057,6 +1058,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		}
 
 		fileName := args[0]
+		restOffset := s.RestOffset
+		s.RestOffset = 0
 		var existingNames []string
 		aclPath := path.Join(s.Config.ACLBasePath, s.CurrentDir, fileName)
 		if !s.ACLEngine.CanPerform(s.User, "UPLOAD", aclPath) {
@@ -1072,9 +1075,24 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					fileExists = bridge.FileExists(filePath)
 				}
 			}
-			if fileExists {
+			if fileExists && restOffset == 0 {
 				fmt.Fprintf(s.Conn, "553 %s: file already exists (X-DUPE)\r\n", fileName)
 				return false
+			}
+		}
+		if restOffset > 0 {
+			if s.Config.Mode == "master" && s.MasterManager != nil {
+				if bridge, ok := s.MasterManager.(MasterBridge); ok {
+					size := bridge.GetFileSize(path.Join(s.CurrentDir, fileName))
+					if size < 0 {
+						fmt.Fprintf(s.Conn, "550 Resume target not found.\r\n")
+						return false
+					}
+					if restOffset > size {
+						fmt.Fprintf(s.Conn, "550 Resume offset beyond end of file.\r\n")
+						return false
+					}
+				}
 			}
 		}
 		if s.Config.Mode == "master" && s.MasterManager != nil {
@@ -1096,7 +1114,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				log.Printf("[Passthrough] PORT STOR %s → slave connects to %s", filePath, portAddr)
 				fmt.Fprintf(s.Conn, "150 Opening binary mode data connection.\r\n")
 
-				fileSize, checksum, xferMs, err := bridge.SlaveConnectAndReceive(filePath, portAddr, s.User.Name, s.User.PrimaryGroup)
+				fileSize, checksum, xferMs, err := bridge.SlaveConnectAndReceive(filePath, portAddr, s.User.Name, s.User.PrimaryGroup, restOffset)
 				_ = xferMs
 
 				if err != nil {
@@ -1232,7 +1250,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					fmt.Fprintf(s.Conn, "150 Opening binary mode data connection.\r\n")
 					log.Printf("[Passthrough] STOR %s via slave %s (xferIdx=%d)", filePath, slaveName, s.PassthruXferIdx)
 
-					fileSize, checksum, xferMs, err = bridge.SlaveReceivePassthrough(filePath, s.PassthruXferIdx, slaveName, s.User.Name, s.User.PrimaryGroup)
+					fileSize, checksum, xferMs, err = bridge.SlaveReceivePassthrough(filePath, s.PassthruXferIdx, slaveName, s.User.Name, s.User.PrimaryGroup, restOffset)
 					s.PassthruSlave = nil
 					s.PretCmd = ""
 					s.PretArg = ""
@@ -1251,7 +1269,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					}
 
 					start := time.Now()
-					fileSize, checksum, err = bridge.UploadFile(filePath, dataConn, s.User.Name, s.User.PrimaryGroup)
+					fileSize, checksum, err = bridge.UploadFile(filePath, dataConn, s.User.Name, s.User.PrimaryGroup, restOffset)
 					xferMs = time.Since(start).Milliseconds()
 					dataConn.Close()
 
@@ -1395,6 +1413,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			fmt.Fprintf(s.Conn, "550 Access Denied.\r\n")
 			return false
 		}
+		restOffset := s.RestOffset
+		s.RestOffset = 0
 
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
@@ -1404,8 +1424,16 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					fmt.Fprintf(s.Conn, "550 File not found on any slave.\r\n")
 					return false
 				}
+				if restOffset > fileSize {
+					fmt.Fprintf(s.Conn, "550 Resume offset beyond end of file.\r\n")
+					return false
+				}
 				isSpeedtest := isSpeedtestPath(filePath)
-				if !isSpeedtest && !s.User.CanDownload("", fileSize) {
+				remainingSize := fileSize
+				if restOffset > 0 && restOffset < fileSize {
+					remainingSize = fileSize - restOffset
+				}
+				if !isSpeedtest && !s.User.CanDownload("", remainingSize) {
 					fmt.Fprintf(s.Conn, "550 Not enough credits.\r\n")
 					return false
 				}
@@ -1416,7 +1444,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					log.Printf("[Passthrough] RETR %s via slave %s (xferIdx=%d)", filePath, slaveName, s.PassthruXferIdx)
 
 					start := time.Now()
-					err := bridge.SlaveSendPassthrough(filePath, s.PassthruXferIdx, slaveName)
+					err := bridge.SlaveSendPassthrough(filePath, s.PassthruXferIdx, slaveName, restOffset)
 					xferMs := time.Since(start).Milliseconds()
 					s.PassthruSlave = nil
 					s.PretCmd = ""
@@ -1427,10 +1455,10 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						fmt.Fprintf(s.Conn, "550 Download failed: %v\r\n", err)
 					} else {
 						fmt.Fprintf(s.Conn, "226 Transfer complete.\r\n")
-						if fileSize > 0 {
-							s.User.UpdateStatsWithCredits(fileSize, false, !isSpeedtest)
+						if remainingSize > 0 {
+							s.User.UpdateStatsWithCredits(remainingSize, false, !isSpeedtest)
 						}
-						s.emitEvent(EventDownload, filePath, args[0], fileSize, transferSpeedMB(fileSize, xferMs), nil)
+						s.emitEvent(EventDownload, filePath, args[0], remainingSize, transferSpeedMB(remainingSize, xferMs), nil)
 					}
 				} else {
 					raw, err := s.getRawDataConn()
@@ -1445,7 +1473,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						return false
 					}
 					start := time.Now()
-					err = bridge.DownloadFile(filePath, dataConn)
+					err = bridge.DownloadFile(filePath, dataConn, restOffset)
 					xferMs := time.Since(start).Milliseconds()
 					dataConn.Close()
 					s.PretCmd = ""
@@ -1455,10 +1483,10 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						fmt.Fprintf(s.Conn, "550 Download failed: %v\r\n", err)
 					} else {
 						fmt.Fprintf(s.Conn, "226 Transfer complete.\r\n")
-						if fileSize > 0 {
-							s.User.UpdateStatsWithCredits(fileSize, false, !isSpeedtest)
+						if remainingSize > 0 {
+							s.User.UpdateStatsWithCredits(remainingSize, false, !isSpeedtest)
 						}
-						s.emitEvent(EventDownload, filePath, args[0], fileSize, transferSpeedMB(fileSize, xferMs), nil)
+						s.emitEvent(EventDownload, filePath, args[0], remainingSize, transferSpeedMB(remainingSize, xferMs), nil)
 					}
 				}
 			} else {
@@ -1906,6 +1934,40 @@ func applyAudioZipscriptChecks(s *Session, bridge MasterBridge, filePath, fileNa
 	if reasons := zipscript.ValidateAudioRelease(s.Config.Zipscript, fields); len(reasons) > 0 {
 		_ = bridge.DeleteFile(filePath)
 		return fmt.Errorf(strings.Join(reasons, "; "))
+	}
+	if err := ensureAudioSortLinks(bridge, zipscript.AudioSortLinks(s.Config.Zipscript, s.CurrentDir, fields)); err != nil && s.Config.Debug {
+		log.Printf("[MASTER-ZS] audio sort link failed for %s: %v", s.CurrentDir, err)
+	}
+	return nil
+}
+
+func ensureAudioSortLinks(bridge MasterBridge, links []zipscript.AudioSortLink) error {
+	for _, link := range links {
+		if err := ensureDirPath(bridge, link.DirPath); err != nil {
+			return err
+		}
+		if err := bridge.Symlink(link.LinkPath, link.Target); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureDirPath(bridge MasterBridge, dirPath string) error {
+	dirPath = path.Clean("/" + strings.TrimSpace(dirPath))
+	if dirPath == "/" || dirPath == "." {
+		return nil
+	}
+	parts := strings.Split(strings.TrimPrefix(dirPath, "/"), "/")
+	current := ""
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		current = path.Join(current, "/"+part)
+		if !bridge.FileExists(current) {
+			bridge.MakeDir(current, "GoFTPd", "GoFTPd")
+		}
 	}
 	return nil
 }

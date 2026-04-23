@@ -14,39 +14,40 @@ import (
 
 // Session represents an active FTP client connection and its state.
 type Session struct {
-	ID              uint64
-	Conn            net.Conn
-	User            *user.User
-	Config          *Config
-	ACLEngine       *acl.Engine // Engine for handling permissions/flags
-	DupeChecker     interface{} // dupe.DupeChecker for duplicate checking
-	MasterManager   interface{} // *master.Manager for master/slave operations
-	IsLogged        bool        // Login state (synchronized with commands.go)
-	CurrentDir      string      // Virtual path
-	RenameFrom      string      // Source for RNTO
-	SSCN            bool        // Secure FXP mode
-	DataListen      net.Listener // For PASV mode
-	ActiveAddr      string      // For PORT mode (Fixes the undefined error in commands.go)
-	IsTLS           bool        // Control channel encryption state
-	DataTLS         bool        // Data channel encryption state (PROT P)
-	GroupMap        map[string]int // groupname -> GID mapping
-	StartedAt       time.Time
+	ID            uint64
+	Conn          net.Conn
+	User          *user.User
+	Config        *Config
+	ACLEngine     *acl.Engine    // Engine for handling permissions/flags
+	DupeChecker   interface{}    // dupe.DupeChecker for duplicate checking
+	MasterManager interface{}    // *master.Manager for master/slave operations
+	IsLogged      bool           // Login state (synchronized with commands.go)
+	CurrentDir    string         // Virtual path
+	RenameFrom    string         // Source for RNTO
+	SSCN          bool           // Secure FXP mode
+	DataListen    net.Listener   // For PASV mode
+	ActiveAddr    string         // For PORT mode (Fixes the undefined error in commands.go)
+	IsTLS         bool           // Control channel encryption state
+	DataTLS       bool           // Data channel encryption state (PROT P)
+	GroupMap      map[string]int // groupname -> GID mapping
+	StartedAt     time.Time
 
 	// Passthrough transfer state (drftpd-style direct client→slave)
 	PretCmd         string      // "STOR", "RETR", or "" — set by PRET
 	PretArg         string      // filename from PRET
 	PassthruSlave   interface{} // slave selected for passthrough (avoids import cycle)
 	PassthruXferIdx int32       // slave transfer index for passthrough
+	RestOffset      int64       // REST offset applied to the next STOR/RETR
 }
 
 // readLinePure reads exactly one line byte-by-byte.
-// It accepts a 'prefix' buffer to catch any bytes we might have "peeked" at 
+// It accepts a 'prefix' buffer to catch any bytes we might have "peeked" at
 // during our legacy client check.
 func readLinePure(conn net.Conn, prefix []byte) (string, error) {
 	var buf []byte
 	buf = append(buf, prefix...)
 	b := make([]byte, 1)
-	
+
 	for {
 		_, err := conn.Read(b)
 		if err != nil {
@@ -125,7 +126,7 @@ func HandleSession(conn net.Conn, tlsConfig *tls.Config, cfg *Config, aclEngine 
 			fmt.Fprintf(session.Conn, "234 AUTH TLS successful\r\n")
 
 			tlsConn := tls.Server(session.Conn, tlsConfig)
-			
+
 			// Set a strict deadline so old/broken clients don't hang the server
 			session.Conn.SetDeadline(time.Now().Add(10 * time.Second))
 			if err := tlsConn.Handshake(); err != nil {
@@ -134,7 +135,7 @@ func HandleSession(conn net.Conn, tlsConfig *tls.Config, cfg *Config, aclEngine 
 				}
 				return
 			}
-			
+
 			// Handshake complete, clear the deadline
 			session.Conn.SetDeadline(time.Time{})
 
@@ -226,7 +227,7 @@ func (s *Session) upgradeDataTLS(conn net.Conn, tlsConfig *tls.Config) (net.Conn
 	}
 
 	conn.SetDeadline(time.Now().Add(10 * time.Second))
-	
+
 	tlsConn := tls.Server(conn, tlsConfig.Clone())
 	if err := tlsConn.Handshake(); err != nil {
 		if s.Config.Debug {
@@ -237,7 +238,7 @@ func (s *Session) upgradeDataTLS(conn net.Conn, tlsConfig *tls.Config) (net.Conn
 	}
 
 	conn.SetDeadline(time.Time{})
-	
+
 	if s.Config.Debug {
 		log.Printf("Data TLS handshake successful")
 	}
