@@ -1190,7 +1190,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					go emitRaceEndAfter(s, nil, fileSize, 1, xferMs, 0)
 				}
 				if zipscript.UsesZip(s.Config.Zipscript, s.CurrentDir) {
-					if shouldEmitZipRaceEnd(s.Config, s.CurrentDir, fileName) && zipDirComplete(bridge.ListDir(s.CurrentDir)) && raceTotalFiles > 0 {
+					expectedZipParts := zipExpectedPartsFromDIZ(bridge, s.CurrentDir)
+					if shouldEmitZipRaceEnd(s.Config, s.CurrentDir, fileName) && zipDirComplete(bridge.ListDir(s.CurrentDir), expectedZipParts) && raceTotalFiles > 0 {
 						go emitRaceEndAfter(s, raceUsers, raceTotalBytes, raceTotalFiles, xferMs, zipscript.MediaInfoGraceDelayForDir(s.Config.Zipscript, s.CurrentDir, fileName))
 					}
 				} else if sfvEntries := bridge.GetSFVData(s.CurrentDir); sfvEntries != nil {
@@ -1327,7 +1328,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					go emitRaceEndAfter(s, nil, fileSize, 1, xferMs, 0)
 				}
 				if zipscript.UsesZip(s.Config.Zipscript, s.CurrentDir) {
-					if shouldEmitZipRaceEnd(s.Config, s.CurrentDir, fileName) && zipDirComplete(bridge.ListDir(s.CurrentDir)) && raceTotalFiles > 0 {
+					expectedZipParts := zipExpectedPartsFromDIZ(bridge, s.CurrentDir)
+					if shouldEmitZipRaceEnd(s.Config, s.CurrentDir, fileName) && zipDirComplete(bridge.ListDir(s.CurrentDir), expectedZipParts) && raceTotalFiles > 0 {
 						go emitRaceEndAfter(s, raceUsers, raceTotalBytes, raceTotalFiles, xferMs, zipscript.MediaInfoGraceDelayForDir(s.Config.Zipscript, s.CurrentDir, fileName))
 					}
 				} else if sfvEntries := bridge.GetSFVData(s.CurrentDir); sfvEntries != nil {
@@ -2015,11 +2017,25 @@ func zipDirRaceStats(entries []MasterFileEntry) ([]VFSRaceUser, int64, int) {
 		}
 		us.Files++
 		us.Bytes += e.Size
+		if e.XferTime > 0 {
+			fileSpeed := float64(e.Size) / (float64(e.XferTime) / 1000.0)
+			us.Speed += fileSpeed
+			if fileSpeed > us.PeakSpeed {
+				us.PeakSpeed = fileSpeed
+			}
+			if us.SlowSpeed == 0 || fileSpeed < us.SlowSpeed {
+				us.SlowSpeed = fileSpeed
+			}
+			us.DurationMs += e.XferTime
+		}
 	}
 	users := make([]VFSRaceUser, 0, len(userMap))
 	for _, us := range userMap {
 		if total > 0 {
 			us.Percent = (us.Files * 100) / total
+		}
+		if us.Files > 0 {
+			us.Speed = us.Speed / float64(us.Files)
 		}
 		users = append(users, *us)
 	}
@@ -2035,11 +2051,11 @@ func zipDirRaceStats(entries []MasterFileEntry) ([]VFSRaceUser, int64, int) {
 	return users, totalBytes, total
 }
 
-func zipDirComplete(entries []MasterFileEntry) bool {
-	total := 0
-	highestDigit := 0
-	highestLetter := 0
-	mode := ""
+func zipDirCurrentPartState(entries []MasterFileEntry) (total int, highestDigit int, highestLetter int, mode string, ok bool) {
+	total = 0
+	highestDigit = 0
+	highestLetter = 0
+	mode = ""
 	for _, e := range entries {
 		if e.IsDir || e.IsSymlink || strings.HasPrefix(strings.TrimSpace(e.Name), ".") || !isZipPayloadName(e.Name) {
 			continue
@@ -2049,13 +2065,13 @@ func zipDirComplete(entries []MasterFileEntry) bool {
 		if m := regexp.MustCompile(`(\d+)$`).FindStringSubmatch(base); len(m) == 2 {
 			n, err := strconv.Atoi(m[1])
 			if err != nil || n <= 0 {
-				return false
+				return 0, 0, 0, "", false
 			}
 			if mode == "" {
 				mode = "digit"
 			}
 			if mode != "digit" {
-				return false
+				return 0, 0, 0, "", false
 			}
 			if n > highestDigit {
 				highestDigit = n
@@ -2065,20 +2081,50 @@ func zipDirComplete(entries []MasterFileEntry) bool {
 		if m := regexp.MustCompile(`([a-z])$`).FindStringSubmatch(base); len(m) == 2 {
 			n := int(m[1][0]-'a') + 1
 			if n <= 0 {
-				return false
+				return 0, 0, 0, "", false
 			}
 			if mode == "" {
 				mode = "letter"
 			}
 			if mode != "letter" {
-				return false
+				return 0, 0, 0, "", false
 			}
 			if n > highestLetter {
 				highestLetter = n
 			}
 			continue
 		}
+		return 0, 0, 0, "", false
+	}
+	if total == 0 || mode == "" {
+		return 0, 0, 0, "", false
+	}
+	return total, highestDigit, highestLetter, mode, true
+}
+
+func zipExpectedPartsFromDIZ(bridge MasterBridge, dirPath string) int {
+	content, err := bridge.ReadFile(path.Join(dirPath, "file_id.diz"))
+	if err != nil || len(content) == 0 {
+		return 0
+	}
+	m := regexp.MustCompile(`(?i)disk\s*\[\s*\d+\s*/\s*(\d+)\s*\]`).FindStringSubmatch(string(content))
+	if len(m) != 2 {
+		return 0
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil || n <= 0 {
+		return 0
+	}
+	return n
+}
+
+func zipDirComplete(entries []MasterFileEntry, expected int) bool {
+	total, highestDigit, highestLetter, mode, ok := zipDirCurrentPartState(entries)
+	if !ok {
 		return false
+	}
+	if expected > 0 {
+		return total == expected
 	}
 	switch mode {
 	case "digit":
@@ -2098,13 +2144,24 @@ func populateUploadRaceData(bridge MasterBridge, cfg *Config, dirPath, fileName 
 	if zipscript.UsesZip(cfg.Zipscript, dirPath) {
 		users, totalBytes, total := zipDirRaceStats(bridge.ListDir(dirPath))
 		if total > 0 {
+			expected := zipExpectedPartsFromDIZ(bridge, dirPath)
 			data["relname"] = path.Base(dirPath)
-			data["t_files"] = fmt.Sprintf("%d", total)
-			data["t_present"] = fmt.Sprintf("%d", total)
-			data["t_filesleft"] = "0"
+			if expected > 0 {
+				data["t_files"] = fmt.Sprintf("%d", expected)
+				data["t_present"] = fmt.Sprintf("%d", total)
+				data["t_filesleft"] = fmt.Sprintf("%d", maxInt(0, expected-total))
+			} else {
+				data["t_files"] = fmt.Sprintf("%d", total)
+				data["t_present"] = fmt.Sprintf("%d", total)
+				data["t_filesleft"] = "0"
+			}
 			data["t_totalmb"] = fmt.Sprintf("%.1f", float64(totalBytes)/1024.0/1024.0)
 			data["t_avgspeed"] = fmt.Sprintf("%.2fMB/s", currentRaceSpeedMB(dirPath, totalBytes, bridge))
-			data["t_timeleft"] = "0s"
+			if expected > 0 && expected > total {
+				data["t_timeleft"] = "N/A"
+			} else {
+				data["t_timeleft"] = "0s"
+			}
 			data["t_mbytes"] = fmt.Sprintf("%.0fMB", float64(totalBytes)/1024.0/1024.0)
 			if len(users) > 0 {
 				leader := users[0]
@@ -2115,7 +2172,7 @@ func populateUploadRaceData(bridge MasterBridge, cfg *Config, dirPath, fileName 
 				data["leader_pct"] = fmt.Sprintf("%d", leader.Percent)
 				data["leader_speed"] = fmt.Sprintf("%.2fMB/s", leader.Speed/1024.0/1024.0)
 			}
-			return users, totalBytes, total, true
+			return users, totalBytes, total, expected == 0 || total >= expected
 		}
 		return nil, 0, 0, false
 	}

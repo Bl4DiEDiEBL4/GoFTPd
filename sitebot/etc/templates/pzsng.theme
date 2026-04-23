@@ -333,6 +333,8 @@ announce.UPDATE_RAR = "%b{%c01{RACE:}} %c01{[}%section_colored%c01{]} %c%sec_c5{
 
 announce.UPDATE_RAR_UNKNOWN = "%b{%c01{RACE:}} %c01{[}%section_colored%c01{]} %c%sec_c5{%subdir_prefix}%c%sec_c3{%b{%relname}} %c01{got its first rar file from} %c%sec_c4{%u_name} %c01{at} %c%sec_c5{%u_speed}%c01{.}"
 
+announce.UPDATE_ZIP = "%b{%c01{RACE:}} %c01{[}%section_colored%c01{]} %c%sec_c5{%subdir_prefix}%c%sec_c3{%b{%relname}} %c01{got its first zip file from} %c%sec_c4{%u_name} %c01{at} %c%sec_c5{%u_speed}%c01{. Now expecting} %c%sec_c5{%b{%t_files}} %c01{file(s).}"
+
 announce.UPDATE_TRACK = "%b{%c01{RACE:}} %c01{[}%section_colored%c01{]} %c%sec_c5{%subdir_prefix}%c%sec_c3{%b{%relname}} %c01{got first track from} %c%sec_c4{%u_name} %c01{at} %c%sec_c5{%u_speed}%c01{.}"
 
 announce.RACE_RAR = "%b{%c01{RACE:}} %c01{[}%section_colored%c01{]} %c%sec_c5{%subdir_prefix}%c%sec_c3{%b{%relname}} %c01{-} %c%sec_c4{%u_name} joined the race %c01{at} %c%sec_c5{%u_speed}%c01{.}"

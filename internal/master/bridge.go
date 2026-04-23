@@ -68,6 +68,7 @@ func (b *Bridge) ListDir(dirPath string) []core.MasterFileEntry {
 			Owner:      f.Owner,
 			Group:      f.Group,
 			Slave:      f.SlaveName,
+			XferTime:   f.XferTime,
 		})
 	}
 	return entries
