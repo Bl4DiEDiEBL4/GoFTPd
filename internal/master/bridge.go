@@ -47,6 +47,53 @@ func (b *Bridge) StartRemergeAll() (int, []string) {
 	return b.sm.StartRemergeAll()
 }
 
+func (b *Bridge) GetLiveTransferStats() []core.LiveTransferStat {
+	var out []core.LiveTransferStat
+	for _, slave := range b.sm.GetAllSlaves() {
+		if slave == nil || !slave.IsOnline() {
+			continue
+		}
+		idx, err := IssueTransferStats(slave)
+		if err != nil {
+			continue
+		}
+		resp, err := slave.FetchResponse(idx, 5*time.Second)
+		if err != nil {
+			continue
+		}
+		statsResp, ok := resp.(*protocol.AsyncResponseTransferStats)
+		if !ok {
+			continue
+		}
+		for _, stat := range statsResp.Stats {
+			direction := ""
+			switch stat.Direction {
+			case 'R':
+				direction = "upload"
+			case 'S':
+				direction = "download"
+			}
+			if direction == "" {
+				continue
+			}
+			var startedAt time.Time
+			if stat.StartedUnixMs > 0 {
+				startedAt = time.UnixMilli(stat.StartedUnixMs)
+			}
+			out = append(out, core.LiveTransferStat{
+				SlaveName:     slave.Name(),
+				TransferIndex: stat.TransferIndex,
+				Direction:     direction,
+				Path:          stat.Path,
+				StartedAt:     startedAt,
+				Transferred:   stat.Transferred,
+				SpeedBytes:    float64(stat.SpeedBytes),
+			})
+		}
+	}
+	return out
+}
+
 // Ensure Bridge implements MasterBridge at compile time.
 var _ core.MasterBridge = (*Bridge)(nil)
 var _ plugin.MasterBridge = (*Bridge)(nil)

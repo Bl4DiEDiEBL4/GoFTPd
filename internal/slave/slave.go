@@ -253,6 +253,9 @@ func (s *Slave) handleCommand(ac *protocol.AsyncCommand) interface{} {
 	case "send":
 		return s.handleSend(ac)
 
+	case "transferStats":
+		return s.handleTransferStats(ac)
+
 	case "abort":
 		return s.handleAbort(ac)
 
@@ -572,6 +575,7 @@ func (s *Slave) handleReceive(ac *protocol.AsyncCommand) interface{} {
 		return &protocol.AsyncResponseError{Index: ac.Index, Message: "transfer not found"}
 	}
 	t := val.(*Transfer)
+	t.SetPath(path)
 
 	// Acknowledge to master that we're starting (: sendResponse(new AsyncResponse(ac.getIndex())))
 	s.writeObject(&protocol.AsyncResponse{Index: ac.Index})
@@ -600,6 +604,7 @@ func (s *Slave) handleSend(ac *protocol.AsyncCommand) interface{} {
 		return &protocol.AsyncResponseError{Index: ac.Index, Message: "transfer not found"}
 	}
 	t := val.(*Transfer)
+	t.SetPath(path)
 
 	// Acknowledge to master
 	s.writeObject(&protocol.AsyncResponse{Index: ac.Index})
@@ -627,6 +632,23 @@ func (s *Slave) handleAbort(ac *protocol.AsyncCommand) interface{} {
 	}
 
 	return &protocol.AsyncResponse{Index: ac.Index}
+}
+
+func (s *Slave) handleTransferStats(ac *protocol.AsyncCommand) interface{} {
+	stats := make([]protocol.TransferLiveStat, 0)
+	s.transfers.Range(func(_, value interface{}) bool {
+		t, ok := value.(*Transfer)
+		if !ok || t == nil {
+			return true
+		}
+		stat := t.SnapshotLiveStat()
+		if stat.Direction == TransferUnknown {
+			return true
+		}
+		stats = append(stats, stat)
+		return true
+	})
+	return &protocol.AsyncResponseTransferStats{Index: ac.Index, Stats: stats}
 }
 
 // handleRemerge - slave scans its roots and sends all files to master.

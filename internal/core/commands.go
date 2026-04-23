@@ -1070,6 +1070,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 
 				log.Printf("[Passthrough] PORT STOR %s → slave connects to %s", filePath, portAddr)
 				fmt.Fprintf(s.Conn, "150 Opening binary mode data connection.\r\n")
+				s.beginTransfer("upload", filePath)
+				defer s.endTransfer()
 
 				fileSize, checksum, xferMs, err := bridge.SlaveConnectAndReceive(filePath, portAddr, s.User.Name, s.User.PrimaryGroup, restOffset)
 				_ = xferMs
@@ -1187,6 +1189,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					slaveName := s.PassthruSlave.(string)
 					fmt.Fprintf(s.Conn, "150 Opening binary mode data connection.\r\n")
 					log.Printf("[Passthrough] STOR %s via slave %s (xferIdx=%d)", filePath, slaveName, s.PassthruXferIdx)
+					s.beginTransferOnSlave("upload", filePath, slaveName, s.PassthruXferIdx)
+					defer s.endTransfer()
 
 					fileSize, checksum, xferMs, err = bridge.SlaveReceivePassthrough(filePath, s.PassthruXferIdx, slaveName, s.User.Name, s.User.PrimaryGroup, restOffset)
 					s.PassthruSlave = nil
@@ -1205,6 +1209,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						raw.Close()
 						return false
 					}
+					s.beginTransfer("upload", filePath)
+					defer s.endTransfer()
+					dataConn = trackTransferConn(s, dataConn, "upload")
 
 					start := time.Now()
 					fileSize, checksum, err = bridge.UploadFile(filePath, dataConn, s.User.Name, s.User.PrimaryGroup, restOffset)
@@ -1360,6 +1367,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					slaveName := s.PassthruSlave.(string)
 					fmt.Fprintf(s.Conn, "150 Opening binary mode data connection for %s (%d bytes).\r\n", args[0], fileSize)
 					log.Printf("[Passthrough] RETR %s via slave %s (xferIdx=%d)", filePath, slaveName, s.PassthruXferIdx)
+					s.beginTransferOnSlave("download", filePath, slaveName, s.PassthruXferIdx)
+					defer s.endTransfer()
 
 					start := time.Now()
 					err := bridge.SlaveSendPassthrough(filePath, s.PassthruXferIdx, slaveName, restOffset)
@@ -1390,6 +1399,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						raw.Close()
 						return false
 					}
+					s.beginTransfer("download", filePath)
+					defer s.endTransfer()
+					dataConn = trackTransferConn(s, dataConn, "download")
 					start := time.Now()
 					err = bridge.DownloadFile(filePath, dataConn, restOffset)
 					xferMs := time.Since(start).Milliseconds()

@@ -11,6 +11,7 @@ NOTICE) that the bot sends to channels.
 - **imdb**     — async movie lookup on MKD, posts MOVIE-INFO to channels
 - **news**     — handles `!news`, `!addnews`, `!delnews` IRC commands, persists to JSONL
 - **free**     — handles `!free` (disk space) IRC command
+- **bnc**      — handles `!bnc` FTP login health checks across one or more configured targets
 
 ## Writing a new plugin
 

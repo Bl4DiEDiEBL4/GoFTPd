@@ -29,6 +29,7 @@ type Transfer struct {
 	encrypted     bool
 	sslClientMode bool
 
+	path        string
 	direction   byte
 	started     time.Time
 	finished    time.Time
@@ -47,6 +48,36 @@ func NewTransfer(listener net.Listener, conn net.Conn, idx int32, slave *Slave, 
 		encrypted:     encrypted,
 		sslClientMode: sslClientMode,
 		direction:     TransferUnknown,
+	}
+}
+
+func (t *Transfer) SetPath(path string) {
+	t.mu.Lock()
+	t.path = path
+	t.mu.Unlock()
+}
+
+func (t *Transfer) SnapshotLiveStat() protocol.TransferLiveStat {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	var startedUnixMs int64
+	var speedBytes int64
+	if !t.started.IsZero() {
+		startedUnixMs = t.started.UnixMilli()
+		elapsedMs := time.Since(t.started).Milliseconds()
+		if elapsedMs > 0 && t.transferred > 0 {
+			speedBytes = t.transferred * 1000 / elapsedMs
+		}
+	}
+
+	return protocol.TransferLiveStat{
+		TransferIndex: t.transferIndex,
+		Direction:     t.direction,
+		Path:          t.path,
+		StartedUnixMs: startedUnixMs,
+		Transferred:   t.transferred,
+		SpeedBytes:    speedBytes,
 	}
 }
 

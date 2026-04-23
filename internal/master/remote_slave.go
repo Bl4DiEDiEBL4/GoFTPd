@@ -17,11 +17,10 @@ const (
 )
 
 // RemoteSlave represents a connected slave as seen from the master.
-// 
 type RemoteSlave struct {
-	name   string
-	conn   net.Conn
-	stream *protocol.ObjectStream
+	name    string
+	conn    net.Conn
+	stream  *protocol.ObjectStream
 	writeMu sync.Mutex // protects stream writes
 
 	// Async index pool ( / _indexWithCommands)
@@ -30,15 +29,15 @@ type RemoteSlave struct {
 	commandNotify chan struct{}
 
 	// State
-	online        atomic.Bool
-	available     atomic.Bool
-	remerging     atomic.Bool
-	diskStatus    protocol.DiskStatus
-	diskMu        sync.RWMutex
+	online     atomic.Bool
+	available  atomic.Bool
+	remerging  atomic.Bool
+	diskStatus protocol.DiskStatus
+	diskMu     sync.RWMutex
 
 	// Transfers
-	transfers          sync.Map // TransferIndex (int32) -> *RemoteTransfer
-	completedTransfers sync.Map // TransferIndex (int32) -> protocol.TransferStatus
+	transfers          sync.Map     // TransferIndex (int32) -> *RemoteTransfer
+	completedTransfers sync.Map     // TransferIndex (int32) -> protocol.TransferStatus
 	activeCount        atomic.Int32 // number of currently-active uploads (for load balancing)
 
 	// Timing
@@ -46,12 +45,12 @@ type RemoteSlave struct {
 	lastCommandSent      atomic.Int64
 
 	// Properties ()
-	properties    map[string]string
-	propMu        sync.RWMutex
+	properties map[string]string
+	propMu     sync.RWMutex
 
 	// Masks
-	masks         []string
-	maskMu        sync.RWMutex // [Added] Protects masks from concurrent read/write panics
+	masks  []string
+	maskMu sync.RWMutex // [Added] Protects masks from concurrent read/write panics
 }
 
 // NewRemoteSlave creates a new remote slave from an accepted connection.
@@ -78,8 +77,8 @@ func NewRemoteSlave(name string, conn net.Conn, stream *protocol.ObjectStream) *
 	return rs
 }
 
-func (rs *RemoteSlave) Name() string   { return rs.name }
-func (rs *RemoteSlave) IsOnline() bool { return rs.online.Load() }
+func (rs *RemoteSlave) Name() string      { return rs.name }
+func (rs *RemoteSlave) IsOnline() bool    { return rs.online.Load() }
 func (rs *RemoteSlave) IsAvailable() bool { return rs.available.Load() }
 func (rs *RemoteSlave) IsRemerging() bool { return rs.remerging.Load() }
 
@@ -321,6 +320,9 @@ func (rs *RemoteSlave) Run(masterSlaveManager *SlaveManager) {
 		case *protocol.AsyncResponseMediaInfo:
 			rs.routeResponse(resp.Index, obj)
 
+		case *protocol.AsyncResponseTransferStats:
+			rs.routeResponse(resp.Index, obj)
+
 		default:
 			log.Printf("[Master] Unknown response type from slave %s: %T", rs.name, obj)
 		}
@@ -343,7 +345,7 @@ func (rs *RemoteSlave) SetOffline(reason string) {
 	if !rs.online.CompareAndSwap(true, false) {
 		return // already offline
 	}
-	
+
 	log.Printf("[Master] Slave %s going offline: %s", rs.name, reason)
 	rs.available.Store(false)
 	rs.remerging.Store(false)

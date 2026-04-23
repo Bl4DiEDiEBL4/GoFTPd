@@ -22,11 +22,14 @@ func init() {
 	gob.Register(&AsyncResponseSFVInfo{})
 	gob.Register(&AsyncResponseFileContent{})
 	gob.Register(&AsyncResponseMediaInfo{})
+	gob.Register(&AsyncResponseTransferStats{})
 	gob.Register(&ConnectInfo{})
 	gob.Register(&TransferStatus{})
+	gob.Register(&TransferLiveStat{})
 	gob.Register(&DiskStatus{})
 	gob.Register(&LightRemoteInode{})
 	gob.Register([]LightRemoteInode{})
+	gob.Register([]TransferLiveStat{})
 	gob.Register(&SFVEntry{})
 	gob.Register([]SFVEntry{})
 	gob.Register(map[string]string{})
@@ -156,10 +159,10 @@ func (ar *AsyncResponseSiteBotMessage) GetIndex() string { return "SiteBotMessag
 // --------------------------------------------------------------------------
 
 type ObjectStream struct {
-	enc  *gob.Encoder
-	dec  *gob.Decoder
+	enc   *gob.Encoder
+	dec   *gob.Decoder
 	encMu sync.Mutex
-	conn io.ReadWriteCloser
+	conn  io.ReadWriteCloser
 }
 
 func NewObjectStream(conn io.ReadWriteCloser) *ObjectStream {
@@ -198,10 +201,10 @@ type SFVEntry struct {
 
 // AsyncResponseSFVInfo is returned when slave parses an SFV file.
 type AsyncResponseSFVInfo struct {
-	Index      string
-	SFVName    string     // name of the .sfv file
-	Entries    []SFVEntry // filename→CRC32 entries
-	Checksum   uint32     // CRC32 of the SFV file itself
+	Index    string
+	SFVName  string     // name of the .sfv file
+	Entries  []SFVEntry // filename→CRC32 entries
+	Checksum uint32     // CRC32 of the SFV file itself
 }
 
 func (ar *AsyncResponseSFVInfo) GetIndex() string { return ar.Index }
@@ -222,3 +225,19 @@ type AsyncResponseMediaInfo struct {
 }
 
 func (ar *AsyncResponseMediaInfo) GetIndex() string { return ar.Index }
+
+type AsyncResponseTransferStats struct {
+	Index string
+	Stats []TransferLiveStat
+}
+
+func (ar *AsyncResponseTransferStats) GetIndex() string { return ar.Index }
+
+type TransferLiveStat struct {
+	TransferIndex int32
+	Direction     byte
+	Path          string
+	StartedUnixMs int64
+	Transferred   int64
+	SpeedBytes    int64
+}

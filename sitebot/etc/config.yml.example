@@ -332,6 +332,8 @@ plugins:
     Free: true
     Affils: true
     Request: true
+    BNC: true
+    BW: true
     AdminCommander: false
   config:
     debug: true
@@ -425,6 +427,48 @@ plugins:
       channels: *chan_main
       staff_channels: *chan_staff
       staff_hosts: []
+      # reply_target supports "channel", "notice", or a fixed "#channel".
+      reply_target: "channel"
+
+    bnc:
+      # Public IRC gateway for simple FTP login health checks.
+      # IRC command:
+      #   !bnc
+      #   !bnc sitename
+      #
+      # The plugin logs into each configured FTP target with this local user
+      # and reports UP/DOWN plus login time in ms. Add one target per line.
+      user: "goftpd"
+      password: "change-me"
+      tls: true
+      insecure_skip_verify: true
+      timeout_seconds: 10
+      channels: *chan_main
+      # reply_target supports "channel", "notice", or a fixed "#channel".
+      reply_target: "channel"
+      targets:
+        - name: "sitename"
+          host: "127.0.0.1"
+          port: 2121
+        - name: "site2"
+          host: "127.0.0.2"
+          port: 2121
+
+    bandwidth:
+      # Public IRC gateway for SITE BW.
+      # IRC commands:
+      #   !bw
+      #   !bw USERNAME
+      #   !bw slave
+      #   !bw slave SLAVENAME
+      host: "127.0.0.1"
+      port: 2121
+      user: "goftpd"
+      password: "change-me"
+      tls: true
+      insecure_skip_verify: true
+      timeout_seconds: 10
+      channels: *chan_main
       # reply_target supports "channel", "notice", or a fixed "#channel".
       reply_target: "channel"
 

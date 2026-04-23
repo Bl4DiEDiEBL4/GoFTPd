@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"goftpd/internal/acl"
@@ -38,6 +39,15 @@ type Session struct {
 	PassthruSlave   interface{} // slave selected for passthrough (avoids import cycle)
 	PassthruXferIdx int32       // slave transfer index for passthrough
 	RestOffset      int64       // REST offset applied to the next STOR/RETR
+
+	stateMu           sync.RWMutex
+	LastCommandAt     time.Time
+	TransferDirection string
+	TransferPath      string
+	TransferBytes     int64
+	TransferStartedAt time.Time
+	TransferSlaveName string
+	TransferSlaveIdx  int32
 }
 
 // readLinePure reads exactly one line byte-by-byte.
@@ -75,6 +85,7 @@ func HandleSession(conn net.Conn, tlsConfig *tls.Config, cfg *Config, aclEngine 
 		CurrentDir:    "/",
 		GroupMap:      LoadGroupFile("etc/group"),
 		StartedAt:     time.Now(),
+		LastCommandAt: time.Now(),
 	}
 	session.ID = registerSession(session)
 	defer unregisterSession(session.ID)
@@ -120,6 +131,7 @@ func HandleSession(conn net.Conn, tlsConfig *tls.Config, cfg *Config, aclEngine 
 		if session.Config.Debug {
 			log.Printf("[CMD] raw=%q cmd=%q args=%q", line, cmd, args)
 		}
+		session.touchActivity()
 
 		// Handle AUTH TLS to upgrade the control channel
 		if cmd == "AUTH" && len(args) > 0 && strings.ToUpper(args[0]) == "TLS" {

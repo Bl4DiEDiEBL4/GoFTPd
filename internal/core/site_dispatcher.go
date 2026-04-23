@@ -35,6 +35,8 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 		return s.HandleSiteRules(remainingArgs)
 	case "WHO", "SWHO":
 		return s.HandleSiteWho(remainingArgs)
+	case "BW":
+		return s.HandleSiteBW(remainingArgs)
 	case "USERS":
 		return s.HandleSiteUsers(remainingArgs)
 	case "USER":
@@ -138,6 +140,7 @@ func requiredSiteCommandFlags(command string) string {
 	switch strings.ToUpper(strings.TrimSpace(command)) {
 	case "WHO",
 		"SWHO",
+		"BW",
 		"ADDUSER",
 		"DELUSER",
 		"CHPASS",

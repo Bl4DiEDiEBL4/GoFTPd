@@ -8,7 +8,7 @@ import (
 
 // --------------------------------------------------------------------------
 // Issuer functions: Master -> Slave command issuance
-// 
+//
 // Each function fetches an index, sends the command, and returns the index
 // so the caller can use rs.FetchResponse(index, timeout) to get the reply.
 // --------------------------------------------------------------------------
@@ -79,6 +79,14 @@ func IssueMediaInfo(rs *RemoteSlave, path, binary string, timeoutSeconds int) (s
 		Name:  "mediainfo",
 		Args:  []string{path, binary, fmt.Sprintf("%d", timeoutSeconds)},
 	})
+}
+
+func IssueTransferStats(rs *RemoteSlave) (string, error) {
+	index, err := rs.FetchIndex()
+	if err != nil {
+		return "", err
+	}
+	return index, rs.SendCommand(&protocol.AsyncCommand{Index: index, Name: "transferStats"})
 }
 
 // IssueListen tells the slave to open a passive data port.
@@ -197,7 +205,6 @@ func IssueShutdown(rs *RemoteSlave) {
 }
 
 // IssueSFVFile asks the slave to parse an SFV file and return the entries.
-// 
 func IssueSFVFile(rs *RemoteSlave, path string) (string, error) {
 	index, err := rs.FetchIndex()
 	if err != nil {

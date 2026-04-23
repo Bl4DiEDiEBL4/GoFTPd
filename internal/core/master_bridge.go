@@ -2,6 +2,7 @@ package core
 
 import (
 	"net"
+	"time"
 )
 
 // MasterBridge is the interface that internal/core uses to talk to the master's
@@ -99,6 +100,9 @@ type MasterBridge interface {
 	// StartRemergeAll starts a full background VFS refresh for every online slave.
 	StartRemergeAll() (started int, errors []string)
 
+	// GetLiveTransferStats asks connected slaves for current live transfer counters.
+	GetLiveTransferStats() []LiveTransferStat
+
 	// Passthrough PORT: tell slave to connect out to remote address and receive file
 	SlaveConnectAndReceive(filePath, remoteAddr, owner, group string, position int64) (int64, uint32, int64, error)
 
@@ -166,4 +170,14 @@ type VFSRaceGroup struct {
 	Bytes   int64
 	Speed   float64
 	Percent int
+}
+
+type LiveTransferStat struct {
+	SlaveName     string
+	TransferIndex int32
+	Direction     string
+	Path          string
+	StartedAt     time.Time
+	Transferred   int64
+	SpeedBytes    float64
 }

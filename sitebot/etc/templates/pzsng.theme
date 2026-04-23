@@ -359,6 +359,20 @@ announce.STATS_USER = "%b{%c01{STATS:}} %c01{[}%c03{%u_rank}%c01{]} %c%sec_c4{%u
 
 announce.STATS_END = "%b{%c01{STATS:}} -----------====>>>>           %c03{END}          <<<<====-----------"
 
+announce.BNC = "%b{%c01{BNC:}} %c01{Checking GoFTPd status, please wait ...}"
+
+announce.BNC_UP = "%c03{%index}.- %c06{%name} %c01{at} %c05{%host}%c01{:}%c05{%port} %c01{is} %c03{UP} %c01{(login:} %c05{%latency}ms%c01{)}"
+
+announce.BNC_DOWN = "%c04{%index}.- %c06{%name} %c01{at} %c05{%host}%c01{:}%c05{%port} %c01{is} %c04{DOWN} %c01{(%error)}"
+
+announce.BNC_ERROR = "%b{%c01{BNC:}} %c04{%response}"
+
+announce.BW = "%b{%c01{BANDWiDTH:}} %c01{Checking GoFTPd bandwidth, please wait ...}"
+
+announce.BW_LINE = "%c01{%response}"
+
+announce.BW_ERROR = "%b{%c01{BANDWiDTH:}} %c04{%response}"
+
 announce.NUKE = "%b{%c01{NUKE:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{by} %c04{%u_name}"
 
 announce.UNNUKE = "%b{%c01{UNNUKE:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{by} %c04{%u_name}"

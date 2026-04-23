@@ -17,6 +17,8 @@ import (
 	admincommanderplugin "goftpd/sitebot/plugins/admincommander"
 	affilsplugin "goftpd/sitebot/plugins/affils"
 	announceplugin "goftpd/sitebot/plugins/announce"
+	bncplugin "goftpd/sitebot/plugins/bnc"
+	bwplugin "goftpd/sitebot/plugins/bw"
 	freeplugin "goftpd/sitebot/plugins/free"
 	imdbplugin "goftpd/sitebot/plugins/imdb"
 	newsplugin "goftpd/sitebot/plugins/news"
@@ -176,6 +178,32 @@ func (b *Bot) initializePlugins() error {
 			return err
 		}
 		if err := b.Plugins.Register(requests); err != nil {
+			return err
+		}
+	}
+	if enabled, ok := b.Config.Plugins.Enabled["BNC"]; ok && enabled {
+		bnc := bncplugin.New()
+		cfg := map[string]interface{}{"debug": b.Debug, "theme_file": b.Config.Announce.ThemeFile}
+		for k, v := range b.Config.Plugins.Config {
+			cfg[k] = v
+		}
+		if err := bnc.Initialize(cfg); err != nil {
+			return err
+		}
+		if err := b.Plugins.Register(bnc); err != nil {
+			return err
+		}
+	}
+	if enabled, ok := b.Config.Plugins.Enabled["BW"]; ok && enabled {
+		bw := bwplugin.New()
+		cfg := map[string]interface{}{"debug": b.Debug, "theme_file": b.Config.Announce.ThemeFile}
+		for k, v := range b.Config.Plugins.Config {
+			cfg[k] = v
+		}
+		if err := bw.Initialize(cfg); err != nil {
+			return err
+		}
+		if err := b.Plugins.Register(bw); err != nil {
 			return err
 		}
 	}

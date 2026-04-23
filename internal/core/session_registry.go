@@ -10,13 +10,20 @@ import (
 )
 
 type sessionSnapshot struct {
-	ID        uint64
-	User      string
-	Flags     string
-	Remote    string
-	CurrentDir string
-	StartedAt time.Time
-	LoggedIn  bool
+	ID                uint64
+	User              string
+	Flags             string
+	Remote            string
+	CurrentDir        string
+	StartedAt         time.Time
+	LastCommandAt     time.Time
+	LoggedIn          bool
+	TransferDirection string
+	TransferPath      string
+	TransferBytes     int64
+	TransferStartedAt time.Time
+	TransferSlaveName string
+	TransferSlaveIdx  int32
 }
 
 var (
@@ -42,12 +49,21 @@ func listActiveSessions() []sessionSnapshot {
 			return true
 		}
 		snap := sessionSnapshot{
-			ID:        s.ID,
-			Remote:    remoteAddrString(s.Conn),
+			ID:         s.ID,
+			Remote:     remoteAddrString(s.Conn),
 			CurrentDir: s.CurrentDir,
-			StartedAt: s.StartedAt,
-			LoggedIn:  s.IsLogged,
+			StartedAt:  s.StartedAt,
+			LoggedIn:   s.IsLogged,
 		}
+		s.stateMu.RLock()
+		snap.LastCommandAt = s.LastCommandAt
+		snap.TransferDirection = s.TransferDirection
+		snap.TransferPath = s.TransferPath
+		snap.TransferBytes = s.TransferBytes
+		snap.TransferStartedAt = s.TransferStartedAt
+		snap.TransferSlaveName = s.TransferSlaveName
+		snap.TransferSlaveIdx = s.TransferSlaveIdx
+		s.stateMu.RUnlock()
 		if s.IsLogged && s.User != nil {
 			snap.User = s.User.Name
 			snap.Flags = s.User.Flags
