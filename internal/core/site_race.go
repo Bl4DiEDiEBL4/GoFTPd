@@ -29,6 +29,8 @@ func (s *Session) HandleSiteRace(args []string) bool {
 	}
 
 	users, groups, totalBytes, present, total := bridge.GetVFSRaceStats(dirPath)
+	users = trimRaceUsers(s.Config, users)
+	groups = trimRaceGroups(s.Config, groups)
 	if !HasRaceStats(users, groups, totalBytes, present, total) {
 		fmt.Fprintf(s.Conn, "200 No race stats for %s\r\n", dirPath)
 		return false

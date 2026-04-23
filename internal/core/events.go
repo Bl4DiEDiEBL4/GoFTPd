@@ -18,26 +18,26 @@ import (
 type EventType string
 
 const (
-	EventUpload       EventType = "UPLOAD"
-	EventDownload     EventType = "DOWNLOAD"
-	EventDelete       EventType = "DELETE"
-	EventNuke         EventType = "NUKE"
-	EventRaceEnd      EventType = "RACEEND"      // COMPLETE line only
-	EventRaceStats    EventType = "RACESTATS"    // STATS_HOF + STATS_SPEEDS
-	EventRaceUser     EventType = "RACEUSER"     // one per racer in HOF
-	EventRaceFooter   EventType = "RACEFOOTER"   // STATS_END line
-	EventNewUser      EventType = "NEWUSER"
-	EventMKDir        EventType = "MKDIR"
-	EventRMDir        EventType = "RMDIR"
-	EventRename       EventType = "RENAME"
-	EventUnnuke       EventType = "UNNUKE"
-	EventInvite       EventType = "INVITE"
-	EventDiskStatus   EventType = "DISKSTATUS"
-	EventSpeedtest    EventType = "SPEEDTEST"
-	EventPre           EventType = "PRE"              // release pre'd — relname, section, group, files, mbytes
-	EventPreBW         EventType = "PREBW"            // race-bw totals after pre
-	EventPreBWUser     EventType = "PREBWUSER"        // per-user race-bw after pre
-	EventPreBWInterval EventType = "PREBWINTERVAL"    // interval snapshots after pre
+	EventUpload        EventType = "UPLOAD"
+	EventDownload      EventType = "DOWNLOAD"
+	EventDelete        EventType = "DELETE"
+	EventNuke          EventType = "NUKE"
+	EventRaceEnd       EventType = "RACEEND"    // COMPLETE line only
+	EventRaceStats     EventType = "RACESTATS"  // STATS_HOF + STATS_SPEEDS
+	EventRaceUser      EventType = "RACEUSER"   // one per racer in HOF
+	EventRaceFooter    EventType = "RACEFOOTER" // STATS_END line
+	EventNewUser       EventType = "NEWUSER"
+	EventMKDir         EventType = "MKDIR"
+	EventRMDir         EventType = "RMDIR"
+	EventRename        EventType = "RENAME"
+	EventUnnuke        EventType = "UNNUKE"
+	EventInvite        EventType = "INVITE"
+	EventDiskStatus    EventType = "DISKSTATUS"
+	EventSpeedtest     EventType = "SPEEDTEST"
+	EventPre           EventType = "PRE"           // release pre'd — relname, section, group, files, mbytes
+	EventPreBW         EventType = "PREBW"         // race-bw totals after pre
+	EventPreBWUser     EventType = "PREBWUSER"     // per-user race-bw after pre
+	EventPreBWInterval EventType = "PREBWINTERVAL" // interval snapshots after pre
 )
 
 // Event is the daemon-side event payload written to the event FIFO as JSON lines.
@@ -347,6 +347,7 @@ func emitRaceEnd(s *Session, users []VFSRaceUser, totalBytes int64, total int, x
 	if s == nil {
 		return
 	}
+	users = trimRaceUsers(s.Config, users)
 	if !markRaceCompleteOnce(s.CurrentDir, totalBytes, total) {
 		if s.Config != nil && s.Config.Debug {
 			log.Printf("[RACE] duplicate complete suppressed for %s", s.CurrentDir)

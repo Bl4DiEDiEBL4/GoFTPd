@@ -240,22 +240,22 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 # =============================================================================
 zipscript:
   enabled: true                # master-side zipscript module on/off
-  debug: false                 # parsed now; reserved for zipscript-specific debug output
+  debug: false                 # reserved for zipscript-specific debug output
 
   race:
     enabled: true              # enables race tracking derived labels/stats
-    max_users_in_top: 15       # parsed; not enforced yet
-    max_groups_in_top: 0       # parsed; not enforced yet
+    max_users_in_top: 15       # limit HOF / SITE RACE user rows (0 = unlimited)
+    max_groups_in_top: 0       # limit FTP group rows (0 = unlimited)
     complete_banner: true      # show [SITE] - ( ... COMPLETE ... ) - [SITE]
     music_complete_genre: true # add genre/year on MP3/FLAC COMPLETE banner
-    announce_norace: true      # parsed; not enforced yet
+    announce_norace: true      # emit COMPLETE for first payload in non-SFV dirs too
 
   sfv:
-    force_first: false         # parsed; not enforced yet
-    deny_double_sfv: true      # parsed; not enforced yet
+    force_first: false         # require the .sfv before other payload files
+    deny_double_sfv: true      # reject a second .sfv in the same release dir
     delete_bad_crc: true       # delete uploaded files that fail SFV CRC
     ignore_zero_size: true     # delete zero-byte uploads instead of keeping them
-    allow_resume: false        # parsed; not enforced yet
+    allow_resume: false        # reserved for a future real REST/APPE resume path
 
   sections:
     sfv:
@@ -276,35 +276,35 @@ zipscript:
       - "/TV-1080P/*"
 
   incomplete:
-    enabled: true                    # parsed; not enforced yet
-    indicator: "../[incomplete]-%0"  # parsed; not enforced yet
-    nfo_indicator: "../[no-nfo]-%0"  # parsed; not enforced yet
-    cd_indicator: "../../[incomplete]-(%0)-%1" # parsed; not enforced yet
-    mark_empty_dirs_on_rescan: true  # parsed; not enforced yet
+    enabled: true                    # enable virtual incomplete / missing-NFO markers
+    indicator: "../[incomplete]-%0"  # shown for releases with missing SFV files
+    nfo_indicator: "../[no-nfo]-%0"  # shown when a cleanup release has no .nfo
+    cd_indicator: "../../[incomplete]-(%0)-%1" # reserved for future multi-disc markers
+    mark_empty_dirs_on_rescan: true  # empty rescanned release dirs also get incomplete markers
 
   allowed_files:
-    allowed_types: ["jpg", "jpeg", "cue", "m3u", "txt", "vob", "png", "m2ts", "ts", "log", "mkv"] # parsed; not enforced yet
-    ignored_types: ["diz", "debug", "message", "imdb", "html", "url", "m3u", "metadata"] # parsed; not enforced yet
+    allowed_types: ["jpg", "jpeg", "cue", "m3u", "txt", "vob", "png", "m2ts", "ts", "log", "mkv"] # extra extensions allowed in SFV dirs
+    ignored_types: ["diz", "debug", "message", "imdb", "html", "url", "m3u", "metadata"] # ignored by force-first / type checks
 
   audio:
-    enabled: true               # parsed; not enforced yet
-    cbr_check: false            # parsed; not enforced yet
-    year_check: false           # parsed; not enforced yet
-    banned_genre_check: true    # parsed; not enforced yet
-    allowed_genre_check: false  # parsed; not enforced yet
-    allowed_constant_bitrates: [192, 320] # parsed; not enforced yet
-    allowed_years: [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025] # parsed; not enforced yet
+    enabled: true               # enforce audio policy on MP3 / FLAC uploads
+    cbr_check: false            # require CBR and match allowed_constant_bitrates
+    year_check: false           # require year to be in allowed_years
+    banned_genre_check: true    # delete uploads with banned genres
+    allowed_genre_check: false  # if true, only genres in allowed_genres pass
+    allowed_constant_bitrates: [192, 320] # checked when cbr_check is enabled
+    allowed_years: [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025] # checked when year_check is enabled
     banned_genres:
       - "Christian Rap"
       - "Christian Gangsta Rap"
       - "Contemporary Christian"
       - "Christian Rock"
-    allowed_genres: []          # parsed; not enforced yet
+    allowed_genres: []          # used when allowed_genre_check is true
     sort:
-      genre: false              # parsed; old ZipScript-C used this for genre sort trees
-      artist: false             # parsed; not enforced yet
-      year: false               # parsed; not enforced yet
-      group: false              # parsed; not enforced yet
+      genre: false              # reserved for future genre sort-tree support
+      artist: false             # reserved for future artist sort-tree support
+      year: false               # reserved for future year sort-tree support
+      group: false              # reserved for future group sort-tree support
 
 plugins:
   dateddirs:

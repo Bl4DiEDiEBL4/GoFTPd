@@ -84,6 +84,12 @@ type MasterBridge interface {
 	// GetDirMediaInfo returns cached release-level mediainfo fields for a directory.
 	GetDirMediaInfo(dirPath string) map[string]string
 
+	// ProbeMediaInfo runs mediainfo for a file and returns normalized key/value output.
+	ProbeMediaInfo(filePath, binary string, timeoutSeconds int) (map[string]string, error)
+
+	// CacheMediaInfo stores release-level mediainfo fields for a directory.
+	CacheMediaInfo(dirPath string, fields map[string]string)
+
 	// SearchDirs searches the master's VFS for directories matching query.
 	SearchDirs(query string, limit int) []VFSSearchResult
 
