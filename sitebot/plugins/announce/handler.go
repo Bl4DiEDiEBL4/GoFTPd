@@ -372,8 +372,8 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 func isReleaseDir(eventPath, section string) bool {
 	clean := path.Clean(eventPath)
 	parent := path.Dir(clean)
-	sectionPath := "/" + strings.Trim(section, "/")
-	if strings.EqualFold(parent, sectionPath) {
+	sectionName := strings.Trim(section, "/")
+	if strings.EqualFold(path.Base(parent), sectionName) {
 		return true
 	}
 
@@ -381,7 +381,7 @@ func isReleaseDir(eventPath, section string) bool {
 	if !isDateDir(datedParent) {
 		return false
 	}
-	return strings.EqualFold(path.Dir(parent), sectionPath)
+	return strings.EqualFold(path.Base(path.Dir(parent)), sectionName)
 }
 
 func isDateDir(name string) bool {
