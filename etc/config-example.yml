@@ -365,13 +365,13 @@ plugins:
     debug:    false
   imdb:
     enabled:  true
-    sections: ["MOVIE", "X264", "X265", "BLURAY", "DVDR"]
+    sections: ["X264", "X265", "BLURAY", "DVDR"]
     debug:    false
   mediainfo:
     enabled: true
     binary: "mediainfo"
     timeout_seconds: 20
-    sections: ["FLAC", "MP3", "TV", "MOVIE", "X264", "X265", "BLURAY"]
+    sections: ["FLAC", "MP3", "TV", "X264", "X265", "BLURAY"]
     audio_extensions: ["flac", "mp3", "m4a", "wav"]
     video_extensions: ["mkv", "mp4", "avi", "m2ts"]
     sample_only: true
@@ -420,7 +420,6 @@ plugins:
     sections:
       - TV-1080P
       - TV-720P
-      - MOVIE
       - X264
       - X265
       - BLURAY
