@@ -334,7 +334,7 @@ plugins:
     Request: true
     BNC: true
     BW: true
-    AdminCommander: false
+    AdminCommander: true
   config:
     debug: true
 
@@ -418,9 +418,9 @@ plugins:
       #   !reqdel 1
       #   !reqwipe 1
       host: "127.0.0.1"
-      port: 2121
+      port: 21212
       user: "goftpd"
-      password: "change-me"
+      password: "goftpd"
       tls: true
       insecure_skip_verify: true
       timeout_seconds: 10
@@ -439,7 +439,7 @@ plugins:
       # The plugin logs into each configured FTP target with this local user
       # and reports UP/DOWN plus login time in ms. Add one target per line.
       user: "goftpd"
-      password: "change-me"
+      password: "goftpd"
       tls: true
       insecure_skip_verify: true
       timeout_seconds: 10
@@ -449,10 +449,10 @@ plugins:
       targets:
         - name: "sitename"
           host: "127.0.0.1"
-          port: 2121
+          port: 21212
         - name: "site2"
           host: "127.0.0.2"
-          port: 2121
+          port: 21212
 
     bandwidth:
       # Public IRC gateway for SITE BW.
@@ -462,9 +462,9 @@ plugins:
       #   !bw slave
       #   !bw slave SLAVENAME
       host: "127.0.0.1"
-      port: 2121
+      port: 21212
       user: "goftpd"
-      password: "change-me"
+      password: "goftpd"
       tls: true
       insecure_skip_verify: true
       timeout_seconds: 10
@@ -483,9 +483,9 @@ plugins:
       #   !nuke Release.Name-GRP 3 bad.files
       #   !unnuke Release.Name-GRP fixed
       host: "127.0.0.1"
-      port: 2121
+      port: 21212
       user: "goftpd"
-      password: "change-me"
+      password: "goftpd"
       tls: true
       insecure_skip_verify: true
       timeout_seconds: 10
