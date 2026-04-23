@@ -12,7 +12,7 @@
 # =============================================================================
 sitename_long:  "GoFTPd"        # Full site name, shown in FTP banners
 sitename_short: "GoFTPd"            # 2-3 char site tag used in race stats
-version:        "1.0.3b"        # Displayed in FEAT / LIST headers
+version:        "1.0.4b"        # Displayed in FEAT / LIST headers
 timezone:       "Europe/Amsterdam" # IANA timezone for FTP LIST/MLSD/MDTM and dated dirs; empty/"Local" uses OS local time
 
 

@@ -1,285 +1,328 @@
 # GoFTPd
 
-A distributed FTP daemon written in Go, glftpd, pzsng and drftpd-inspired! Master/slave architecture with VFS-based zipscript, live race stats, TLS 1.3, CRC32 verification, and an IRC sitebot for announces.
+GoFTPd is a distributed FTP daemon written in Go. It uses a master/slave
+architecture with a VFS, CRC/SFV checking, race stats, TLS data transfers,
+SITE commands, plugin hooks, and an IRC sitebot.
 
 ## Architecture
 
-Master handles FTP protocol, auth, VFS, zipscript, race DB, CRC32 checks. Slaves handle disk I/O.
+The master owns FTP control, authentication, ACL checks, VFS state, SITE
+commands, race state, plugin dispatch, and sitebot event output. Slaves own
+the actual disk I/O.
 
-**Passthrough mode (recommended)** — client connects directly to the slave:
-```
-FTP client <--TLS--> slave (disk I/O)
-    |                  |
-    +-- control -- master (VFS, auth, CRC, race stats, sitebot events)
+Passthrough mode is the default. In this mode the client connects directly to
+the selected slave for data transfers, while the master keeps control-plane
+state:
+
+```text
+FTP client <--TLS data--> slave storage
+    |
+    +-- FTP control --> master
 ```
 
-**Proxy mode (fallback)** — master relays all data:
-```
-FTP client <--TLS--> master <--TCP--> slave (disk I/O)
+Proxy mode is available when slaves are not reachable by clients:
+
+```text
+FTP client <--TLS data--> master <--TCP--> slave storage
 ```
 
-|                       | Passthrough                       | Proxy                              |
-|-----------------------|-----------------------------------|------------------------------------|
-| Bandwidth cost        | 1x (client↔slave)                 | 2x (client→master + master→slave)  |
-| Speed limit           | Slave's line speed                | Master's line speed                |
-| CRC32                 | Slave calculates, master verifies | Master calculates on the fly       |
-| Requires              | Slave reachable by client         | Only master needs public IP        |
-| FXP                   | Works                             | Works                              |
-| Config                | `passthrough: true` (default)     | `passthrough: false`               |
+| Mode | Data path | Use when |
+|------|-----------|----------|
+| Passthrough | client <-> slave | slaves have reachable passive ports |
+| Proxy | client <-> master <-> slave | only the master is reachable |
 
-You can run a slave on the same box as the master to serve local storage.
+FXP is supported in passthrough mode, including secure data channels using
+PASV/CPSV/PORT, SSCN, and PROT P.
 
 ## Quick Start
 
 ```bash
-# Build
 ./build.sh
-
-# Generate TLS certs (ECDSA P-384, TLS 1.3 AES-256-GCM)
 ./generate_certs.sh
-
-# Configure — single config file used for both master and slave roles.
-# `mode:` decides which blocks are read.
 cp etc/config-example.yml etc/config.yml
-# edit: set mode, public_ip, listen_port, pasv range, storage_path, slaves:
-
-# Start
 ./goftpd
+
+cd sitebot
+./build.sh
+cp etc/config.yml.example etc/config.yml
+./sitebot -config etc/config.yml
 ```
 
-Default login: `goftpd` / `goftpd` (siteop). Change it immediately with `SITE CHPASS`.
+Edit `etc/config.yml` before running it for real. The same config file is used
+for master and slave mode; `mode: master` or `mode: slave` decides which blocks
+are active.
 
-## Features
+Edit `sitebot/etc/config.yml` before starting the sitebot. The daemon and
+sitebot must use the same `event_fifo` path.
 
-### Transfer & Security
-- TLS 1.3, ECDSA P-384 certs (`TLS_AES_256_GCM_SHA384`)
-- AUTH TLS, PBSZ, PROT, SSCN, CPSV (FXP)
-- PRET, PASV, PORT modes
-- MLSD / MLST machine-readable listings (cbftp compatible)
-- XDUPE duplicate detection
-- Thread-safe gob streams between master and slaves
+The example user is `goftpd` / `goftpd`. Change that before exposing the
+daemon.
 
-### Zipscript (master-side, VFS-based)
-- CRC32 verification on upload via `io.TeeReader` — zero extra pass over the data
-- Hardware-accelerated CRC32 (SSE4.2/CLMUL on x86, ARMv8 CRC on ARM)
-- 0-byte file rejection
-- CRC mismatch → file deleted, client gets `550`
-- Files not in the SFV pass through (NFO, sample, tags, proofs)
-- Virtual LIST entries: progress bars, `[COMPLETE]` tags, `-MISSING` files
-- Live race stats on `CWD` into a release (CP437 box-drawing, ASCII logo)
-- Per-user and per-group stats tracked in SQLite race DB
-- glftpd-style LIST footer with site speed / user count / file stats
-- No disk writes during uploads — all state lives in the VFS
+## Configuration
 
-### Slave Affinity & Load Balancing
-Route sections to specific slaves, balance load across multiple slaves, weight slaves by capacity. Configured on the master:
+Main files:
+
+| File | Purpose |
+|------|---------|
+| `etc/config.yml` | Active daemon config |
+| `etc/config-example.yml` | Annotated daemon example |
+| `etc/permissions.yml` | ACL rules |
+| `etc/passwd` | Password hashes |
+| `etc/users/` | User records |
+| `etc/groups/` | Group records |
+| `etc/groups/default.group` | Template for newly created groups |
+| `etc/affils.yml` | Shared affil PRE config |
+| `etc/msgs/` | Text shown by SITE HELP/RULES and login/logout messages |
+| `sitebot/etc/config.yml` | Active sitebot config |
+| `sitebot/etc/config.yml.example` | Annotated sitebot example |
+| `sitebot/etc/templates/pzsng.theme` | Sitebot theme templates |
+
+## Slaves
+
+The master can route uploads by section, path, and weight:
 
 ```yaml
 slaves:
   - name: "SLAVE1"
     sections: ["TV-1080P", "TV-720P"]
     weight: 2
-  - name: "SLAVE2"
-    sections: ["MP3", "FLAC"]
-    weight: 1
-  - name: "SLAVE3"
-    # no sections = overflow for anything unmatched
+  - name: "ARCHIVE"
+    readonly: true
     weight: 1
 ```
 
-Selection order: section match → lowest `activeTransfers / weight` → most free disk space. If no policy matches, the master falls back to all available slaves (fail-open).
+Selection order is section/path match, then lowest `activeTransfers / weight`,
+then most free disk space. If writable policies exclude every slave, the master
+falls back to available writable slaves. Read-only slaves are used for scanning
+and downloads, but are not selected for uploads.
 
-### User Management
-- glftpd-compatible user and group files
-- bcrypt and Apache MD5 (`apr1`) password hashing — unknown `$`-formats rejected fail-closed
-- Per-user flags, groups, IPs, credits, ratios
-- Path-based ACL engine
+For an archive server, point a slave root at the existing archive tree and set
+`readonly: true`. Use `sections` or `paths` only if you want to limit which
+paths that archive slave serves.
 
-### Affil Pres
-`SITE PRE <release> <section>` moves an affil release from its staging dir into the public section, then samples bandwidth for a configured window and announces results on IRC. Supports dated sections (MP3/FLAC/0DAY scene convention — `/MP3/0419/<rel>`). Separate `PRE`, `PREBW`, `PREBWINTERVAL`, and `PREBWUSER` events for theme flexibility.
+## ACL Rules
 
-### Runtime Reload
-`SITE REHASH` (siteop) or `kill -HUP <pid>` reloads the config without restarting. Rehashable fields include: affils, pre settings, slave routing policies (reapplied to the SlaveManager), meta lookup toggles, TLS enforcement flags, IP restrictions, connection limits, show_diz map, nuke style, debug. Fields requiring restart: listen_port, pasv range, tls_cert/key, storage_path, mode, master.control_port, event_fifo.
+ACLs live in `etc/permissions.yml`. Rules are checked top to bottom inside each
+rule type. The first matching rule decides access. If no action rule matches,
+matching `privpath` rules are checked. If nothing matches, flag `1` users are
+allowed by default.
 
-The sitebot supports the same — `SIGHUP` reloads channels, encryption keys, theme, sections, plugins, announce routing without dropping the IRC connection.
+Supported rule subjects:
 
-### Plugins
-- **IMDb** — movie info lookup via imdbapi.dev, async job queue, writes `.imdb` into release dirs
-- **TVMaze** — TV show info lookup, writes `.tvmaze` into release dirs
-- **Meta lookup** — auto-fires on MKD for configured sections, displays via `show_diz`
-- **sitebot** — IRC bot with FiSH Blowfish (CBC), pzs-ng-style themes, real-time race/stats announces
+| Syntax | Meaning |
+|--------|---------|
+| `*` | everyone |
+| `!*` | nobody |
+| `1`, `A` | required user flag |
+| `!4` | user must not have flag `4` |
+| `=Admin` | member of group `Admin` |
+| `!=Trial` | not a member of group `Trial` |
+| `@Nick` | FTP username `Nick` |
+| `!@Nick` | not FTP username `Nick` |
+| `1 =NUKERS` | flag `1` and member of `NUKERS` |
+| `=GRP =SiteOP` | member of `GRP` or `SiteOP` |
 
-## FTP Commands
+Rule types currently used by the example config:
 
-`FEAT` `OPTS` `USER` `PASS` `SYST` `TYPE` `REST` `PWD` `CWD` `CDUP` `MKD` `RMD` `SIZE` `MDTM` `DELE` `RNFR` `RNTO` `PASV` `PORT` `LIST` `MLSD` `MLST` `STOR` `RETR` `ABOR` `NOOP` `PRET` `PBSZ` `PROT` `SSCN` `CPSV` `AUTH TLS` `SITE` `XDUPE`
+`sitecmd`, `privpath`, `upload`, `resume`, `download`, `makedir`, `dirlog`,
+`rename`, `renameown`, `nuke`, `unnuke`, `delete`, `deleteown`, `filemove`,
+and `nodupecheck`.
+
+Owner-only rules are handled by `renameown` and `deleteown`; the ACL grants the
+policy and the daemon checks ownership before allowing the action.
+
+## Transfers And Credits
+
+- TLS control/data support: `AUTH TLS`, `PBSZ`, `PROT`, `SSCN`, `CPSV`.
+- Transfer commands: `PASV`, `PORT`, `PRET`, `STOR`, `RETR`, `REST`, `ABOR`.
+- Listings: `LIST`, `MLSD`, `MLST`.
+- CRC/SFV verification is done during upload.
+- Existing-file overwrite protection still applies, including paths marked
+  `nodupecheck`.
+- User records support flags, groups, IP masks, credits, ratios, and password
+  hashes.
+- Password hashing supports bcrypt and Apache MD5 (`apr1`). Unknown `$...`
+  formats are rejected.
+- Speedtest traffic is free: it does not cost credits and does not apply credit
+  gain/loss.
+
+## Daemon Plugins
+
+Daemon plugins are configured under `plugins:` in `etc/config.yml`. Only
+plugins with `enabled: true` are loaded.
+
+Built-in daemon plugins:
+
+| Plugin | What it does |
+|--------|--------------|
+| `dateddirs` | Creates date-based section folders and today symlinks |
+| `tvmaze` | Writes `.tvmaze` metadata for configured TV sections |
+| `imdb` | Writes `.imdb` metadata for configured movie sections |
+| `mediainfo` | Emits audio/video metadata events after uploads |
+| `pre` | Provides SITE PRE and affil management commands |
+| `request` | Provides SITE REQUEST/REQUESTS/REQFILL/REQDEL/REQWIPE |
+| `speedtest` | Creates speedtest files and emits SPEEDTEST events |
+
+### Speedtest
+
+When enabled, the speedtest plugin creates the configured directory and sparse
+files, by default:
+
+```text
+/SPEEDTEST/100MB
+/SPEEDTEST/500MB
+/SPEEDTEST/1000MB
+```
+
+Uploads and downloads in that directory emit `SPEEDTEST` events for the
+sitebot. Credits are not charged or awarded for speedtest transfers.
+
+### Requests
+
+When enabled, the request plugin creates the configured base directory on
+startup, by default `/REQUESTS`.
+
+SITE commands:
+
+| Command | Usage |
+|---------|-------|
+| `REQUEST` | `<release> [-for:<user>]` |
+| `REQUESTS` | show current requests |
+| `REQFILL` / `REQFILLED` | `<number|release>` |
+| `REQDEL` | `<number|release>` |
+| `REQWIPE` | `<number|release>` |
+
+`REQDEL` is owner-safe. A user can delete their own request. Privileged users
+can wipe requests with `REQWIPE`. The sitebot request plugin can pass the IRC
+nick through using `-by:<nick>` only when the FTP login is listed in
+`request.proxy_users`.
+
+### PRE And Affils
+
+The PRE plugin reads `etc/affils.yml` and can manage affil entries through SITE
+commands. It can update `etc/permissions.yml` and group data when adding or
+removing affils.
+
+SITE commands:
+
+| Command | Usage |
+|---------|-------|
+| `PRE` | `<release> <section>` |
+| `ADDAFFIL` | `<group>` |
+| `DELAFFIL` | `<group>` |
+| `AFFILS` | list configured affils |
 
 ## SITE Commands
 
-### User Management (siteop: flag `1`)
-| Command   | Usage                                | Description                          |
-|-----------|--------------------------------------|--------------------------------------|
-| `ADDUSER` | `<user> <pass> [ident@ip ...]`       | Create user (fails if exists)        |
-| `DELUSER` | `<user>`                             | Delete user                          |
-| `CHPASS`  | `<user> <newpass>`                   | Change password (bcrypt)             |
-| `ADDIP`   | `<user> <ident@ip> [...]`            | Add IP(s), auto-prefixes `*@`        |
-| `DELIP`   | `<user> <ident@ip> [...]`            | Remove IP(s)                         |
-| `FLAGS`   | `<user> <+\|-\|=><flags>`            | Modify flags                         |
-| `CHGRP`   | `<user> <group> [...]`               | Toggle group membership              |
-| `CHPGRP`  | `<user> <group>`                     | Set primary group                    |
-| `GADMIN`  | `<user> <group>`                     | Grant group admin                    |
+Implemented daemon SITE commands include:
 
-### Group Management
-| Command  | Usage             | Description     |
-|----------|-------------------|-----------------|
-| `GRPADD` | `<name> [desc]`   | Create group    |
-| `GRPDEL` | `<name>`          | Delete group    |
-| `GRP`    |                   | List groups     |
+| Area | Commands |
+|------|----------|
+| Info | `HELP`, `RULES`, `WHO`, `SWHO`, `USERS`, `USER`, `SEEN`, `LASTON`, `LASTLOGIN`, `GROUPS`, `GROUP`, `GINFO`, `GRPNFO`, `TRAFFIC` |
+| Users/groups | `ADDUSER`, `DELUSER`, `CHPASS`, `ADDIP`, `DELIP`, `FLAGS`, `CHGRP`, `CHPGRP`, `GADMIN`, `GRPADD`, `GRPDEL`, `GRP` |
+| Release/admin | `NUKE`, `UNNUKE`, `UNDUPE`, `WIPE`, `KICK`, `REHASH`, `CHMOD` |
+| Search/rescan | `SEARCH`, `RACE`, `RESCAN`, `XDUPE` |
+| IRC/sitebot | `INVITE` |
+| Plugins | `PRE`, `ADDAFFIL`, `DELAFFIL`, `AFFILS`, `REQUEST`, `REQUESTS`, `REQFILL`, `REQFILLED`, `REQDEL`, `REQWIPE` |
 
-### Release Management
-| Command  | Usage                           | Description                                   |
-|----------|---------------------------------|-----------------------------------------------|
-| `NUKE`   | `<dir> <mult> <reason>`         | Nuke release                                  |
-| `UNNUKE` | `<dir>`                         | Undo nuke                                     |
-| `PRE`    | `<release> <section>`           | Affil pre-release to section (+ BW announces) |
+Command access is controlled through `sitecmd` ACL rules in
+`etc/permissions.yml`.
 
-### System (siteop)
-| Command  | Usage  | Description                                                  |
-|----------|--------|--------------------------------------------------------------|
-| `REHASH` |        | Reload config from disk without restarting (same as SIGHUP)  |
+## Sitebot
 
-### Informational
-`HELP` `RULES` `WHO` `INVITE` `CHMOD` `XDUPE`
+The sitebot reads daemon events from the configured FIFO and posts to IRC. It
+supports channel routing, per-channel Blowfish keys, themed output, command
+plugins, and SIGHUP reload.
 
-## User Flags
+Built-in sitebot plugins:
 
-| Flag | Role                   |
-|------|------------------------|
-| `1`  | Siteop                 |
-| `2`  | Group admin            |
-| `3`  | Regular user           |
-| `4`  | Exempt from stats      |
-| `5`  | Exempt from credits    |
-| `6`  | Can kick users         |
-| `7`  | See hidden dirs        |
+| Plugin | Commands/events |
+|--------|-----------------|
+| `Announce` | race, stats, PRE, nuke, speedtest, metadata events |
+| `TVMaze` | TV lookup output |
+| `IMDB` | movie lookup output |
+| `News` | `!news`, `!addnews`, `!delnews` |
+| `Free` | `!free`, `!df` |
+| `Affils` | `!affils` |
+| `Request` | `!request`, `!requests`, `!reqfill`, `!reqdel`, staff `!reqwipe` |
+| `AdminCommander` | staff-only IRC gateway for configured SITE commands |
 
-## Sitebot (IRC Announces)
+The example sitebot config uses YAML anchors for channel sets, so a channel can
+be changed once at the top and reused across sections and plugin config.
 
-The sitebot reads events from a FIFO and posts to IRC. Non-blocking FIFO writer — the FTP daemon never stalls when IRC is throttled or the bot is slow. TCP_NODELAY on the IRC socket. Uses SAJOIN + SAMODE when oper'd so the bot can join `+i`/`+R` channels and give itself chanops without needing channel registration.
+### Theme Output
 
-### Event Types
-Individual events published in real time: `NEWDIR`, `SFV_RAR`, `UPDATE_RAR`, `RACE_RAR`, `NEWLEADER`, `HALFWAY`, `COMPLETE`, `STATS_HOF`, `STATS_SPEEDS`, `STATS_USER`, `STATS_END`, `TVINFO`, `MOVIEINFO`, `PRE`, `PREBW`, `PREBWINTERVAL`, `PREBWUSER`, `NUKE`, `UNNUKE`, `INVITE`.
+The theme file supports `%b{}` bold, `%cNN{}` mIRC colors, `%u{}` underline,
+and `%{var}` or `%var` variables. `\n` inside a template becomes multiple IRC
+lines.
 
-### Theme
-pzs-ng-style `.theme` file at `sitebot/etc/templates/pzsng.theme`. Supports `%b{}` bold, `%cNN{}` mIRC color, `%u{}` underline, `%{varname}` variable expansion. Ships with a light-background-friendly default (dark colors only — no grey/yellow).
+Request command output has theme keys:
+
+```text
+REQUESTCMD_OK
+REQUESTCMD_LINE
+REQUESTCMD_ERROR
+REQUESTCMD_DENIED
+REQUESTCMD_USAGE
+```
+
+Admin command output has theme keys:
+
+```text
+ADMINCMD_OK
+ADMINCMD_LINE
+ADMINCMD_ERROR
+ADMINCMD_DENIED
+ADMINCMD_BLOCKED
+ADMINCMD_USAGE
+```
 
 ### Channel Routing
-Sections route to channels via the sitebot config:
-```yaml
-sections:
-  - name: "TV-1080P"
-    channels: ["#goftpd"]
-    paths: ["/TV-1080P/*"]
-  - name: "MP3"
-    channels: ["#goftpd-spam"]
-    paths: ["/MP3/*", "/MP3/*/*"]   # second pattern for dated subdirs
-```
-`type_routes` (e.g. routing all NUKEs to a dedicated channel) overrides section routing.
 
-### Encryption
-Per-channel Blowfish keys via FiSH CBC (`cbc:` prefix) with random IV and zero-padding. Use `plain:` for ECB (legacy).
+Event output routes in this order:
 
-### SITE INVITE
-Restricts which bot channels a given user can be invited to, based on their user flags. Configured in the sitebot's config under `invite_channels:` — channels not listed are public to everyone.
+1. `announce.type_routes`
+2. matching `sections[*].channels`
+3. `announce.default_channel`
+4. `irc.channels`
 
-## Configuration Files
+Command plugins can reply directly to the channel, by notice, or to a fixed
+channel depending on their `reply_target`.
 
-| File                            | Purpose                                              |
-|---------------------------------|------------------------------------------------------|
-| `etc/config.yml`                | Active config (single file, `mode:` flag)            |
-| `etc/config-example.yml`        | Fully annotated example                              |
-| `etc/config-slave.yml`          | Dedicated slave example (historical)                 |
-| `etc/passwd`                    | Password hashes                                      |
-| `etc/users/`                    | User files (glftpd format)                           |
-| `etc/groups/`                   | Group files                                          |
-| `etc/msgs/`                     | Message templates                                    |
-| `sitebot/etc/config.yml`        | Sitebot config (channels, invite rules, routing)     |
-| `sitebot/etc/templates/*.theme` | Announce themes                                      |
+## Runtime Reload
 
-## Project Structure
+`SITE REHASH` reloads daemon config pieces that are safe to update at runtime,
+including affils, PRE settings, slave policies, lookup toggles, TLS enforcement
+flags, IP restrictions, limits, show_diz map, nuke style, and debug.
 
-```
-cmd/goftpd/          Entry point — SIGHUP handler, SlaveManager wiring
-internal/
-  acl/               Path-based ACL engine
-  config/            Slave routing policy YAML parsing
-  core/              FTP protocol, SITE commands, race renderer, auth, events
-                     — SITE PRE + BW sampler, SITE REHASH, SITE INVITE
-                     — meta_lookup for auto .imdb/.tvmaze writes
-  dupe/              XDUPE handling
-  master/            Bridge, VFS, slave manager, remote slave, race DB
-  plugin/            Plugin interface
-  protocol/          Master↔slave gob wire protocol
-  slave/             Slave daemon, transfer handler
-  user/              User loading/saving (glftpd format)
-plugins/
-  imdb/              IMDb lookup
-  tvmaze/            TVMaze lookup
-sitebot/
-  cmd/               Sitebot entry point — SIGHUP handler
-  internal/
-    bot/             Bot coordinator, channel routing, SAJOIN/SAMODE
-    event/           Event type definitions (mirrored from daemon)
-    irc/             IRC client + FiSH/Blowfish
-    plugin/          Announce, TVMaze, IMDb (async job queues)
-    template/        Theme parser/renderer
-  etc/templates/     Announce themes
+The sitebot also supports SIGHUP reload for channels, encryption keys, theme,
+sections, plugin config, and announce routing without dropping the IRC
+connection.
+
+Some low-level settings still need a restart, such as listen ports, passive
+port ranges, TLS cert/key paths, storage path, mode, master control port, and
+event FIFO path.
+
+## Project Layout
+
+```text
+cmd/goftpd/          daemon entry point
+internal/            core FTP, VFS, slave, ACL, user, event, and protocol code
+plugins/             daemon plugins
+sitebot/             IRC sitebot
+sitebot/plugins/     sitebot plugins
+etc/                 daemon example config, ACLs, users, groups, messages
 ```
 
-## Changelog
+## Development Notes
 
-### v1.0.3b
-- **SITE PRE** — affil pre-releases with move-to-section + IRC announce
-- **PREBW bandwidth sampler** — post-pre async monitoring; emits `PREBW`, `PREBWINTERVAL`, `PREBWUSER` events for theme-driven IRC output matching fin-prebw.py
-- **Dated sections** — scene-style per-day subdirs (e.g. `/MP3/0419/<rel>`), auto-created if missing
-- **SITE REHASH** — reload config on-the-fly without dropping connections; SIGHUP does the same. Rehashable: affils, pre config, slave policies, meta lookup, TLS flags, IP restrictions, limits. Sitebot supports SIGHUP rehash too (channels, encryption, theme, sections, plugins).
-- **SITE INVITE** — per-user invite filtering with flag rules read from the sitebot config; uses SAJOIN + INVITE fallback
-- **Meta lookup** — async .imdb/.tvmaze writer on MKD for configured sections, displayed via `show_diz`
-- **IMDb plugin** rewritten against imdbapi.dev (camelCase JSON, two-phase search + details)
-- **TVMaze / IMDb async** — plugins no longer block the sitebot event loop; 64-slot job queue + worker goroutine + late-emit callback
-- **MLST handler** + MLSD in `FEAT` — cbftp-compatible listings
-- **cbftp LIST hang fix** — send `150` before `Accept()` (strict-ordering clients were deadlocking)
-- **MLSD VFS mode** — was reading local disk in master mode, now uses VFS like LIST does
-- **Race speed fix** — final race speed now uses max per-user `DurationMs` (wall-clock span) instead of the last file's transfer time (prevents 17+ GB/s bogus readings)
-- **Unified config** — single `config-example.yml` for master and slave roles with every field documented
-- **IRC output improvements** — TCP_NODELAY, SAJOIN + SAMODE bootstrap on connect
+Daemon plugin notes live in `plugins/README.md`.
+Sitebot plugin notes live in `sitebot/plugins/README.md`.
 
-### v1.0.2b
-- **Sitebot** with real-time per-event IRC announces (NEW, RACE, NEWLEADER, HALFWAY, COMPLETE, STATS, TV-INFO, NUKE, UNNUKE)
-- Non-blocking FIFO writer — FTP stays fast regardless of IRC throttling
-- FiSH Blowfish CBC encryption (random IV, zero-padding)
-- pzs-ng-style theme engine with `%b{}` / `%cNN{}` / `%u{}` / `%{var}` syntax
-- Light-background theme shipped by default
-- Per-user peak speed tracking for slowest/fastest stats
-- Section-to-slave affinity with weighted load balancing
-- Active-transfer counter on each slave for load-balancer scoring
-- Race DB refactored (fixed nested-cursor SQLite issue under concurrent load)
+Current plugin development still requires registration in the relevant switch:
 
-### v1.0.1b
-- **Passthrough transfer mode** — direct client→slave transfers, no master bandwidth bottleneck
-- PRET stores upcoming transfer type for slave selection at PASV time
-- Race stats rendered in code with CP437 box-drawing and ASCII logo
-- SITE `FLAGS` (`+`/`-`/`=`), `CHGRP` toggle, `ADDUSER` / `DELUSER` / `CHPASS` / `ADDIP` / `DELIP`
-- Password verification: unknown `$`-formats rejected
-- Apache MD5 (`apr1`) hash support
-- No `.message` disk writes — race stats fully live from VFS
-- Write mutex on master + slave gob streams (fixes concurrent upload crashes)
-- CRC32 verification via `io.TeeReader` during bridge upload
-- 0-byte file rejection
-
-### v1.0.0
-- Initial master/slave architecture
-- VFS-based zipscript
-- TLS 1.3 with ECDSA P-384
+- daemon plugins: `cmd/goftpd/main.go`
+- sitebot plugins: `sitebot/internal/bot/bot.go`
 
 ## License
 
