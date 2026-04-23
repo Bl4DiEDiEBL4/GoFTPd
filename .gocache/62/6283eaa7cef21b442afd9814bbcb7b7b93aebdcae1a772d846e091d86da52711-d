@@ -1,8 +1,0 @@
-./bridge.go
-./ftp_handlers.go
-./issuer.go
-./race_db.go
-./remote_slave.go
-./remote_transfer.go
-./slave_manager.go
-./vfs.go

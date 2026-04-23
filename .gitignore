@@ -64,4 +64,6 @@ Thumbs.db
 vendor/
 *.o
 *.a
-
+.gocache/
+.gomodcache/
+.tmp_*.test
