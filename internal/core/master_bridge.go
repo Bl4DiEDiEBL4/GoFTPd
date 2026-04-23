@@ -84,6 +84,12 @@ type MasterBridge interface {
 	// SearchDirs searches the master's VFS for directories matching query.
 	SearchDirs(query string, limit int) []VFSSearchResult
 
+	// StartRemerge starts a full background VFS refresh for one slave.
+	StartRemerge(slaveName string) error
+
+	// StartRemergeAll starts a full background VFS refresh for every online slave.
+	StartRemergeAll() (started int, errors []string)
+
 	// Passthrough PORT: tell slave to connect out to remote address and receive file
 	SlaveConnectAndReceive(filePath, remoteAddr, owner, group string) (int64, uint32, int64, error)
 
@@ -104,16 +110,16 @@ type MasterBridge interface {
 
 // MasterFileEntry is a file/dir entry returned by MasterBridge.ListDir.
 type MasterFileEntry struct {
-	Name    string
-	Size    int64
-	IsDir   bool
-	IsSymlink bool
+	Name       string
+	Size       int64
+	IsDir      bool
+	IsSymlink  bool
 	LinkTarget string
-	Mode    uint32
-	ModTime int64
-	Owner   string
-	Group   string
-	Slave   string
+	Mode       uint32
+	ModTime    int64
+	Owner      string
+	Group      string
+	Slave      string
 }
 
 // VFSSearchResult is one SITE SEARCH directory result from the master's VFS.

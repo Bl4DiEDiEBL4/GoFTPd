@@ -491,6 +491,7 @@ plugins:
         - WIPE
         - KICK
         - REHASH
+        - REMERGE
         # Misc / lookup
         - RACE
         - SEARCH

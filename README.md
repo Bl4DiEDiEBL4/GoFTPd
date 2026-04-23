@@ -220,7 +220,7 @@ Implemented daemon SITE commands include:
 |------|----------|
 | Info | `HELP`, `RULES`, `WHO`, `SWHO`, `USERS`, `USER`, `SEEN`, `LASTON`, `LASTLOGIN`, `GROUPS`, `GROUP`, `GINFO`, `GRPNFO`, `TRAFFIC` |
 | Users/groups | `ADDUSER`, `DELUSER`, `CHPASS`, `ADDIP`, `DELIP`, `FLAGS`, `CHGRP`, `CHPGRP`, `GADMIN`, `GRPADD`, `GRPDEL`, `GRP` |
-| Release/admin | `NUKE`, `UNNUKE`, `UNDUPE`, `WIPE`, `KICK`, `REHASH`, `CHMOD` |
+| Release/admin | `NUKE`, `UNNUKE`, `UNDUPE`, `WIPE`, `KICK`, `REHASH`, `REMERGE`, `CHMOD` |
 | Search/rescan | `SEARCH`, `RACE`, `RESCAN`, `XDUPE` |
 | IRC/sitebot | `INVITE` |
 | Plugins | `PRE`, `ADDAFFIL`, `DELAFFIL`, `AFFILS`, `REQUEST`, `REQUESTS`, `REQFILL`, `REQFILLED`, `REQDEL`, `REQWIPE` |
@@ -294,6 +294,10 @@ channel depending on their `reply_target`.
 `SITE REHASH` reloads daemon config pieces that are safe to update at runtime,
 including affils, PRE settings, slave policies, lookup toggles, TLS enforcement
 flags, IP restrictions, limits, show_diz map, nuke style, and debug.
+
+`SITE RESCAN <path|path/*>` checks release files against SFV data. `SITE
+REMERGE <slave|*>` asks connected slave(s) to rescan their filesystem roots and
+refresh the master's VFS index.
 
 The sitebot also supports SIGHUP reload for channels, encryption keys, theme,
 sections, plugin config, and announce routing without dropping the IRC

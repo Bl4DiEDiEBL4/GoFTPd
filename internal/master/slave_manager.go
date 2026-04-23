@@ -15,7 +15,7 @@ import (
 )
 
 // SlaveManager listens for slave connections and manages all RemoteSlave objects.
-// 
+//
 
 const vfsFilePath = "userdata/vfs.dat"
 
@@ -26,8 +26,8 @@ type SlaveManager struct {
 	tlsCert    string
 	tlsKey     string
 
-	slaves     map[string]*RemoteSlave
-	slavesMu   sync.RWMutex
+	slaves   map[string]*RemoteSlave
+	slavesMu sync.RWMutex
 
 	// Per-slave routing policies (section affinity, weights). Keyed by slave name.
 	// Populated from master config via SetSlavePolicies(). Empty = no restrictions.
@@ -272,7 +272,7 @@ func (sm *SlaveManager) initializeSlaveAfterConnect(rs *RemoteSlave) {
 		log.Printf("[SlaveManager] Remerge did not complete for %s: %v (slave stays online)", rs.name, err)
 	} else {
 		log.Printf("[SlaveManager] Remerge complete for slave %s", rs.name)
-		
+
 		// Purge files that were physically deleted from the slave.
 		sm.vfs.PurgeUnseen(rs.name)
 		log.Printf("[SlaveManager] Ghost files purged for %s", rs.name)
@@ -330,7 +330,51 @@ func (sm *SlaveManager) ProcessRemerge(rs *RemoteSlave, resp *protocol.AsyncResp
 func (sm *SlaveManager) GetSlave(name string) *RemoteSlave {
 	sm.slavesMu.RLock()
 	defer sm.slavesMu.RUnlock()
-	return sm.slaves[name]
+	if rs := sm.slaves[name]; rs != nil {
+		return rs
+	}
+	for slaveName, rs := range sm.slaves {
+		if strings.EqualFold(slaveName, name) {
+			return rs
+		}
+	}
+	return nil
+}
+
+// StartRemerge starts a full background VFS refresh for one connected slave.
+// Existing VFS entries for that slave are marked unseen before the scan and
+// purged when the slave reports completion.
+func (sm *SlaveManager) StartRemerge(name string) error {
+	rs := sm.GetSlave(name)
+	if rs == nil {
+		return fmt.Errorf("unknown slave %s", name)
+	}
+	if !rs.IsOnline() {
+		return fmt.Errorf("slave %s is offline", rs.Name())
+	}
+	if !rs.remerging.CompareAndSwap(false, true) {
+		return fmt.Errorf("slave %s is already remerging", rs.Name())
+	}
+	go sm.initializeSlaveAfterConnect(rs)
+	return nil
+}
+
+// StartRemergeAll starts a full background VFS refresh for every online slave.
+func (sm *SlaveManager) StartRemergeAll() (int, []string) {
+	var errs []string
+	started := 0
+	slaves := sm.GetAllSlaves()
+	if len(slaves) == 0 {
+		return 0, []string{"no slaves connected"}
+	}
+	for _, rs := range slaves {
+		if err := sm.StartRemerge(rs.Name()); err != nil {
+			errs = append(errs, err.Error())
+			continue
+		}
+		started++
+	}
+	return started, errs
 }
 
 func (sm *SlaveManager) GetAvailableSlaves() []*RemoteSlave {
@@ -383,7 +427,7 @@ func (sm *SlaveManager) GetVFS() *VirtualFileSystem {
 //  1. Filter slaves to those whose policy matches the upload path/section.
 //     (A slave with no policy accepts everything.)
 //  2. From eligible slaves, pick the one with the lowest "load score":
-//        score = activeTransfers / weight
+//     score = activeTransfers / weight
 //     Lower score = less busy relative to capacity.
 //  3. Tie-break on most free disk space.
 //
@@ -579,7 +623,7 @@ func (sm *SlaveManager) Stop() {
 // vfsPersistLoop saves the VFS to disk.
 func (sm *SlaveManager) vfsPersistLoop() {
 	// Save frequently so owner/group metadata and recent VFS changes survive restarts.
-	ticker := time.NewTicker(10 * time.Second) 
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for sm.running.Load() {

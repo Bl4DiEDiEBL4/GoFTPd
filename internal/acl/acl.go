@@ -342,3 +342,32 @@ func (e *Engine) HasRuleType(ruleType string) bool {
 	_, ok := e.RulesByType[strings.ToLower(strings.TrimSpace(ruleType))]
 	return ok
 }
+
+// MatchesRulePath reports whether vpath is covered by any rule of ruleType.
+// Exact path rules also cover descendants, so a privpath for /site/PRE/GROUP
+// covers /site/PRE/GROUP/Release/file.rar.
+func (e *Engine) MatchesRulePath(ruleType, vpath string) bool {
+	if e == nil {
+		return false
+	}
+	rules, ok := e.RulesByType[strings.ToLower(strings.TrimSpace(ruleType))]
+	if !ok {
+		return false
+	}
+	vpath = filepath.ToSlash(filepath.Clean(vpath))
+	for _, rule := range rules {
+		rulePath := filepath.ToSlash(filepath.Clean(strings.ReplaceAll(strings.TrimSpace(rule.Path), "\\", "/")))
+		if pathMatches(rule.Path, vpath) || pathIsBelow(vpath, rulePath) {
+			return true
+		}
+	}
+	return false
+}
+
+func pathIsBelow(vpath, parent string) bool {
+	if parent == "" || parent == "." || strings.Contains(parent, "*") {
+		return false
+	}
+	parent = strings.TrimRight(parent, "/")
+	return vpath == parent || strings.HasPrefix(vpath, parent+"/")
+}

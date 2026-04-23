@@ -20,6 +20,7 @@
 214- UNDUPE        - Remove release from dupe DB
 214- WIPE          - Wipe a path
 214- KICK          - Disconnect a user
+214- REMERGE       - Refresh slave VFS index
 214- XDUPE         - Enable XDUPE mode
 214- GRPADD        - Add a group
 214- GRPDEL        - Delete a group

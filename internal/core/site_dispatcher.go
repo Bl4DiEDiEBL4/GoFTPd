@@ -89,6 +89,8 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 		return s.HandleSiteKick(remainingArgs)
 	case "REHASH":
 		return s.HandleSiteRehash(remainingArgs)
+	case "REMERGE":
+		return s.HandleSiteRemerge(remainingArgs)
 
 	// Miscellaneous (site_misc.go / site_race.go)
 	case "RACE":
@@ -155,6 +157,7 @@ func requiredSiteCommandFlags(command string) string {
 		"KICK",
 		"CHMOD",
 		"REHASH",
+		"REMERGE",
 		"ADDAFFIL",
 		"DELAFFIL":
 		return "1"

@@ -119,6 +119,9 @@ rules:
     path: REHASH
     required: "1"
   - type: sitecmd
+    path: REMERGE
+    required: "1"
+  - type: sitecmd
     path: ADDAFFIL
     required: "1"
   - type: sitecmd

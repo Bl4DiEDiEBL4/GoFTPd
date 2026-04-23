@@ -17,13 +17,13 @@ import (
 )
 
 type Plugin struct {
-	host       string
-	port       int
-	user       string
-	password   string
-	useTLS     bool
-	insecure   bool
-	timeout    time.Duration
+	host        string
+	port        int
+	user        string
+	password    string
+	useTLS      bool
+	insecure    bool
+	timeout     time.Duration
 	replyTarget string
 
 	staffChannels []string
@@ -368,6 +368,7 @@ func defaultAllowedCommands() []string {
 		"WIPE",
 		"KICK",
 		"REHASH",
+		"REMERGE",
 		"RACE",
 		"SEARCH",
 		"RESCAN",

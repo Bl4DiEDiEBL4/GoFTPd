@@ -273,6 +273,13 @@ func (s *Session) emitEvent(evtType EventType, eventPath, fileName string, size 
 	if s == nil || s.Config == nil {
 		return
 	}
+	cleanedPath := path.Clean(eventPath)
+	if s.eventPathIsPrivate(cleanedPath) {
+		if s.Config.Debug {
+			log.Printf("[EVENT] suppressed %s for private path %s", evtType, cleanedPath)
+		}
+		return
+	}
 	d := getOrInitEventDispatcher(s.Config)
 	if d == nil {
 		return
@@ -286,7 +293,6 @@ func (s *Session) emitEvent(evtType EventType, eventPath, fileName string, size 
 	if fileName == "" {
 		fileName = fileNameFromPath(eventPath)
 	}
-	cleanedPath := path.Clean(eventPath)
 	section := sectionFromPath(eventPath)
 
 	evt := Event{
@@ -434,6 +440,18 @@ func emitRaceEnd(s *Session, users []VFSRaceUser, totalBytes int64, total int, x
 
 	// Footer
 	s.emitEvent(EventRaceFooter, s.CurrentDir, rel, totalBytes, avgMB, copyMap(common))
+}
+
+func (s *Session) eventPathIsPrivate(eventPath string) bool {
+	if s == nil || s.ACLEngine == nil || s.Config == nil || strings.TrimSpace(eventPath) == "" || eventPath == "." || eventPath == "/" {
+		return false
+	}
+	aclBase := strings.TrimSpace(s.Config.ACLBasePath)
+	if aclBase == "" {
+		return false
+	}
+	aclPath := path.Join(aclBase, eventPath)
+	return s.ACLEngine.MatchesRulePath("privpath", aclPath)
 }
 
 func formatRaceDuration(ms int64) string {

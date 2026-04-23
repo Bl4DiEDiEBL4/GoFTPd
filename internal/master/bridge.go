@@ -16,6 +16,7 @@ import (
 	"goftpd/internal/plugin"
 	"goftpd/internal/protocol"
 )
+
 // Bridge implements core.MasterBridge by wrapping a SlaveManager.
 // It's the glue between the FTP command layer (core) and the slave management layer (master).
 type Bridge struct {
@@ -36,6 +37,14 @@ func NewBridge(sm *SlaveManager) *Bridge {
 		log.Printf("[Bridge] Race DB reconcile failed: %v", err)
 	}
 	return b
+}
+
+func (b *Bridge) StartRemerge(slaveName string) error {
+	return b.sm.StartRemerge(slaveName)
+}
+
+func (b *Bridge) StartRemergeAll() (int, []string) {
+	return b.sm.StartRemergeAll()
 }
 
 // Ensure Bridge implements MasterBridge at compile time.
