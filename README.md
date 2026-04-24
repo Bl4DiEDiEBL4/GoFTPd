@@ -55,11 +55,28 @@ For a first-time guided setup, use:
 ```
 
 It asks for master/slave mode, ports, PASV/proxy style, certificate name,
-channel names, Blowfish keys, and per-plugin enable flags only when the real
-config files do not exist yet. It also saves the answers in
+channel names, a Blowfish key per channel, sitebot IRC settings, sitebot FTP
+plugin settings, and per-plugin enable flags only when the real config files
+do not exist yet. It also saves the answers in
 `etc/setup-interactive.env` so a reinstall or move can reuse them as defaults.
 In slave mode it asks only the slave-specific daemon questions and skips the
 sitebot flow unless you explicitly choose to configure a sitebot there too.
+If the saved defaults file exists, the installer asks whether to load it and
+use those values as the prompt defaults for the new run.
+
+To back up generated interactive configs and start over cleanly, use:
+
+```bash
+./setup-interactive-clean.sh
+```
+
+The cleanup helper:
+
+- backs up generated daemon and sitebot configs
+- backs up generated plugin `config.yml` files
+- backs up and removes the shared FIFO
+- backs up and removes generated TLS certs in `etc/certs`
+- keeps `etc/setup-interactive.env` so your saved answers survive the reset
 
 Edit `etc/config.yml` before running it for real. The same config file is used
 for master and slave mode; `mode: master` or `mode: slave` decides which blocks

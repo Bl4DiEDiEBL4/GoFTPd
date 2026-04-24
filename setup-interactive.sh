@@ -7,11 +7,6 @@ STATE_FILE="${ROOT_DIR}/etc/setup-interactive.env"
 FIFO_PATH_DEFAULT="${ROOT_DIR}/etc/goftpd.sitebot.fifo"
 SITEBOT_CONFIG_DEFAULT="${ROOT_DIR}/sitebot/etc/config.yml"
 
-if [ -f "${STATE_FILE}" ]; then
-    # shellcheck disable=SC1090
-    . "${STATE_FILE}"
-fi
-
 say() {
     printf '%s\n' "$*"
 }
@@ -45,6 +40,16 @@ prompt_yes_no() {
         say "Please answer y or n."
     done
 }
+
+if [ -f "${STATE_FILE}" ]; then
+    if prompt_yes_no "Load saved setup defaults from ${STATE_FILE}?" "Y"; then
+        # shellcheck disable=SC1090
+        . "${STATE_FILE}"
+        say "Loaded saved setup defaults."
+    else
+        say "Ignoring saved setup defaults for this run."
+    fi
+fi
 
 bool_to_prompt_default() {
     local value="${1:-}"
@@ -97,10 +102,27 @@ replace_matching_line() {
     local pattern="$2"
     local replacement="$3"
     awk -v pattern="${pattern}" -v replacement="${replacement}" '
+        function comment_pos(line,    i, ch, in_single, in_double, prev) {
+            in_single = 0
+            in_double = 0
+            prev = ""
+            for (i = 1; i <= length(line); i++) {
+                ch = substr(line, i, 1)
+                if (ch == "\"" && !in_single && prev != "\\") {
+                    in_double = !in_double
+                } else if (ch == "'"'"'" && !in_double && prev != "\\") {
+                    in_single = !in_single
+                } else if (ch == "#" && !in_single && !in_double) {
+                    return i
+                }
+                prev = ch
+            }
+            return 0
+        }
         $0 ~ pattern {
             line = $0
             comment = ""
-            hash_pos = index(line, "#")
+            hash_pos = comment_pos(line)
             if (hash_pos > 0) {
                 comment = substr(line, hash_pos)
                 sub(/[[:space:]]+$/, "", replacement)
@@ -213,23 +235,33 @@ rewrite_sitebot_encryption_keys() {
     local foreign_channel="$5"
     local archive_channel="$6"
     local nuke_channel="$7"
-    local blowfish_key="$8"
+    local main_key="$8"
+    local spam_key="$9"
+    local staff_key="${10}"
+    local foreign_key="${11}"
+    local archive_key="${12}"
+    local nuke_key="${13}"
     awk -v main_channel="${main_channel}" \
         -v spam_channel="${spam_channel}" \
         -v staff_channel="${staff_channel}" \
         -v foreign_channel="${foreign_channel}" \
         -v archive_channel="${archive_channel}" \
         -v nuke_channel="${nuke_channel}" \
-        -v blowfish_key="${blowfish_key}" '
+        -v main_key="${main_key}" \
+        -v spam_key="${spam_key}" \
+        -v staff_key="${staff_key}" \
+        -v foreign_key="${foreign_key}" \
+        -v archive_key="${archive_key}" \
+        -v nuke_key="${nuke_key}" '
         BEGIN { in_keys = 0 }
         /^  keys:$/ {
             print
-            print "    \"" main_channel "\": \"cbc:" blowfish_key "\""
-            print "    \"" spam_channel "\": \"cbc:" blowfish_key "\""
-            print "    \"" staff_channel "\": \"cbc:" blowfish_key "\""
-            print "    \"" foreign_channel "\": \"cbc:" blowfish_key "\""
-            print "    \"" archive_channel "\": \"cbc:" blowfish_key "\""
-            print "    \"" nuke_channel "\": \"cbc:" blowfish_key "\""
+            print "    \"" main_channel "\": \"cbc:" main_key "\""
+            print "    \"" spam_channel "\": \"cbc:" spam_key "\""
+            print "    \"" staff_channel "\": \"cbc:" staff_key "\""
+            print "    \"" foreign_channel "\": \"cbc:" foreign_key "\""
+            print "    \"" archive_channel "\": \"cbc:" archive_key "\""
+            print "    \"" nuke_channel "\": \"cbc:" nuke_key "\""
             in_keys = 1
             next
         }
@@ -489,7 +521,8 @@ configure_sitebot() {
 
     local irc_host irc_port irc_nick irc_user irc_realname irc_password irc_ssl
     local ftp_host ftp_port ftp_user ftp_password ftp_tls ftp_insecure bnc_target_host bnc_target_port
-    local main_channel spam_channel staff_channel foreign_channel archive_channel nuke_channel blowfish_key enabled_bool
+    local main_channel spam_channel staff_channel foreign_channel archive_channel nuke_channel enabled_bool
+    local main_key spam_key staff_key foreign_key archive_key nuke_key
     local fifo_path
     irc_host="$(prompt_default 'IRC host' "${SETUP_IRC_HOST:-irc.example.net}")"
     irc_port="$(prompt_default 'IRC port' "${SETUP_IRC_PORT:-6697}")"
@@ -524,7 +557,12 @@ configure_sitebot() {
     foreign_channel="$(prompt_default 'Foreign IRC channel' "${SETUP_FOREIGN_CHANNEL:-#goftpd-foreign}")"
     archive_channel="$(prompt_default 'Archive IRC channel' "${SETUP_ARCHIVE_CHANNEL:-#goftpd-archive}")"
     nuke_channel="$(prompt_default 'Nuke IRC channel' "${SETUP_NUKE_CHANNEL:-#goftpd-nuke}")"
-    blowfish_key="$(prompt_default 'Shared Blowfish key for configured channels' "${SETUP_BLOWFISH_KEY:-YourBlowfishKeyHere123456}")"
+    main_key="$(prompt_default 'Blowfish key for main channel' "${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}")"
+    spam_key="$(prompt_default 'Blowfish key for spam channel' "${SETUP_BLOWFISH_KEY_SPAM:-${main_key}}")"
+    staff_key="$(prompt_default 'Blowfish key for staff channel' "${SETUP_BLOWFISH_KEY_STAFF:-${main_key}}")"
+    foreign_key="$(prompt_default 'Blowfish key for foreign channel' "${SETUP_BLOWFISH_KEY_FOREIGN:-${main_key}}")"
+    archive_key="$(prompt_default 'Blowfish key for archive channel' "${SETUP_BLOWFISH_KEY_ARCHIVE:-${main_key}}")"
+    nuke_key="$(prompt_default 'Blowfish key for nuke channel' "${SETUP_BLOWFISH_KEY_NUKE:-${main_key}}")"
 
     SETUP_IRC_HOST="${irc_host}"
     SETUP_IRC_PORT="${irc_port}"
@@ -547,7 +585,12 @@ configure_sitebot() {
     SETUP_FOREIGN_CHANNEL="${foreign_channel}"
     SETUP_ARCHIVE_CHANNEL="${archive_channel}"
     SETUP_NUKE_CHANNEL="${nuke_channel}"
-    SETUP_BLOWFISH_KEY="${blowfish_key}"
+    SETUP_BLOWFISH_KEY_MAIN="${main_key}"
+    SETUP_BLOWFISH_KEY_SPAM="${spam_key}"
+    SETUP_BLOWFISH_KEY_STAFF="${staff_key}"
+    SETUP_BLOWFISH_KEY_FOREIGN="${foreign_key}"
+    SETUP_BLOWFISH_KEY_ARCHIVE="${archive_key}"
+    SETUP_BLOWFISH_KEY_NUKE="${nuke_key}"
     fifo_path="${SETUP_FIFO_PATH:-${FIFO_PATH_DEFAULT}}"
     SETUP_FIFO_PATH="${fifo_path}"
     SETUP_SITEBOT_CONFIG_PATH="${ROOT_DIR}/sitebot/etc/config.yml"
@@ -569,7 +612,7 @@ configure_sitebot() {
     set_sitebot_channel_anchor "${sitebot_config}" "nuke" "chan_nuke" "${nuke_channel}"
     rewrite_sitebot_irc_channels "${sitebot_config}" "${main_channel}" "${spam_channel}" "${staff_channel}"
     rewrite_sitebot_invite_channel "${sitebot_config}" "${staff_channel}"
-    rewrite_sitebot_encryption_keys "${sitebot_config}" "${main_channel}" "${spam_channel}" "${staff_channel}" "${foreign_channel}" "${archive_channel}" "${nuke_channel}" "${blowfish_key}"
+    rewrite_sitebot_encryption_keys "${sitebot_config}" "${main_channel}" "${spam_channel}" "${staff_channel}" "${foreign_channel}" "${archive_channel}" "${nuke_channel}" "${main_key}" "${spam_key}" "${staff_key}" "${foreign_key}" "${archive_key}" "${nuke_key}"
     configure_sitebot_plugin_channels "${main_channel}" "${staff_channel}" "${nuke_channel}"
     configure_sitebot_plugin_connections "${ftp_host}" "${ftp_port}" "${ftp_user}" "${ftp_password}" "${ftp_tls}" "${ftp_insecure}" "${bnc_target_host}" "${bnc_target_port}"
 
@@ -613,6 +656,7 @@ ensure_script_permissions() {
         "${ROOT_DIR}/build.sh" \
         "${ROOT_DIR}/generate_certs.sh" \
         "${ROOT_DIR}/setup-interactive.sh" \
+        "${ROOT_DIR}/setup-interactive-clean.sh" \
         "${ROOT_DIR}/sitebot/build.sh"
     do
         if [ -f "${script_path}" ]; then
@@ -667,7 +711,12 @@ save_state_file() {
     write_state_var SETUP_FOREIGN_CHANNEL "${SETUP_FOREIGN_CHANNEL:-#goftpd-foreign}"
     write_state_var SETUP_ARCHIVE_CHANNEL "${SETUP_ARCHIVE_CHANNEL:-#goftpd-archive}"
     write_state_var SETUP_NUKE_CHANNEL "${SETUP_NUKE_CHANNEL:-#goftpd-nuke}"
-    write_state_var SETUP_BLOWFISH_KEY "${SETUP_BLOWFISH_KEY:-YourBlowfishKeyHere123456}"
+    write_state_var SETUP_BLOWFISH_KEY_MAIN "${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}"
+    write_state_var SETUP_BLOWFISH_KEY_SPAM "${SETUP_BLOWFISH_KEY_SPAM:-${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}}"
+    write_state_var SETUP_BLOWFISH_KEY_STAFF "${SETUP_BLOWFISH_KEY_STAFF:-${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}}"
+    write_state_var SETUP_BLOWFISH_KEY_FOREIGN "${SETUP_BLOWFISH_KEY_FOREIGN:-${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}}"
+    write_state_var SETUP_BLOWFISH_KEY_ARCHIVE "${SETUP_BLOWFISH_KEY_ARCHIVE:-${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}}"
+    write_state_var SETUP_BLOWFISH_KEY_NUKE "${SETUP_BLOWFISH_KEY_NUKE:-${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}}"
     write_state_var SETUP_DAEMON_PLUGIN_DATEDDIRS "${SETUP_DAEMON_PLUGIN_DATEDDIRS:-true}"
     write_state_var SETUP_DAEMON_PLUGIN_TVMAZE "${SETUP_DAEMON_PLUGIN_TVMAZE:-true}"
     write_state_var SETUP_DAEMON_PLUGIN_IMDB "${SETUP_DAEMON_PLUGIN_IMDB:-true}"
