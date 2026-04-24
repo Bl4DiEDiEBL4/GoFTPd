@@ -246,8 +246,7 @@ func loadConfigFileMap(filePath, baseDir string) (map[string]interface{}, error)
 	}
 	data, err := os.ReadFile(filepath.Clean(resolved))
 	if err != nil {
-		distHint := strings.TrimSuffix(filePath, ".yml") + ".yml.dist"
-		return nil, fmt.Errorf("config_file %q not found (checked: %s). Copy %q to %q or update config_file", filePath, strings.Join(checked, ", "), distHint, filePath)
+		return nil, fmt.Errorf("config_file %q not found; check config", filePath)
 	}
 	out := map[string]interface{}{}
 	if err := yaml.Unmarshal(data, &out); err != nil {
