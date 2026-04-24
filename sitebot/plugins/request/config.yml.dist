@@ -1,0 +1,15 @@
+# Public IRC gateway for SITE REQUEST/REQUESTS/REQFILL/REQDEL.
+# !request stores the IRC nick as requester. !reqdel only deletes that
+# nick's own requests; !reqwipe is staff-only.
+host: "127.0.0.1"
+port: 21212
+user: "goftpd"
+password: "goftpd"
+tls: true
+insecure_skip_verify: true
+timeout_seconds: 10
+channels: ["#goftpd"]
+staff_channels: ["#goftpd-staff"]
+staff_hosts: []
+# reply_target supports "channel", "notice", or a fixed "#channel".
+reply_target: "channel"

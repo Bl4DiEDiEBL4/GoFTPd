@@ -1,0 +1,16 @@
+# Public IRC gateway for SITE BW.
+# IRC commands:
+#   !bw
+#   !bw USERNAME
+#   !bw slave
+#   !bw slave SLAVENAME
+host: "127.0.0.1"
+port: 21212
+user: "goftpd"
+password: "goftpd"
+tls: true
+insecure_skip_verify: true
+timeout_seconds: 10
+channels: ["#goftpd"]
+# reply_target supports "channel", "notice", or a fixed "#channel".
+reply_target: "channel"

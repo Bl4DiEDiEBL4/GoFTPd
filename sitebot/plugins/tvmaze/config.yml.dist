@@ -1,0 +1,22 @@
+# Section matching is case-insensitive substring based.
+# "TV" matches TV-1080P, TV-720P, TV-X265, etc.
+sections:
+  - TV-1080P
+  - TV-2160P
+  - TV-720P
+  - TV-BLURAY
+  - TV-HDRIP
+  - TV-SD
+  - TV-SPORTS
+  - TV-CZ
+  - TV-DE
+  - TV-DK
+  - TV-ES
+  - TV-FI
+  - TV-FR
+  - TV-IT
+  - TV-NL
+  - TV-NO
+  - TV-PL
+  - TV-SE
+  - TV-SK

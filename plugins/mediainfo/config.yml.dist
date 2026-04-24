@@ -1,0 +1,7 @@
+binary: "mediainfo"
+timeout_seconds: 20
+sections: ["FLAC", "MP3", "TV", "X264", "X265", "BLURAY"]
+audio_extensions: ["flac", "mp3", "m4a", "wav"]
+video_extensions: ["mkv", "mp4", "avi", "m2ts"]
+sample_only: true
+debug: false

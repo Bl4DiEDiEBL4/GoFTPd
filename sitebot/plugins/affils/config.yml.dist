@@ -1,0 +1,5 @@
+# Shared affil file. If the sitebot is started from ./sitebot, use ../etc/affils.yml.
+file: "../etc/affils.yml"
+# reply_target supports "channel", "notice", or a fixed "#channel".
+reply_target: "channel"
+show_predirs: false

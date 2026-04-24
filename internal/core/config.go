@@ -3,6 +3,8 @@ package core
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"goftpd/internal/timeutil"
@@ -175,6 +177,9 @@ func LoadConfig(filePath string) (*Config, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, err
 	}
+	if err := resolvePluginConfigFiles(cfg.Plugins, filepath.Dir(filePath)); err != nil {
+		return nil, err
+	}
 	if !cfg.LogConsole {
 		raw := map[string]interface{}{}
 		if err := yaml.Unmarshal(data, &raw); err == nil {
@@ -191,6 +196,64 @@ func LoadConfig(filePath string) (*Config, error) {
 	cfg.Zipscript.ApplyDefaults()
 	cfg.configPath = filePath
 	return cfg, nil
+}
+
+func resolvePluginConfigFiles(plugins map[string]map[string]interface{}, baseDir string) error {
+	for name, inline := range plugins {
+		if inline == nil {
+			inline = map[string]interface{}{}
+		}
+		configFile, _ := inline["config_file"].(string)
+		configFile = strings.TrimSpace(configFile)
+		if configFile == "" {
+			plugins[name] = inline
+			continue
+		}
+		loaded, err := loadConfigFileMap(configFile, baseDir)
+		if err != nil {
+			return fmt.Errorf("plugin %s: %w", name, err)
+		}
+		merged := map[string]interface{}{}
+		for k, v := range loaded {
+			merged[k] = v
+		}
+		for k, v := range inline {
+			merged[k] = v
+		}
+		plugins[name] = merged
+	}
+	return nil
+}
+
+func loadConfigFileMap(filePath, baseDir string) (map[string]interface{}, error) {
+	resolved := filePath
+	checked := []string{}
+	if !filepath.IsAbs(filePath) {
+		candidates := []string{
+			filepath.Clean(filePath),
+			filepath.Clean(filepath.Join(baseDir, filePath)),
+			filepath.Clean(filepath.Join(filepath.Dir(baseDir), filePath)),
+		}
+		for _, candidate := range candidates {
+			checked = append(checked, candidate)
+			if _, err := os.Stat(candidate); err == nil {
+				resolved = candidate
+				break
+			}
+		}
+	} else {
+		checked = append(checked, filepath.Clean(filePath))
+	}
+	data, err := os.ReadFile(filepath.Clean(resolved))
+	if err != nil {
+		distHint := strings.TrimSuffix(filePath, ".yml") + ".yml.dist"
+		return nil, fmt.Errorf("config_file %q not found (checked: %s). Copy %q to %q or update config_file", filePath, strings.Join(checked, ", "), distHint, filePath)
+	}
+	out := map[string]interface{}{}
+	if err := yaml.Unmarshal(data, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // Rehash reloads the YAML config from disk and swaps in the fields that

@@ -1,0 +1,22 @@
+# Shared affil file used by the daemon PRE plugin and the sitebot Affils plugin.
+affils_file: "etc/affils.yml"
+permissions_file: "etc/permissions.yml"
+group_file: "etc/group"
+acl_base_path: "/site"
+admin_flags: "1"
+base: "/PRE"
+bw_duration: 30
+bw_interval_ms: 500
+sections:
+  - TV-1080P
+  - TV-720P
+  - X264
+  - X265
+  - BLURAY
+  - MP3
+  - FLAC
+  - 0DAY
+dated_sections:
+  - MP3
+  - FLAC
+  - 0DAY

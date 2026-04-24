@@ -1,0 +1,69 @@
+# Staff-only IRC gateway for real FTP SITE commands. The sitebot logs in
+# as this FTP user and sends SITE <command>, so the daemon owns all admin
+# logic instead of duplicating it in IRC plugins.
+host: "127.0.0.1"
+port: 21212
+user: "goftpd"
+password: "goftpd"
+tls: true
+insecure_skip_verify: true
+timeout_seconds: 10
+staff_channels: ["#goftpd-staff"]
+staff_hosts: []
+# Only these SITE subcommands can be called from IRC. Use ["*"] only if
+# the staff channel is fully trusted and the FTP user is intentionally
+# allowed to run every SITE admin command.
+allowed_commands:
+  - HELP
+  - RULES
+  - WHO
+  - SWHO
+  - USERS
+  - USER
+  - SEEN
+  - LASTLOGIN
+  - GROUPS
+  - GROUP
+  - GINFO
+  - GRPNFO
+  - TRAFFIC
+  - ADDUSER
+  - GADDUSER
+  - DELUSER
+  - READD
+  - RENUSER
+  - CHPASS
+  - ADDIP
+  - DELIP
+  - FLAGS
+  - CHGRP
+  - CHPGRP
+  - GADMIN
+  - GRPADD
+  - GRPDEL
+  - INVITE
+  - NUKE
+  - UNNUKE
+  - UNDUPE
+  - WIPE
+  - KICK
+  - REHASH
+  - REMERGE
+  - RACE
+  - SEARCH
+  - RESCAN
+  - CHMOD
+  - XDUPE
+  - GRP
+  - PRE
+  - ADDAFFIL
+  - DELAFFIL
+  - AFFILS
+  - REQUEST
+  - REQUESTS
+  - REQFILL
+  - REQFILLED
+  - REQDEL
+  - REQWIPE
+# reply_target supports "channel", "notice", or a fixed "#channel".
+reply_target: "channel"

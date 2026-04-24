@@ -1,0 +1,6 @@
+sections: ["EBOOKS", "MP3", "FLAC", "0DAY", "XXX-0DAY"]
+format: "MMDD" # readable tokens only: MM=month, DD=day, YY=2-digit year, YYYY=4-digit year, WW=ISO week (examples: MMDD, YYYY-MM-DD, WW-YYYY)
+today_symlink: true
+symlink_prefix: "!Today_"
+readonly_after_minutes: 60
+debug: false

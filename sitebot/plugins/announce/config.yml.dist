@@ -1,0 +1,7 @@
+default_channel: "#goftpd-staff"
+theme_file: "./etc/templates/pzsng.theme"
+type_routes:
+  NUKE: ["#goftpd-nuke"]
+  UNNUKE: ["#goftpd-nuke"]
+  NEWDAY: ["#goftpd"]
+  SPEEDTEST: ["#goftpd"]

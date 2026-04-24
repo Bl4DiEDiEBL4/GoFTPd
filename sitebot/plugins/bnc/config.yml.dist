@@ -1,0 +1,18 @@
+# Public IRC gateway for simple FTP login health checks.
+# The plugin logs into each configured FTP target with this local user
+# and reports UP/DOWN plus login time in ms. Add one target per line.
+user: "goftpd"
+password: "goftpd"
+tls: true
+insecure_skip_verify: true
+timeout_seconds: 10
+channels: ["#goftpd"]
+# reply_target supports "channel", "notice", or a fixed "#channel".
+reply_target: "channel"
+targets:
+  - name: "sitename"
+    host: "127.0.0.1"
+    port: 21212
+  - name: "site2"
+    host: "127.0.0.2"
+    port: 21212

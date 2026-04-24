@@ -56,13 +56,7 @@ encryption:
     "#goftpd-nuke": "cbc:YourBlowfishKeyHere123456"
 
 announce:
-  default_channel: "#goftpd-staff"
-  theme_file: "./etc/templates/pzsng.theme"
-  type_routes:
-    NUKE: *chan_nuke
-    UNNUKE: *chan_nuke
-    NEWDAY: *chan_main
-    SPEEDTEST: *chan_main
+  config_file: "plugins/announce/config.yml"
 
 sections:
   - name: "DEFAULT"
@@ -339,220 +333,23 @@ plugins:
     AdminCommander: true
   config:
     debug: true
-
-    # Section matching is case-insensitive substring based.
-    # "TV" matches TV-1080P, TV-720P, TV-X265, etc.
+    # Plugin defaults live in sitebot/plugins/<name>/config.yml.dist.
+    # Copy them to config.yml so Git updates do not overwrite your local values.
     tvmaze:
-      sections:
-        - TV-1080P
-        - TV-2160P
-        - TV-720P
-        - TV-BLURAY
-        - TV-HDRIP
-        - TV-SD
-        - TV-SPORTS
-        - TV-CZ
-        - TV-DE
-        - TV-DK
-        - TV-ES
-        - TV-FI
-        - TV-FR
-        - TV-IT
-        - TV-NL
-        - TV-NO
-        - TV-PL
-        - TV-SE
-        - TV-SK
-
+      config_file: "plugins/tvmaze/config.yml"
     imdb:
-      sections:
-        - BLURAY
-        - BLURAY-UHD
-        - DVDR
-        - X264-HD-1080P
-        - X264-HD-720P
-        - X264-HD-FOREIGN
-        - X264-SD
-        - X264-SD-FOREIGN
-        - X265
-        - X265-FOREIGN
-
+      config_file: "plugins/imdb/config.yml"
     news:
-      file: "./data/news.jsonl"
-      default_shown: 5
-      max_shown: 20
-      search_default: 4
-      # reply_target controls where command replies go:
-      #   "channel"  = reply in the channel where the command was used
-      #   "notice"   = reply as a private NOTICE to the user
-      #   "#channel" = always reply in that fixed IRC channel
-      reply_target: "channel"
-      channels: *chan_main
-      staff_channels: *chan_staff
-      staff_hosts: []
-
+      config_file: "plugins/news/config.yml"
     free:
-      # reply_target supports "channel", "notice", or a fixed "#channel".
-      reply_target: "#goftpd"
-      stale_after_seconds: 600
-
+      config_file: "plugins/free/config.yml"
     affils:
-      # Shared affil file. If the sitebot is started from ./sitebot, use ../etc/affils.yml.
-      file: "../etc/affils.yml"
-      # reply_target supports "channel", "notice", or a fixed "#channel".
-      reply_target: "channel"
-      show_predirs: false
-      # IRC command:
-      #   !affils
-      # This plugin is display-only. Use AdminCommander below for privileged
-      # SITE commands such as ADDAFFIL, DELAFFIL, NUKE, and UNNUKE.
-
+      config_file: "plugins/affils/config.yml"
     request:
-      # Public IRC gateway for SITE REQUEST/REQUESTS/REQFILL/REQDEL.
-      # !request stores the IRC nick as requester. !reqdel only deletes that
-      # nick's own requests; !reqwipe is staff-only.
-      #
-      # IRC commands:
-      #   !request Release.Name-GRP
-      #   !request Release.Name-GRP -for:Nick
-      #   !requests
-      #   !reqfill 1
-      #   !reqdel 1
-      #   !reqwipe 1
-      host: "127.0.0.1"
-      port: 21212
-      user: "goftpd"
-      password: "goftpd"
-      tls: true
-      insecure_skip_verify: true
-      timeout_seconds: 10
-      channels: *chan_main
-      staff_channels: *chan_staff
-      staff_hosts: []
-      # reply_target supports "channel", "notice", or a fixed "#channel".
-      reply_target: "channel"
-
+      config_file: "plugins/request/config.yml"
     bnc:
-      # Public IRC gateway for simple FTP login health checks.
-      # IRC command:
-      #   !bnc
-      #   !bnc sitename
-      #
-      # The plugin logs into each configured FTP target with this local user
-      # and reports UP/DOWN plus login time in ms. Add one target per line.
-      user: "goftpd"
-      password: "goftpd"
-      tls: true
-      insecure_skip_verify: true
-      timeout_seconds: 10
-      channels: *chan_main
-      # reply_target supports "channel", "notice", or a fixed "#channel".
-      reply_target: "channel"
-      targets:
-        - name: "sitename"
-          host: "127.0.0.1"
-          port: 21212
-        - name: "site2"
-          host: "127.0.0.2"
-          port: 21212
-
+      config_file: "plugins/bnc/config.yml"
     bandwidth:
-      # Public IRC gateway for SITE BW.
-      # IRC commands:
-      #   !bw
-      #   !bw USERNAME
-      #   !bw slave
-      #   !bw slave SLAVENAME
-      host: "127.0.0.1"
-      port: 21212
-      user: "goftpd"
-      password: "goftpd"
-      tls: true
-      insecure_skip_verify: true
-      timeout_seconds: 10
-      channels: *chan_main
-      # reply_target supports "channel", "notice", or a fixed "#channel".
-      reply_target: "channel"
-
+      config_file: "plugins/bw/config.yml"
     admin_commander:
-      # Staff-only IRC gateway for real FTP SITE commands. The sitebot logs in
-      # as this FTP user and sends SITE <command>, so the daemon owns all admin
-      # logic instead of duplicating it in IRC plugins.
-      #
-      # Examples:
-      #   !site addaffil GROUP
-      #   !site delaffil GROUP
-      #   !nuke Release.Name-GRP 3 bad.files
-      #   !unnuke Release.Name-GRP fixed
-      host: "127.0.0.1"
-      port: 21212
-      user: "goftpd"
-      password: "goftpd"
-      tls: true
-      insecure_skip_verify: true
-      timeout_seconds: 10
-      staff_channels: *chan_staff
-      staff_hosts: []
-      # Only these SITE subcommands can be called from IRC. Use ["*"] only if
-      # the staff channel is fully trusted and the FTP user is intentionally
-      # allowed to run every SITE admin command.
-      allowed_commands:
-        # Info
-        - HELP
-        - RULES
-        - WHO
-        - SWHO
-        - USERS
-        - USER
-        - SEEN
-        - LASTLOGIN
-        - GROUPS
-        - GROUP
-        - GINFO
-        - GRPNFO
-        - TRAFFIC
-        # Users / groups
-        - ADDUSER
-        - GADDUSER
-        - DELUSER
-        - READD
-        - RENUSER
-        - CHPASS
-        - ADDIP
-        - DELIP
-        - FLAGS
-        - CHGRP
-        - CHPGRP
-        - GADMIN
-        - GRPADD
-        - GRPDEL
-        - INVITE
-        # Release / admin
-        - NUKE
-        - UNNUKE
-        - UNDUPE
-        - WIPE
-        - KICK
-        - REHASH
-        - REMERGE
-        # Misc / lookup
-        - RACE
-        - SEARCH
-        - RESCAN
-        - CHMOD
-        - XDUPE
-        - GRP
-        # PRE plugin SITE commands
-        - PRE
-        - ADDAFFIL
-        - DELAFFIL
-        - AFFILS
-        # REQUEST plugin SITE commands
-        - REQUEST
-        - REQUESTS
-        - REQFILL
-        - REQFILLED
-        - REQDEL
-        - REQWIPE
-      # reply_target supports "channel", "notice", or a fixed "#channel".
-      reply_target: "channel"
+      config_file: "plugins/admincommander/config.yml"

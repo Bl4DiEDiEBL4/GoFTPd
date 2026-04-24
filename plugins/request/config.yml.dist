@@ -1,0 +1,22 @@
+# TUR-style request manager:
+#   SITE REQUEST Release.Name-GRP
+#   SITE REQUESTS
+#   SITE REQFILL <number|Release.Name-GRP>
+#   SITE REQDEL <number|Release.Name-GRP>
+#   SITE REQWIPE <number|Release.Name-GRP>
+dir: "/REQUESTS"
+reqfile: "/REQUESTS/.requests"
+request_head: "REQ-"
+filled_head: "FILLED-"
+allow_space: false
+replace_with: "_"
+bad_chars: '*{^~/,+&\'
+max_requests: 30
+show_on_request: false
+show_on_fill: false
+do_not_create_dir_until_filled: false
+reqwipe_flags: "1"
+# FTP users allowed to submit hidden -by:<irc nick> ownership on behalf of
+# sitebot commands. Keep this to the dedicated sitebot/admin FTP account.
+proxy_users: ["goftpd"]
+debug: false

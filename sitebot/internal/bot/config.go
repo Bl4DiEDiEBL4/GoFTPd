@@ -3,6 +3,8 @@ package bot
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"gopkg.in/yaml.v3"
@@ -48,6 +50,7 @@ type EncConfig struct {
 }
 
 type AnnounceConfig struct {
+	ConfigFile     string              `yaml:"config_file"`
 	DefaultChannel string              `yaml:"default_channel"`
 	TypeRoutes     map[string][]string `yaml:"type_routes"`
 	ThemeFile      string              `yaml:"theme_file"`
@@ -71,6 +74,12 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	cfg := &Config{}
 	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, err
+	}
+	if err := resolveAnnounceConfigFile(&cfg.Announce, filepath.Dir(path)); err != nil {
+		return nil, err
+	}
+	if err := resolvePluginConfigFiles(cfg.Plugins.Config, filepath.Dir(path)); err != nil {
 		return nil, err
 	}
 	if cfg.Announce.TypeRoutes == nil {
@@ -105,6 +114,114 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	cfg.configPath = path
 	return cfg, nil
+}
+
+func resolveAnnounceConfigFile(cfg *AnnounceConfig, baseDir string) error {
+	configFile := strings.TrimSpace(cfg.ConfigFile)
+	if configFile == "" {
+		return nil
+	}
+	loaded := AnnounceConfig{}
+	data, err := loadConfigFileMap(configFile, baseDir)
+	if err != nil {
+		return fmt.Errorf("announce: %w", err)
+	}
+	raw, err := yaml.Marshal(data)
+	if err != nil {
+		return err
+	}
+	if err := yaml.Unmarshal(raw, &loaded); err != nil {
+		return err
+	}
+	if cfg.DefaultChannel != "" {
+		loaded.DefaultChannel = cfg.DefaultChannel
+	}
+	if cfg.ThemeFile != "" {
+		loaded.ThemeFile = cfg.ThemeFile
+	}
+	if len(cfg.TypeRoutes) > 0 {
+		loaded.TypeRoutes = cfg.TypeRoutes
+	}
+	loaded.ConfigFile = cfg.ConfigFile
+	*cfg = loaded
+	return nil
+}
+
+func resolvePluginConfigFiles(config map[string]interface{}, baseDir string) error {
+	for name, raw := range config {
+		section := sectionAsStringMap(raw)
+		if len(section) == 0 {
+			continue
+		}
+		configFile, _ := section["config_file"].(string)
+		configFile = strings.TrimSpace(configFile)
+		if configFile == "" {
+			continue
+		}
+		loaded, err := loadConfigFileMap(configFile, baseDir)
+		if err != nil {
+			return fmt.Errorf("plugin %s: %w", name, err)
+		}
+		merged := map[string]interface{}{}
+		for k, v := range loaded {
+			merged[k] = v
+		}
+		for k, v := range section {
+			merged[k] = v
+		}
+		config[name] = merged
+		if _, ok := raw.(map[string]interface{}); !ok {
+			config[name] = merged
+		}
+	}
+	return nil
+}
+
+func loadConfigFileMap(path, baseDir string) (map[string]interface{}, error) {
+	resolved := path
+	checked := []string{}
+	if !filepath.IsAbs(path) {
+		candidates := []string{
+			filepath.Clean(path),
+			filepath.Clean(filepath.Join(baseDir, path)),
+			filepath.Clean(filepath.Join(filepath.Dir(baseDir), path)),
+		}
+		for _, candidate := range candidates {
+			checked = append(checked, candidate)
+			if _, err := os.Stat(candidate); err == nil {
+				resolved = candidate
+				break
+			}
+		}
+	} else {
+		checked = append(checked, filepath.Clean(path))
+	}
+	data, err := os.ReadFile(filepath.Clean(resolved))
+	if err != nil {
+		distHint := strings.TrimSuffix(path, ".yml") + ".yml.dist"
+		return nil, fmt.Errorf("config_file %q not found (checked: %s). Copy %q to %q or update config_file", path, strings.Join(checked, ", "), distHint, path)
+	}
+	out := map[string]interface{}{}
+	if err := yaml.Unmarshal(data, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func sectionAsStringMap(raw interface{}) map[string]interface{} {
+	if section, ok := raw.(map[string]interface{}); ok {
+		return section
+	}
+	if section, ok := raw.(map[interface{}]interface{}); ok {
+		out := map[string]interface{}{}
+		for k, v := range section {
+			if key, ok := k.(string); ok {
+				out[key] = v
+			}
+		}
+		return out
+	}
+	return map[string]interface{}{}
 }
 
 // Rehash reloads the config from disk and swaps in fields that are safe

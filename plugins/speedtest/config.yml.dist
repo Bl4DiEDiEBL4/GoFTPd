@@ -1,0 +1,3 @@
+dir: "/SPEEDTEST"
+files_mb: [100, 500, 1000]
+debug: false

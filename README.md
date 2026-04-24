@@ -48,6 +48,17 @@ cp etc/config.yml.example etc/config.yml
 ./sitebot -config etc/config.yml
 ```
 
+For a first-time guided setup, use:
+
+```bash
+./setup-interactive.sh
+```
+
+It asks for master/slave mode, ports, PASV/proxy style, certificate name,
+channel names, Blowfish keys, and per-plugin enable flags only when the real
+config files do not exist yet. It also saves the answers in
+`etc/setup-interactive.env` so a reinstall or move can reuse them as defaults.
+
 Edit `etc/config.yml` before running it for real. The same config file is used
 for master and slave mode; `mode: master` or `mode: slave` decides which blocks
 are active.
@@ -76,6 +87,18 @@ Main files:
 | `sitebot/etc/config.yml` | Active sitebot config |
 | `sitebot/etc/config.yml.example` | Annotated sitebot example |
 | `sitebot/etc/templates/pzsng.theme` | Sitebot theme templates |
+
+Plugin defaults are shipped as `config.yml.dist` files inside each plugin
+directory. Copy them to `config.yml` and point the main config at those files:
+
+```yaml
+plugins:
+  pre:
+    enabled: true
+    config_file: "plugins/pre/config.yml"
+```
+
+This keeps site-local plugin settings out of Git-tracked example files.
 
 ## Slaves
 
@@ -148,7 +171,8 @@ policy and the daemon checks ownership before allowing the action.
 
 ## Daemon Plugins
 
-Daemon plugins are configured under `plugins:` in `etc/config.yml`. Only
+Daemon plugins are enabled under `plugins:` in `etc/config.yml`. Plugin-specific
+defaults can live in separate files referenced with `config_file`, and only
 plugins with `enabled: true` are loaded.
 
 Built-in daemon plugins:
@@ -260,6 +284,19 @@ Built-in sitebot plugins:
 
 The example sitebot config uses YAML anchors for channel sets, so a channel can
 be changed once at the top and reused across sections and plugin config.
+
+Sitebot command plugins can use the same split config layout:
+
+```yaml
+plugins:
+  config:
+    request:
+      config_file: "plugins/request/config.yml"
+    admin_commander:
+      config_file: "plugins/admincommander/config.yml"
+```
+
+The repo ships matching `sitebot/plugins/<name>/config.yml.dist` files.
 
 ### Theme Output
 

@@ -226,10 +226,12 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 #  To add your own plugin:
 #    1. Create /plugins/<name>/handler.go implementing plugin.Plugin
 #    2. Add a case for it in cmd/goftpd/main.go's plugin switch
-#    3. Add an entry below with `enabled: true` and any plugin-specific keys
+#    3. Add an entry below with `enabled: true` and a `config_file`
 #
 #  Section matching is case-insensitive substring — "TV" matches TV-1080P,
 #  TV-720P, TV-UHD, etc. Only plugins where enabled=true are loaded.
+#  The repo ships `config.yml.dist` files for plugin defaults; copy them to
+#  `config.yml` so Git updates do not overwrite your local plugin settings.
 # =============================================================================
 zipscript:
   enabled: true                # master-side zipscript module on/off
@@ -431,34 +433,19 @@ zipscript:
 plugins:
   dateddirs:
     enabled: true
-    sections: ["EBOOKS", "MP3", "FLAC", "0DAY", "XXX-0DAY"]
-    format: "MMDD" # readable tokens only: MM=month, DD=day, YY=2-digit year, YYYY=4-digit year, WW=ISO week (examples: MMDD, YYYY-MM-DD, WW-YYYY)
-    today_symlink: true
-    symlink_prefix: "!Today_"
-    readonly_after_minutes: 60
-    debug: false
+    config_file: "plugins/dateddirs/config.yml"
   tvmaze:
-    enabled:  true
-    sections: ["TV"]
-    debug:    false
+    enabled: true
+    config_file: "plugins/tvmaze/config.yml"
   imdb:
-    enabled:  true
-    sections: ["X264", "X265", "BLURAY", "DVDR"]
-    debug:    false
+    enabled: true
+    config_file: "plugins/imdb/config.yml"
   mediainfo:
     enabled: true
-    binary: "mediainfo"
-    timeout_seconds: 20
-    sections: ["FLAC", "MP3", "TV", "X264", "X265", "BLURAY"]
-    audio_extensions: ["flac", "mp3", "m4a", "wav"]
-    video_extensions: ["mkv", "mp4", "avi", "m2ts"]
-    sample_only: true
-    debug: false
+    config_file: "plugins/mediainfo/config.yml"
   speedtest:
     enabled: true
-    dir: "/SPEEDTEST"
-    files_mb: [100, 500, 1000]
-    debug: false
+    config_file: "plugins/speedtest/config.yml"
   request:
     enabled: true
     # TUR-style request manager:
@@ -468,46 +455,11 @@ plugins:
     #   SITE REQDEL <number|Release.Name-GRP>
     #   SITE REQWIPE <number|Release.Name-GRP>
     # Enabling the plugin creates this base directory on startup.
-    dir: "/REQUESTS"
-    reqfile: "/REQUESTS/.requests"
-    request_head: "REQ-"
-    filled_head: "FILLED-"
-    allow_space: false
-    replace_with: "_"
-    bad_chars: '*{^~/,+&\'
-    max_requests: 30
-    show_on_request: false
-    show_on_fill: false
-    do_not_create_dir_until_filled: false
-    reqwipe_flags: "1"
-    # FTP users allowed to submit hidden -by:<irc nick> ownership on behalf of
-    # sitebot commands. Keep this to the dedicated sitebot/admin FTP account.
-    proxy_users: ["goftpd"]
-    debug: false
+    config_file: "plugins/request/config.yml"
   pre:
     enabled: true
     # Shared affil file used by the daemon PRE plugin and the sitebot Affils plugin.
-    affils_file: "etc/affils.yml"
-    permissions_file: "etc/permissions.yml"
-    group_file: "etc/group"
-    acl_base_path: "/site"
-    admin_flags: "1"
-    base: "/PRE"
-    bw_duration: 30
-    bw_interval_ms: 500
-    sections:
-      - TV-1080P
-      - TV-720P
-      - X264
-      - X265
-      - BLURAY
-      - MP3
-      - FLAC
-      - 0DAY
-    dated_sections:
-      - MP3
-      - FLAC
-      - 0DAY
+    config_file: "plugins/pre/config.yml"
 
 
 # =============================================================================
