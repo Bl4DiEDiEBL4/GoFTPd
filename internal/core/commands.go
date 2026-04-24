@@ -1159,7 +1159,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				if subdir := zipscript.ReleaseSubdirLabel(s.Config.Zipscript, s.CurrentDir); subdir != "" {
 					data["release_subdir"] = subdir
 					data["release_name"] = path.Base(path.Dir(s.CurrentDir))
-					if !zipscript.AnnounceReleaseSubdirs(s.Config.Zipscript) {
+					if zipscript.IsIgnoredReleaseSubdir(s.Config.Zipscript, s.CurrentDir) || !zipscript.AnnounceReleaseSubdirs(s.Config.Zipscript) {
 						data["skip_release_announce"] = "true"
 					}
 				}
@@ -1302,7 +1302,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				if subdir := zipscript.ReleaseSubdirLabel(s.Config.Zipscript, s.CurrentDir); subdir != "" {
 					data["release_subdir"] = subdir
 					data["release_name"] = path.Base(path.Dir(s.CurrentDir))
-					if !zipscript.AnnounceReleaseSubdirs(s.Config.Zipscript) {
+					if zipscript.IsIgnoredReleaseSubdir(s.Config.Zipscript, s.CurrentDir) || !zipscript.AnnounceReleaseSubdirs(s.Config.Zipscript) {
 						data["skip_release_announce"] = "true"
 					}
 				}
@@ -2002,7 +2002,7 @@ func shouldAnnounceNoRace(cfg *Config, dirPath string, existingNames []string, f
 	if cfg == nil || !cfg.Zipscript.Enabled || !cfg.Zipscript.Race.AnnounceNoRace {
 		return false
 	}
-	if zipscript.IsIgnoredReleaseSubdir(cfg.Zipscript, dirPath) && !zipscript.AnnounceReleaseSubdirs(cfg.Zipscript) {
+	if zipscript.IsIgnoredReleaseSubdir(cfg.Zipscript, dirPath) {
 		return false
 	}
 	if zipscript.UsesRace(cfg.Zipscript, dirPath) || zipscript.IsIgnoredType(cfg.Zipscript, fileName) {
