@@ -329,7 +329,9 @@ plugins:
     Affils: true
     Request: true
     BNC: true
+    Banned: true
     BW: true
+    Rules: true
     AdminCommander: true
   config:
     debug: true
@@ -349,7 +351,11 @@ plugins:
       config_file: "plugins/request/config.yml"
     bnc:
       config_file: "plugins/bnc/config.yml"
+    banned:
+      config_file: "plugins/banned/config.yml"
     bandwidth:
       config_file: "plugins/bw/config.yml"
+    rules:
+      config_file: "plugins/rules/config.yml"
     admin_commander:
       config_file: "plugins/admincommander/config.yml"

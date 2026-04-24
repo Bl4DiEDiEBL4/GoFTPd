@@ -1,12 +1,14 @@
 package core
 
 import (
+	"fmt"
 	"log"
 	"path"
 	"strings"
 	"sync"
 
 	"goftpd/internal/plugin"
+	"goftpd/internal/user"
 )
 
 // PluginManager owns the registered plugins and dispatches events to them.
@@ -135,6 +137,28 @@ func (pm *PluginManager) DispatchSiteCommand(ctx plugin.SiteContext, command str
 		}
 	}
 	return false
+}
+
+func (pm *PluginManager) ValidateMKDir(u *user.User, targetPath string) error {
+	if pm == nil || u == nil {
+		return nil
+	}
+
+	pm.mu.RLock()
+	plugins := make([]plugin.Plugin, len(pm.plugins))
+	copy(plugins, pm.plugins)
+	pm.mu.RUnlock()
+
+	for _, p := range plugins {
+		v, ok := p.(plugin.MKDirValidator)
+		if !ok {
+			continue
+		}
+		if err := v.ValidateMKDir(u, targetPath); err != nil {
+			return fmt.Errorf("%s: %w", p.Name(), err)
+		}
+	}
+	return nil
 }
 
 // StopAll calls Stop() on every registered plugin. Called at shutdown.

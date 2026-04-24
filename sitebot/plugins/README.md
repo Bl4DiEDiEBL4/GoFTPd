@@ -6,12 +6,14 @@ NOTICE) that the bot sends to channels.
 
 ## Built-in plugins
 
-- **announce** — formats race events into IRC announces (NEW / RACE / HALFWAY / COMPLETE / STATS)
-- **tvmaze**   — async TV-show lookup on MKD, posts TV-INFO to channels
-- **imdb**     — async movie lookup on MKD, posts MOVIE-INFO to channels
-- **news**     — handles `!news`, `!addnews`, `!delnews` IRC commands, persists to JSONL
-- **free**     — handles `!free` (disk space) IRC command
-- **bnc**      — handles `!bnc` FTP login health checks across one or more configured targets
+- **announce** - formats race events into IRC announces (NEW / RACE / HALFWAY / COMPLETE / STATS)
+- **tvmaze** - async TV-show lookup on MKD, posts TV-INFO to channels
+- **imdb** - async movie lookup on MKD, posts MOVIE-INFO to channels
+- **news** - handles `!news`, `!addnews`, `!delnews` IRC commands, persists to JSONL
+- **free** - handles `!free` (disk space) IRC command
+- **bnc** - handles `!bnc` FTP login health checks across one or more configured targets
+- **banned** - handles `!banned` by querying `SITE BANNED`
+- **rules** - handles `!rules`, reading a configured rules file or falling back to `SITE RULES`
 
 ## Writing a new plugin
 
@@ -104,10 +106,10 @@ type Handler interface {
 }
 
 type Output struct {
-    Type   string  // tag like "RACE", "STATS", "NEW", "TV-INFO" — used by routeChannels
+    Type   string  // tag like "RACE", "STATS", "NEW", "TV-INFO" - used by routeChannels
     Text   string  // line(s) to send; \n splits into multiple PRIVMSGs
     Target string  // explicit channel (overrides routing); leave "" to use routeChannels
-    Notice bool    // true → NOTICE instead of PRIVMSG
+    Notice bool    // true -> NOTICE instead of PRIVMSG
 }
 ```
 
@@ -115,15 +117,15 @@ type Output struct {
 
 Two ways your plugin's output gets to a channel:
 
-**1. Explicit Target** — used by command-driven plugins (news, free). When `Output.Target` is set, the bot sends straight there. Example: `!news` typed in `#goftpd` → the news plugin returns `Output{Target: "#goftpd", Text: "..."}` → reply lands in #goftpd.
+**1. Explicit Target** - used by command-driven plugins (news, free). When `Output.Target` is set, the bot sends straight there. Example: `!news` typed in `#goftpd` -> the news plugin returns `Output{Target: "#goftpd", Text: "..."}` -> reply lands in `#goftpd`.
 
-**2. Empty Target → routeChannels** — used by event-driven plugins (announce, tvmaze, imdb). The bot looks up channels via:
-  - `announce.type_routes[Output.Type]` first (per-type override, e.g. NUKE → #goftpd-nuke)
+**2. Empty Target -> routeChannels** - used by event-driven plugins (announce, tvmaze, imdb). The bot looks up channels via:
+  - `announce.type_routes[Output.Type]` first (per-type override, e.g. NUKE -> `#goftpd-nuke`)
   - then `sections[*].channels` matching `evt.Section` or path glob
   - then `announce.default_channel`
   - then `irc.channels`
 
-So setting `Type: "RACE"` and the right `evt.Section` is usually enough — config decides where it goes.
+So setting `Type: "RACE"` and the right `evt.Section` is usually enough - config decides where it goes.
 
 ### Async output (lookups, slow APIs)
 
@@ -141,7 +143,7 @@ func (p *MyPlugin) SetAsyncEmitter(fn func(outType, text, section, relpath strin
 }
 ```
 
-…and the bot wires it in `initializePlugins` like the existing tvmaze block.
+...and the bot wires it in `initializePlugins` like the existing tvmaze block.
 
 ## Event types (from goftpd FIFO)
 
@@ -160,7 +162,7 @@ func (p *MyPlugin) SetAsyncEmitter(fn func(outType, text, section, relpath strin
 | `EventRaceUser`       | One per racer in HOF                                    |
 | `EventRaceFooter`     | STATS_END line                                          |
 | `EventNewUser`        | New user added via SITE ADDUSER                         |
-| `EventInvite`         | SITE INVITE — handled by bot directly, plugins skipped  |
+| `EventInvite`         | SITE INVITE - handled by bot directly, plugins skipped  |
 | `EventCommand`        | IRC `!cmd` from a user (news, free, etc.)               |
 | `EventDiskStatus`     | Slave disk status report                                |
 | `EventNewDay`         | Dated dir rollover announcement                         |
@@ -191,11 +193,11 @@ type Event struct {
 
 ## Rules
 
-1. **OnEvent must return fast.** No HTTP calls, no SQL, no file I/O — push that to a goroutine.
+1. **OnEvent must return fast.** No HTTP calls, no SQL, no file I/O - push that to a goroutine.
 2. **Plugins are called serially** by the manager. A slow plugin blocks every other plugin for that event.
 3. **Section gating is your job.** Use `evt.Section` (case-insensitive substring) to decide which sections your plugin cares about.
 4. **Don't write to disk casually.** If you need persistence (like news), use a JSONL or SQLite file under `sitebot/data/`.
-5. **Panics are caught.** The plugin manager recovers from panics in OnEvent — your bug won't crash the bot. But it WILL log an error and skip your output.
+5. **Panics are caught.** The plugin manager recovers from panics in `OnEvent` - your bug won't crash the bot. But it will log an error and skip your output.
 
 ## Theme files
 
@@ -209,11 +211,11 @@ UPDATE_RAR
 RACE: [%section] %relname got its first rar from %u_name at %u_speed
 ```
 
-Variables come from `vars()` in the announce plugin — anything in `evt.Data` is also exposed as `%key`. Templates are pure substitution, no logic.
+Variables come from `vars()` in the announce plugin - anything in `evt.Data` is also exposed as `%key`. Templates are pure substitution, no logic.
 
 ## Examples to study
 
-- **announce** — pure event consumer, no I/O, returns formatted strings. Good template for new event-driven plugins.
-- **news** — command-driven (replies to `!news`), uses `Output.Target`, persists to JSONL.
-- **tvmaze / imdb** — event-driven + async HTTP via SetAsyncEmitter pattern.
-- **free** — minimal command-driven plugin, talks to goftpd's disk-status feed.
+- **announce** - pure event consumer, no I/O, returns formatted strings. Good template for new event-driven plugins.
+- **news** - command-driven (replies to `!news`), uses `Output.Target`, persists to JSONL.
+- **tvmaze / imdb** - event-driven + async HTTP via `SetAsyncEmitter` pattern.
+- **free** - minimal command-driven plugin, talks to goftpd's disk-status feed.

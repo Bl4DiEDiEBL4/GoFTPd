@@ -71,6 +71,7 @@ var pluginSiteHelpEntries = map[string]siteHelpEntry{
 	"REQFILL":  {Command: "REQFILL", Usage: "<number|release>", Summary: "Mark a request filled", Area: "Plugins", Aliases: []string{"REQFILLED"}},
 	"REQDEL":   {Command: "REQDEL", Usage: "<number|release>", Summary: "Delete a request", Area: "Plugins"},
 	"REQWIPE":  {Command: "REQWIPE", Usage: "<number|release>", Summary: "Staff wipe a request", Area: "Plugins"},
+	"BANNED":   {Command: "BANNED", Usage: "[filter] | ALLOW [filter]", Summary: "Show releaseguard deny or allow rules", Area: "Plugins"},
 }
 
 func (s *Session) HandleSiteWho(args []string) bool {

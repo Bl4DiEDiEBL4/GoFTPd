@@ -19,10 +19,12 @@ import (
 	announceplugin "goftpd/sitebot/plugins/announce"
 	bncplugin "goftpd/sitebot/plugins/bnc"
 	bwplugin "goftpd/sitebot/plugins/bw"
+	bannedplugin "goftpd/sitebot/plugins/banned"
 	freeplugin "goftpd/sitebot/plugins/free"
 	imdbplugin "goftpd/sitebot/plugins/imdb"
 	newsplugin "goftpd/sitebot/plugins/news"
 	requestplugin "goftpd/sitebot/plugins/request"
+	rulesplugin "goftpd/sitebot/plugins/rules"
 	tvmazeplugin "goftpd/sitebot/plugins/tvmaze"
 )
 
@@ -202,6 +204,19 @@ func (b *Bot) initializePlugins() error {
 			return err
 		}
 	}
+	if enabled, ok := b.Config.Plugins.Enabled["Banned"]; ok && enabled {
+		banned := bannedplugin.New()
+		cfg := map[string]interface{}{"debug": b.Debug, "theme_file": b.Config.Announce.ThemeFile}
+		for k, v := range b.Config.Plugins.Config {
+			cfg[k] = v
+		}
+		if err := banned.Initialize(cfg); err != nil {
+			return err
+		}
+		if err := b.registerPlugin("Banned", banned); err != nil {
+			return err
+		}
+	}
 	if enabled, ok := b.Config.Plugins.Enabled["BW"]; ok && enabled {
 		bw := bwplugin.New()
 		cfg := map[string]interface{}{"debug": b.Debug, "theme_file": b.Config.Announce.ThemeFile}
@@ -212,6 +227,19 @@ func (b *Bot) initializePlugins() error {
 			return err
 		}
 		if err := b.registerPlugin("BW", bw); err != nil {
+			return err
+		}
+	}
+	if enabled, ok := b.Config.Plugins.Enabled["Rules"]; ok && enabled {
+		rules := rulesplugin.New()
+		cfg := map[string]interface{}{"debug": b.Debug, "theme_file": b.Config.Announce.ThemeFile}
+		for k, v := range b.Config.Plugins.Config {
+			cfg[k] = v
+		}
+		if err := rules.Initialize(cfg); err != nil {
+			return err
+		}
+		if err := b.registerPlugin("Rules", rules); err != nil {
 			return err
 		}
 	}

@@ -820,6 +820,11 @@ func (b *Bridge) CacheSFV(dirPath string, sfvName string, entries []core.SFVEntr
 
 func (b *Bridge) CacheMediaInfo(dirPath string, fields map[string]string) {
 	b.sm.GetVFS().SetMediaInfo(dirPath, fields)
+	if b.raceDB != nil {
+		if err := b.raceDB.SaveMediaInfo(filepath.Clean(dirPath), fields); err != nil {
+			log.Printf("[Bridge] Race DB mediainfo sync failed for %s: %v", dirPath, err)
+		}
+	}
 }
 
 // GetVFSRaceStats returns race statistics for a directory,

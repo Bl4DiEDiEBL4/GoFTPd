@@ -25,6 +25,7 @@ import (
 	"goftpd/plugins/imdb"
 	"goftpd/plugins/mediainfo"
 	"goftpd/plugins/pre"
+	"goftpd/plugins/releaseguard"
 	"goftpd/plugins/request"
 	"goftpd/plugins/speedtest"
 	"goftpd/plugins/tvmaze"
@@ -254,6 +255,8 @@ func main() {
 			p = mediainfo.New()
 		case "pre":
 			p = pre.New()
+		case "releaseguard":
+			p = releaseguard.New()
 		case "request":
 			p = request.New()
 		case "speedtest":

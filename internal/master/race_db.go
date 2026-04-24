@@ -70,6 +70,16 @@ CREATE TABLE IF NOT EXISTS release_files (
 
 CREATE INDEX IF NOT EXISTS idx_release_files_release_id ON release_files(release_id);
 CREATE INDEX IF NOT EXISTS idx_releases_path ON releases(path);
+
+CREATE TABLE IF NOT EXISTS release_media (
+    release_id INTEGER NOT NULL,
+    field_key TEXT NOT NULL,
+    field_value TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY(release_id, field_key),
+    FOREIGN KEY(release_id) REFERENCES releases(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_release_media_release_id ON release_media(release_id);
 `
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
@@ -146,6 +156,39 @@ func (r *RaceDB) SaveSFV(dirPath, sfvName string, entries map[string]uint32) err
                 is_expected = 1,
                 updated_at = strftime('%s','now')
         `, releaseID, fileName, int64(crc)); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (r *RaceDB) SaveMediaInfo(dirPath string, fields map[string]string) error {
+	releaseID, err := r.getOrCreateReleaseID(dirPath)
+	if err != nil {
+		return err
+	}
+
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`DELETE FROM release_media WHERE release_id = ?`, releaseID); err != nil {
+		return err
+	}
+
+	for key, value := range fields {
+		key = strings.TrimSpace(key)
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" {
+			continue
+		}
+		if _, err := tx.Exec(`
+            INSERT INTO release_media(release_id, field_key, field_value)
+            VALUES (?, ?, ?)
+        `, releaseID, key, value); err != nil {
 			return err
 		}
 	}
@@ -282,6 +325,37 @@ func (r *RaceDB) Reconcile(vfs *VirtualFileSystem) error {
 			log.Printf("[RaceDB] Failed to purge stale release %s: %v", dirPath, err)
 		} else {
 			log.Printf("[RaceDB] Purged stale release %s", dirPath)
+		}
+	}
+
+	mediaRows, err := r.db.Query(`
+        SELECT rel.path, rm.field_key, rm.field_value
+        FROM releases rel
+        JOIN release_media rm ON rm.release_id = rel.id
+        ORDER BY rel.path, rm.field_key
+    `)
+	if err != nil {
+		return err
+	}
+	defer mediaRows.Close()
+
+	mediaByPath := make(map[string]map[string]string)
+	for mediaRows.Next() {
+		var dirPath, key, value string
+		if err := mediaRows.Scan(&dirPath, &key, &value); err != nil {
+			return err
+		}
+		if mediaByPath[dirPath] == nil {
+			mediaByPath[dirPath] = make(map[string]string)
+		}
+		mediaByPath[dirPath][key] = value
+	}
+	if err := mediaRows.Err(); err != nil {
+		return err
+	}
+	for dirPath, fields := range mediaByPath {
+		if len(fields) > 0 {
+			vfs.SetMediaInfo(dirPath, fields)
 		}
 	}
 	return nil

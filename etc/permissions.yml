@@ -119,6 +119,9 @@ rules:
   - type: sitecmd
     path: REQDEL
     required: "*"
+  - type: sitecmd
+    path: BANNED
+    required: "*"
 
   # Affil/staff workflow commands.
   # PRE is intentionally open here. The PRE plugin itself checks affil

@@ -5,9 +5,10 @@ release nuked, etc.) and doing work with the master's VFS bridge.
 
 ## Built-in plugins
 
-- **tvmaze** — async TV show lookup on MKD, writes `.tvmaze` into the release dir
-- **imdb**   — async movie lookup on MKD (via imdbapi.dev), writes `.imdb`
-- **speedtest** — creates fixed-size test files and emits SPEEDTEST events
+- **tvmaze** - async TV show lookup on MKD, writes `.tvmaze` into the release dir
+- **imdb** - async movie lookup on MKD (via imdbapi.dev), writes `.imdb`
+- **speedtest** - creates fixed-size test files and emits SPEEDTEST events
+- **releaseguard** - blocks bad release dir names before MKD creates them
 
 TVMaze and IMDb metadata files are shown on `CWD` via the daemon's
 `show_diz` mechanism.
@@ -77,6 +78,10 @@ type Plugin interface {
 }
 ```
 
+Some plugins can also implement optional extra hooks. For example,
+`releaseguard` implements `plugin.MKDirValidator` so it can deny a bad release
+name before `MKD` creates the directory.
+
 ### Event types
 
 | Constant            | Fires when                                     |
@@ -137,9 +142,9 @@ type MasterBridge interface {
 2. **Plugins have no state between daemon restarts.** Persist anything you
    need via the bridge (write a file in the slave storage) or your own DB.
 3. **Section matching** is up to you. Use `plugin.Event.Section` (first path
-   component) and do case-insensitive substring matches — "TV" should match
+   component) and do case-insensitive substring matches - "TV" should match
    both `TV-1080P` and `TV-720P`.
-4. **Release-name detection** — scene releases always have dots, a dash
+4. **Release-name detection** - scene releases always have dots, a dash
    (group suffix), and a year or `SxxEyy` tag. Anything else is a subfolder
    (`Sample`, `Proof`, `Subs`, `CD1`...) and should be ignored.
 5. **Slave mode.** If `svc.Bridge == nil` your plugin is running on a slave

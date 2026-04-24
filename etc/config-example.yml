@@ -456,6 +456,9 @@ plugins:
     #   SITE REQWIPE <number|Release.Name-GRP>
     # Enabling the plugin creates this base directory on startup.
     config_file: "plugins/request/config.yml"
+  releaseguard:
+    enabled: false
+    config_file: "plugins/releaseguard/config.yml"
   pre:
     enabled: true
     # Shared affil file used by the daemon PRE plugin and the sitebot Affils plugin.

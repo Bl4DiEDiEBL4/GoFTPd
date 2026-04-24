@@ -410,6 +410,13 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		skipDupeCheck := s.ACLEngine != nil && s.ACLEngine.CanPerformRuleOnly(s.User, "NODUPECHECK", aclPath)
 		dupeEligible := !isSectionDir && !isSubFolder && !skipDupeCheck
 
+		if s.Config.PluginManager != nil {
+			if err := s.Config.PluginManager.ValidateMKDir(s.User, targetPath); err != nil {
+				fmt.Fprintf(s.Conn, "550 %v\r\n", err)
+				return false
+			}
+		}
+
 		if dupeEligible && s.DupeChecker != nil {
 			if dc, ok := s.DupeChecker.(interface{ IsDupe(string) (bool, error) }); ok {
 				if isDupe, err := dc.IsDupe(dirName); err == nil && isDupe {

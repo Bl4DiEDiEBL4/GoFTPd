@@ -458,8 +458,16 @@ EOF
         set_yaml_array_line "sitebot/plugins/bnc/config.yml" '^channels:' "channels: [\"${main_channel}\"]"
     fi
 
+    if [ -f "sitebot/plugins/banned/config.yml" ]; then
+        set_yaml_array_line "sitebot/plugins/banned/config.yml" '^channels:' "channels: [\"${main_channel}\"]"
+    fi
+
     if [ -f "sitebot/plugins/bw/config.yml" ]; then
         set_yaml_array_line "sitebot/plugins/bw/config.yml" '^channels:' "channels: [\"${main_channel}\"]"
+    fi
+
+    if [ -f "sitebot/plugins/rules/config.yml" ]; then
+        set_yaml_array_line "sitebot/plugins/rules/config.yml" '^channels:' "channels: [\"${main_channel}\"]"
     fi
 
     if [ -f "sitebot/plugins/admincommander/config.yml" ]; then
@@ -493,6 +501,24 @@ configure_sitebot_plugin_connections() {
         set_yaml_array_line "sitebot/plugins/bw/config.yml" '^password:' "password: \"${ftp_password}\""
         set_yaml_array_line "sitebot/plugins/bw/config.yml" '^tls:' "tls: ${ftp_tls}"
         set_yaml_array_line "sitebot/plugins/bw/config.yml" '^insecure_skip_verify:' "insecure_skip_verify: ${ftp_insecure}"
+    fi
+
+    if [ -f "sitebot/plugins/banned/config.yml" ]; then
+        set_yaml_array_line "sitebot/plugins/banned/config.yml" '^host:' "host: \"${ftp_host}\""
+        set_yaml_array_line "sitebot/plugins/banned/config.yml" '^port:' "port: ${ftp_port}"
+        set_yaml_array_line "sitebot/plugins/banned/config.yml" '^user:' "user: \"${ftp_user}\""
+        set_yaml_array_line "sitebot/plugins/banned/config.yml" '^password:' "password: \"${ftp_password}\""
+        set_yaml_array_line "sitebot/plugins/banned/config.yml" '^tls:' "tls: ${ftp_tls}"
+        set_yaml_array_line "sitebot/plugins/banned/config.yml" '^insecure_skip_verify:' "insecure_skip_verify: ${ftp_insecure}"
+    fi
+
+    if [ -f "sitebot/plugins/rules/config.yml" ]; then
+        set_yaml_array_line "sitebot/plugins/rules/config.yml" '^host:' "host: \"${ftp_host}\""
+        set_yaml_array_line "sitebot/plugins/rules/config.yml" '^port:' "port: ${ftp_port}"
+        set_yaml_array_line "sitebot/plugins/rules/config.yml" '^user:' "user: \"${ftp_user}\""
+        set_yaml_array_line "sitebot/plugins/rules/config.yml" '^password:' "password: \"${ftp_password}\""
+        set_yaml_array_line "sitebot/plugins/rules/config.yml" '^tls:' "tls: ${ftp_tls}"
+        set_yaml_array_line "sitebot/plugins/rules/config.yml" '^insecure_skip_verify:' "insecure_skip_verify: ${ftp_insecure}"
     fi
 
     if [ -f "sitebot/plugins/admincommander/config.yml" ]; then
@@ -611,7 +637,7 @@ configure_daemon() {
 
     local daemon_plugins=()
     if [ "${daemon_mode}" = "master" ]; then
-        daemon_plugins=(dateddirs tvmaze imdb mediainfo speedtest request pre)
+        daemon_plugins=(dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre)
     fi
 
     local plugin_name
@@ -661,7 +687,7 @@ configure_sitebot() {
     copy_dist_configs_if_missing "sitebot/plugins"
 
     local irc_host irc_port irc_nick irc_user irc_realname irc_password irc_ssl
-    local ftp_host ftp_port ftp_user ftp_password ftp_tls ftp_insecure bnc_target_host bnc_target_port
+    local ftp_host ftp_port ftp_user ftp_password ftp_tls ftp_insecure bnc_target_host bnc_target_port rules_file
     local main_channel spam_channel staff_channel foreign_channel archive_channel nuke_channel enabled_bool
     local main_key spam_key staff_key foreign_key archive_key nuke_key
     local fifo_path
@@ -692,6 +718,7 @@ configure_sitebot() {
     fi
     bnc_target_host="$(prompt_default 'BNC target host' "${SETUP_BNC_TARGET_HOST:-${ftp_host}}")"
     bnc_target_port="$(prompt_default 'BNC target port' "${SETUP_BNC_TARGET_PORT:-${ftp_port}}")"
+    rules_file="$(prompt_default 'Rules file for !rules (empty = use SITE RULES)' "${SETUP_RULES_FILE:-}")"
     main_channel="$(prompt_default 'Main IRC channel' "${SETUP_MAIN_CHANNEL:-#goftpd}")"
     spam_channel="$(prompt_default 'Spam IRC channel' "${SETUP_SPAM_CHANNEL:-#goftpd-spam}")"
     staff_channel="$(prompt_default 'Staff IRC channel' "${SETUP_STAFF_CHANNEL:-#goftpd-staff}")"
@@ -720,6 +747,7 @@ configure_sitebot() {
     SETUP_PLUGIN_FTP_INSECURE="${ftp_insecure}"
     SETUP_BNC_TARGET_HOST="${bnc_target_host}"
     SETUP_BNC_TARGET_PORT="${bnc_target_port}"
+    SETUP_RULES_FILE="${rules_file}"
     SETUP_MAIN_CHANNEL="${main_channel}"
     SETUP_SPAM_CHANNEL="${spam_channel}"
     SETUP_STAFF_CHANNEL="${staff_channel}"
@@ -756,8 +784,11 @@ configure_sitebot() {
     rewrite_sitebot_encryption_keys "${sitebot_config}" "${main_channel}" "${spam_channel}" "${staff_channel}" "${foreign_channel}" "${archive_channel}" "${nuke_channel}" "${main_key}" "${spam_key}" "${staff_key}" "${foreign_key}" "${archive_key}" "${nuke_key}"
     configure_sitebot_plugin_channels "${main_channel}" "${staff_channel}" "${nuke_channel}"
     configure_sitebot_plugin_connections "${ftp_host}" "${ftp_port}" "${ftp_user}" "${ftp_password}" "${ftp_tls}" "${ftp_insecure}" "${bnc_target_host}" "${bnc_target_port}"
+    if [ -f "sitebot/plugins/rules/config.yml" ]; then
+        set_yaml_array_line "sitebot/plugins/rules/config.yml" '^rules_file:' "rules_file: \"${rules_file}\""
+    fi
 
-    local sitebot_plugins=(Announce TVMaze IMDB News Free Affils Request BNC BW AdminCommander)
+    local sitebot_plugins=(Announce TVMaze IMDB News Free Affils Request BNC Banned BW Rules AdminCommander)
     local plugin_name
     for plugin_name in "${sitebot_plugins[@]}"; do
         local var_name="SETUP_SITEBOT_PLUGIN_$(printf '%s' "${plugin_name}" | tr '[:lower:]-' '[:upper:]_')"
@@ -843,6 +874,7 @@ save_state_file() {
     write_state_var SETUP_PLUGIN_FTP_INSECURE "${SETUP_PLUGIN_FTP_INSECURE:-true}"
     write_state_var SETUP_BNC_TARGET_HOST "${SETUP_BNC_TARGET_HOST:-127.0.0.1}"
     write_state_var SETUP_BNC_TARGET_PORT "${SETUP_BNC_TARGET_PORT:-21212}"
+    write_state_var SETUP_RULES_FILE "${SETUP_RULES_FILE:-}"
     write_state_var SETUP_MAIN_CHANNEL "${SETUP_MAIN_CHANNEL:-#goftpd}"
     write_state_var SETUP_SPAM_CHANNEL "${SETUP_SPAM_CHANNEL:-#goftpd-spam}"
     write_state_var SETUP_STAFF_CHANNEL "${SETUP_STAFF_CHANNEL:-#goftpd-staff}"
@@ -861,6 +893,7 @@ save_state_file() {
     write_state_var SETUP_DAEMON_PLUGIN_MEDIAINFO "${SETUP_DAEMON_PLUGIN_MEDIAINFO:-true}"
     write_state_var SETUP_DAEMON_PLUGIN_SPEEDTEST "${SETUP_DAEMON_PLUGIN_SPEEDTEST:-true}"
     write_state_var SETUP_DAEMON_PLUGIN_REQUEST "${SETUP_DAEMON_PLUGIN_REQUEST:-true}"
+    write_state_var SETUP_DAEMON_PLUGIN_RELEASEGUARD "${SETUP_DAEMON_PLUGIN_RELEASEGUARD:-false}"
     write_state_var SETUP_DAEMON_PLUGIN_PRE "${SETUP_DAEMON_PLUGIN_PRE:-true}"
     write_state_var SETUP_CONFIGURE_SITEBOT_ON_SLAVE "${SETUP_CONFIGURE_SITEBOT_ON_SLAVE:-false}"
     write_state_var SETUP_SITEBOT_PLUGIN_ANNOUNCE "${SETUP_SITEBOT_PLUGIN_ANNOUNCE:-true}"
@@ -871,7 +904,9 @@ save_state_file() {
     write_state_var SETUP_SITEBOT_PLUGIN_AFFILS "${SETUP_SITEBOT_PLUGIN_AFFILS:-true}"
     write_state_var SETUP_SITEBOT_PLUGIN_REQUEST "${SETUP_SITEBOT_PLUGIN_REQUEST:-true}"
     write_state_var SETUP_SITEBOT_PLUGIN_BNC "${SETUP_SITEBOT_PLUGIN_BNC:-true}"
+    write_state_var SETUP_SITEBOT_PLUGIN_BANNED "${SETUP_SITEBOT_PLUGIN_BANNED:-true}"
     write_state_var SETUP_SITEBOT_PLUGIN_BW "${SETUP_SITEBOT_PLUGIN_BW:-true}"
+    write_state_var SETUP_SITEBOT_PLUGIN_RULES "${SETUP_SITEBOT_PLUGIN_RULES:-true}"
     write_state_var SETUP_SITEBOT_PLUGIN_ADMINCOMMANDER "${SETUP_SITEBOT_PLUGIN_ADMINCOMMANDER:-true}"
     say "Saved setup defaults to ${STATE_FILE}"
 }

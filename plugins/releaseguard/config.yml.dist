@@ -1,0 +1,30 @@
+# Block bad release names before MKD creates the directory.
+#
+# This is a GoFTPd-native take on glftpd/tur-predircheck style rules.
+
+skip_paths:
+  - "/PRE/*"
+  - "/REQUESTS/*"
+  - "/LINKS/*"
+  - "/SPEEDTEST/*"
+
+deny_same_name_in_parent: true
+deny_case_conflicts: true
+check_nuked_names: true
+nuked_prefixes: ["[NUKED]-"]
+debug: false
+
+# Block release groups by regex.
+deny_groups:
+  - path: "/"
+    pattern: "-BADGROUP$"
+
+# Block release names by regex.
+deny_dirs:
+  - path: "/"
+    pattern: "^\\[NUKED\\]"
+
+# Allow-only rules by path/section.
+# If one or more allow rules match the target path, the release name must
+# match at least one of those rule regexes or MKD is denied.
+allow_dirs: []

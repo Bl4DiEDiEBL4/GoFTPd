@@ -89,6 +89,10 @@ type SiteCommandHandler interface {
 	HandleSiteCommand(ctx SiteContext, command string, args []string) bool
 }
 
+type MKDirValidator interface {
+	ValidateMKDir(u *user.User, targetPath string) error
+}
+
 type RaceUser struct {
 	Name    string
 	Group   string

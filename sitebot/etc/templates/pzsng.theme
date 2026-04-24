@@ -367,11 +367,19 @@ announce.BNC_DOWN = "%c04{%index}.- %c06{%name} %c01{at} %c05{%host}%c01{:}%c05{
 
 announce.BNC_ERROR = "%b{%c01{BNC:}} %c04{%response}"
 
+announce.BANNEDCMD_LINE = "%b{%c01{BANNED:}} %c05{%line}"
+
+announce.BANNEDCMD_ERROR = "%b{%c01{BANNED:}} %c04{%response}"
+
 announce.BW = "%b{%c01{BANDWiDTH:}} %c01{Checking GoFTPd bandwidth, please wait ...}"
 
 announce.BW_LINE = "%c01{%response}"
 
 announce.BW_ERROR = "%b{%c01{BANDWiDTH:}} %c04{%response}"
+
+announce.RULESCMD_LINE = "%b{%c01{RULES:}} %c05{%line}"
+
+announce.RULESCMD_ERROR = "%b{%c01{RULES:}} %c04{%response}"
 
 announce.NUKE = "%b{%c01{NUKE:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{by} %c04{%u_name}"
 
