@@ -94,6 +94,54 @@ func (b *Bridge) GetLiveTransferStats() []core.LiveTransferStat {
 	return out
 }
 
+func (b *Bridge) RunOnSlaveCommand(dirPath, command string, args []string, env map[string]string, timeoutSeconds int, preferredSlave string) (string, error) {
+	slave := b.resolveSlaveForDir(dirPath, preferredSlave)
+	if slave == nil {
+		return "", fmt.Errorf("no available slave found for %s", dirPath)
+	}
+	index, err := IssueRunCommand(slave, command, args, env, timeoutSeconds, dirPath)
+	if err != nil {
+		return "", err
+	}
+	resp, err := slave.FetchResponse(index, time.Duration(timeoutSeconds+5)*time.Second)
+	if err != nil {
+		return "", err
+	}
+	if errResp, ok := resp.(*protocol.AsyncResponseError); ok {
+		return "", fmt.Errorf("%s: %s", slave.Name(), errResp.Message)
+	}
+	if result, ok := resp.(*protocol.AsyncResponseCommandResult); ok {
+		return result.Output, nil
+	}
+	return "", fmt.Errorf("%s: unexpected response type: %T", slave.Name(), resp)
+}
+
+func (b *Bridge) resolveSlaveForDir(dirPath, preferredSlave string) *RemoteSlave {
+	if strings.TrimSpace(preferredSlave) != "" {
+		slave := b.sm.GetSlave(preferredSlave)
+		if slave != nil && slave.IsOnline() {
+			return slave
+		}
+	}
+
+	entries := b.ListDir(dirPath)
+	for _, entry := range entries {
+		if strings.TrimSpace(entry.Slave) == "" {
+			continue
+		}
+		if slave := b.sm.GetSlave(entry.Slave); slave != nil && slave.IsOnline() {
+			return slave
+		}
+	}
+
+	for _, slaveName := range b.sm.GetVFS().GetSlavesForPath(dirPath) {
+		if slave := b.sm.GetSlave(slaveName); slave != nil && slave.IsOnline() {
+			return slave
+		}
+	}
+	return nil
+}
+
 // Ensure Bridge implements MasterBridge at compile time.
 var _ core.MasterBridge = (*Bridge)(nil)
 var _ plugin.MasterBridge = (*Bridge)(nil)

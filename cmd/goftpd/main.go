@@ -171,6 +171,16 @@ func main() {
 			log.Printf("[REHASH] reapplied %d slave policies", len(policies))
 		}
 	}
+	cfg.ACLRehashHook = func(c *core.Config) error {
+		freshACL, err := acl.LoadEngine("etc/permissions.yml")
+		if err != nil {
+			return err
+		}
+		aclEngine = freshACL
+		core.UpdateActiveSessionACL(freshACL)
+		log.Printf("[REHASH] reloaded ACL engine from etc/permissions.yml")
+		return nil
+	}
 
 	// 7. Initialize Plugin System
 	if cfg.Debug {

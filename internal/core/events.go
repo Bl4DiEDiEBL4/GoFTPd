@@ -362,8 +362,10 @@ func emitRaceEnd(s *Session, users []VFSRaceUser, totalBytes int64, total int, x
 	// threads can easily sum to 400s+ of "transfer time". pzs-ng uses
 	// wall-clock for STATS_SPEED totals too.
 	var raceDurationMs int64
+	var hookRunner zipscript.CompleteHookRunner
 	if s.Config.Mode == "master" && s.MasterManager != nil {
 		if bridge, ok := s.MasterManager.(MasterBridge); ok {
+			hookRunner = bridge
 			if ms := bridge.GetRaceWallClockMilliseconds(s.CurrentDir); ms > 0 {
 				raceDurationMs = ms
 			}
@@ -465,7 +467,7 @@ func emitRaceEnd(s *Session, users []VFSRaceUser, totalBytes int64, total int, x
 		AvgSpeedMB:    avgMB,
 		UserCount:     len(users),
 		Data:          copyMap(common),
-	})
+	}, hookRunner)
 }
 
 func (s *Session) eventPathIsPrivate(eventPath string) bool {

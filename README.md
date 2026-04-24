@@ -38,7 +38,7 @@ PASV/CPSV/PORT, SSCN, and PROT P.
 
 ```bash
 ./build.sh
-./generate_certs.sh
+./generate_certs.sh "My FTPd"
 cp etc/config-example.yml etc/config.yml
 ./goftpd
 

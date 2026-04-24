@@ -121,10 +121,12 @@ rules:
     required: "*"
 
   # Affil/staff workflow commands.
-  # Adjust the example groups/flags to fit your site.
+  # PRE is intentionally open here. The PRE plugin itself checks affil
+  # membership via etc/affils.yml and rejects non-affils, so you do not need to
+  # update permissions.yml every time you add an affil group.
   - type: sitecmd
     path: PRE
-    required: "3 =iND =STAFF =SiteOP"
+    required: "*"
   - type: sitecmd
     path: AFFILS
     required: "3 =iND =STAFF =SiteOP"

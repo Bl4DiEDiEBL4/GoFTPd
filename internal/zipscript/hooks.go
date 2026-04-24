@@ -13,22 +13,26 @@ import (
 )
 
 type CompleteHookContext struct {
-	DirPath      string
-	RelName      string
-	ReleaseName  string
+	DirPath       string
+	RelName       string
+	ReleaseName   string
 	ReleaseSubdir string
-	Section      string
-	SectionRoot  string
-	TotalBytes   int64
-	TotalFiles   int
-	DurationMs   int64
-	Duration     string
-	AvgSpeedMB   float64
-	UserCount    int
-	Data         map[string]string
+	Section       string
+	SectionRoot   string
+	TotalBytes    int64
+	TotalFiles    int
+	DurationMs    int64
+	Duration      string
+	AvgSpeedMB    float64
+	UserCount     int
+	Data          map[string]string
 }
 
-func RunOnCompleteHook(cfg Config, ctx CompleteHookContext) {
+type CompleteHookRunner interface {
+	RunOnSlaveCommand(dirPath, command string, args []string, env map[string]string, timeoutSeconds int, preferredSlave string) (string, error)
+}
+
+func RunOnCompleteHook(cfg Config, ctx CompleteHookContext, runner CompleteHookRunner) {
 	hook := cfg.Hooks.OnComplete
 	if !cfg.Enabled || !hook.Enabled || strings.TrimSpace(hook.Command) == "" {
 		return
@@ -38,11 +42,43 @@ func RunOnCompleteHook(cfg Config, ctx CompleteHookContext) {
 	if timeout <= 0 {
 		timeout = 30
 	}
+
+	runOn := strings.ToLower(strings.TrimSpace(hook.RunOn))
+	if runOn == "" {
+		runOn = "master"
+	}
+
+	env := buildCompleteHookEnv(hook.ExtraEnv, ctx)
+	switch runOn {
+	case "master":
+		runCompleteHookLocal(cfg.Debug, hook.Command, hook.Args, env, timeout)
+	case "slave":
+		if runner == nil {
+			log.Printf("[ZIPSCRIPT] on_complete hook failed: slave execution requested but no slave runner is available")
+			return
+		}
+		out, err := runner.RunOnSlaveCommand(ctx.DirPath, hook.Command, hook.Args, env, timeout, hook.SlaveName)
+		if err != nil {
+			log.Printf("[ZIPSCRIPT] on_complete hook failed on slave: %v", err)
+			if strings.TrimSpace(out) != "" {
+				log.Printf("[ZIPSCRIPT] on_complete slave output: %s", strings.TrimSpace(out))
+			}
+			return
+		}
+		if cfg.Debug && strings.TrimSpace(out) != "" {
+			log.Printf("[ZIPSCRIPT] on_complete slave output: %s", strings.TrimSpace(out))
+		}
+	default:
+		log.Printf("[ZIPSCRIPT] on_complete hook ignored: unknown run_on value %q", hook.RunOn)
+	}
+}
+
+func runCompleteHookLocal(debug bool, command string, args []string, env map[string]string, timeout int) {
 	execCtx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(execCtx, hook.Command, hook.Args...)
-	cmd.Env = append(os.Environ(), buildCompleteHookEnv(hook.ExtraEnv, ctx)...)
+	cmd := exec.CommandContext(execCtx, command, args...)
+	cmd.Env = append(os.Environ(), flattenEnv(env)...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Printf("[ZIPSCRIPT] on_complete hook failed: %v", err)
@@ -51,14 +87,15 @@ func RunOnCompleteHook(cfg Config, ctx CompleteHookContext) {
 		}
 		return
 	}
-	if cfg.Debug && len(out) > 0 {
+	if debug && len(out) > 0 {
 		log.Printf("[ZIPSCRIPT] on_complete output: %s", strings.TrimSpace(string(out)))
 	}
 }
 
-func buildCompleteHookEnv(extra map[string]string, ctx CompleteHookContext) []string {
+func buildCompleteHookEnv(extra map[string]string, ctx CompleteHookContext) map[string]string {
 	env := map[string]string{
 		"GOFTPD_EVENT":          "COMPLETE",
+		"GOFTPD_HOOK_TARGET":    "master",
 		"GOFTPD_DIR":            strings.TrimSpace(ctx.DirPath),
 		"GOFTPD_PATH":           strings.TrimSpace(ctx.DirPath),
 		"GOFTPD_RELNAME":        strings.TrimSpace(ctx.RelName),
@@ -78,9 +115,16 @@ func buildCompleteHookEnv(extra map[string]string, ctx CompleteHookContext) []st
 		env["GOFTPD_"+sanitizeEnvKey(k)] = v
 	}
 	for k, v := range extra {
-		env[strings.TrimSpace(k)] = v
+		k = strings.TrimSpace(k)
+		if k == "" {
+			continue
+		}
+		env[k] = v
 	}
+	return env
+}
 
+func flattenEnv(env map[string]string) []string {
 	keys := make([]string, 0, len(env))
 	for k := range env {
 		if strings.TrimSpace(k) != "" {

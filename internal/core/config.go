@@ -127,6 +127,7 @@ type Config struct {
 	EventDispatcher *EventDispatcher                  `yaml:"-"` // Set at runtime
 	MasterManager   interface{}                       `yaml:"-"` // *master.Manager for master mode
 	RehashHook      func(*Config)                     `yaml:"-"` // called after Rehash() swaps fields
+	ACLRehashHook   func(*Config) error               `yaml:"-"` // reloads ACL-backed state after Rehash()
 
 	// Debug
 	Debug bool `yaml:"debug"`
@@ -274,6 +275,11 @@ func (c *Config) Rehash() (string, error) {
 	// Fire post-rehash hook if set (e.g. reapply slave policies to SlaveManager).
 	if c.RehashHook != nil {
 		c.RehashHook(c)
+	}
+	if c.ACLRehashHook != nil {
+		if err := c.ACLRehashHook(c); err != nil {
+			return path, err
+		}
 	}
 
 	return path, nil

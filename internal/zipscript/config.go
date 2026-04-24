@@ -91,6 +91,8 @@ type HooksConfig struct {
 
 type CommandHookConfig struct {
 	Enabled        bool              `yaml:"enabled"`
+	RunOn          string            `yaml:"run_on"`
+	SlaveName      string            `yaml:"slave_name"`
 	Command        string            `yaml:"command"`
 	Args           []string          `yaml:"args"`
 	TimeoutSeconds int               `yaml:"timeout_seconds"`

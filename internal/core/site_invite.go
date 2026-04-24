@@ -9,23 +9,33 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type sitebotInviteConfig struct {
+	IRC struct {
+		Channels []string `yaml:"channels"`
+	} `yaml:"irc"`
+	InviteChannels []InviteRule `yaml:"invite_channels"`
+}
+
 // HandleSiteInvite handles SITE INVITE username command.
-// Channels are filtered by the inviting user's flags per invite_channels: in
-// the main goftpd config. Channels not listed in invite_channels are public.
+// Channels and invite visibility rules are read from the sitebot config.
+// If no invite rules exist there, the daemon's invite_channels acts as a fallback.
 func (s *Session) HandleSiteInvite(args []string) bool {
 	if len(args) < 1 {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE INVITE <username>\r\n")
 		return false
 	}
 
-	channels := s.getSitebotChannels()
+	channels, inviteRules := s.getSitebotInviteConfig()
 	if len(channels) == 0 {
 		fmt.Fprintf(s.Conn, "450 Sitebot not configured or no channels available\r\n")
 		return false
 	}
+	if len(inviteRules) == 0 {
+		inviteRules = s.Config.InviteChannels
+	}
 
 	// Filter channels by the current user's flags.
-	allowed := filterInviteChannels(channels, s.Config.InviteChannels, s.User.Flags)
+	allowed := filterInviteChannels(channels, inviteRules, s.User.Flags)
 	if len(allowed) == 0 {
 		fmt.Fprintf(s.Conn, "450 No channels available for your access level\r\n")
 		return false
@@ -88,15 +98,15 @@ func anyFlagMatches(userFlags, required string) bool {
 	return false
 }
 
-// getSitebotChannels reads channels from the sitebot's config.yml.
-// The sitebot config is the source of truth — set its path via
+// getSitebotInviteConfig reads channels and invite rules from the sitebot's
+// config.yml. The sitebot config is the source of truth set via
 // `sitebot_config:` in the main goftpd config.yml.
-func (s *Session) getSitebotChannels() []string {
+func (s *Session) getSitebotInviteConfig() ([]string, []InviteRule) {
 	if s.Config.SitebotConfig == "" {
 		if s.Config.Debug {
 			log.Printf("[INVITE] sitebot_config not set in main config")
 		}
-		return []string{}
+		return nil, nil
 	}
 
 	data, err := os.ReadFile(s.Config.SitebotConfig)
@@ -104,27 +114,23 @@ func (s *Session) getSitebotChannels() []string {
 		if s.Config.Debug {
 			log.Printf("[INVITE] Could not read sitebot config %s: %v", s.Config.SitebotConfig, err)
 		}
-		return []string{}
+		return nil, nil
 	}
 
-	var config map[string]interface{}
+	var config sitebotInviteConfig
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		if s.Config.Debug {
 			log.Printf("[INVITE] Could not parse sitebot config: %v", err)
 		}
-		return []string{}
+		return nil, nil
 	}
 
-	if ircConfig, ok := config["irc"].(map[string]interface{}); ok {
-		if channels, ok := ircConfig["channels"].([]interface{}); ok {
-			var result []string
-			for _, ch := range channels {
-				if chanStr, ok := ch.(string); ok {
-					result = append(result, chanStr)
-				}
-			}
-			return result
+	channels := make([]string, 0, len(config.IRC.Channels))
+	for _, ch := range config.IRC.Channels {
+		ch = strings.TrimSpace(ch)
+		if ch != "" {
+			channels = append(channels, ch)
 		}
 	}
-	return []string{}
+	return channels, config.InviteChannels
 }

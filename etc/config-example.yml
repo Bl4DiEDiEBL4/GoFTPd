@@ -170,8 +170,8 @@ msg_path:       "etc/msgs"      # Directory with welcome/rules/goodbye message t
 #  TLS — used on both master and slaves (same cert pair on all boxes).
 # =============================================================================
 tls_enabled: true
-tls_cert:    ./etc/server.crt
-tls_key:     ./etc/server.key
+tls_cert:    ./etc/certs/server.crt
+tls_key:     ./etc/certs/server.key
 
 
 # =============================================================================
@@ -247,6 +247,8 @@ zipscript:
   hooks:
     on_complete:
       enabled: false           # run an external command after a release completes
+      run_on: "master"         # master or slave; slave runs on the owning slave where the files live
+      slave_name: ""           # optional override when run_on=slave; normally leave empty to auto-pick the owning slave
       command: "/usr/bin/python3"
       args: ["/goftpd/bin/on_complete.py"]
       timeout_seconds: 30
@@ -255,6 +257,9 @@ zipscript:
       # Exported env vars include:
       #   GOFTPD_EVENT=COMPLETE
       #   GOFTPD_PATH / GOFTPD_DIR
+      #   GOFTPD_HOOK_TARGET
+      #   GOFTPD_SLAVE_NAME (when run_on=slave)
+      #   GOFTPD_LOCAL_PATH (when run_on=slave; local filesystem path on that slave)
       #   GOFTPD_RELNAME
       #   GOFTPD_RELEASE_NAME
       #   GOFTPD_RELEASE_SUBDIR

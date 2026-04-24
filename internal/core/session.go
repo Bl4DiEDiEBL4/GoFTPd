@@ -13,6 +13,34 @@ import (
 	"goftpd/internal/user"
 )
 
+func sanitizeLoggedFTPLine(line string) string {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return line
+	}
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return line
+	}
+	cmd := strings.ToUpper(fields[0])
+	switch cmd {
+	case "PASS":
+		return "PASS ********"
+	case "SITE":
+		if len(fields) < 2 {
+			return line
+		}
+		switch strings.ToUpper(fields[1]) {
+		case "ADDUSER", "GADDUSER", "CHPASS", "READD":
+			if len(fields) >= 4 {
+				fields[3] = "********"
+			}
+			return strings.Join(fields, " ")
+		}
+	}
+	return line
+}
+
 // Session represents an active FTP client connection and its state.
 type Session struct {
 	ID            uint64
@@ -112,10 +140,7 @@ func HandleSession(conn net.Conn, tlsConfig *tls.Config, cfg *Config, aclEngine 
 		}
 
 		if cfg.Debug {
-			logLine := line
-			if strings.HasPrefix(strings.ToUpper(line), "PASS ") {
-				logLine = "PASS ********"
-			}
+			logLine := sanitizeLoggedFTPLine(line)
 			if session.Config.Debug {
 				log.Printf("[%s] -> %s", session.Conn.RemoteAddr(), logLine)
 			}
@@ -129,7 +154,7 @@ func HandleSession(conn net.Conn, tlsConfig *tls.Config, cfg *Config, aclEngine 
 		args := parts[1:]
 
 		if session.Config.Debug {
-			log.Printf("[CMD] raw=%q cmd=%q args=%q", line, cmd, args)
+			log.Printf("[CMD] raw=%q cmd=%q args=%q", sanitizeLoggedFTPLine(line), cmd, args)
 		}
 		session.touchActivity()
 

@@ -103,6 +103,9 @@ type MasterBridge interface {
 	// GetLiveTransferStats asks connected slaves for current live transfer counters.
 	GetLiveTransferStats() []LiveTransferStat
 
+	// RunOnSlaveCommand runs a command on the owning or requested slave.
+	RunOnSlaveCommand(dirPath, command string, args []string, env map[string]string, timeoutSeconds int, preferredSlave string) (string, error)
+
 	// Passthrough PORT: tell slave to connect out to remote address and receive file
 	SlaveConnectAndReceive(filePath, remoteAddr, owner, group string, position int64) (int64, uint32, int64, error)
 

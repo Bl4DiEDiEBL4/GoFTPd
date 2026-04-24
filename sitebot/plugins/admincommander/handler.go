@@ -135,6 +135,7 @@ func (p *Plugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 		displayArgs = siteArgs
 	}
 	displayArgs = normalizeSiteArgs(displayArgs)
+	displayArgs = sanitizeDisplaySITEArgs(displayArgs)
 	siteCommand := firstWord(siteArgs)
 	if !p.allowedCommand(siteCommand) {
 		return p.reply(evt, p.render("ADMINCMD_BLOCKED", map[string]string{"command": siteCommand}, fmt.Sprintf("ADMIN: SITE %s is not allowed.", siteCommand))), nil
@@ -158,6 +159,20 @@ func (p *Plugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 		return p.reply(evt, p.render("ADMINCMD_ERROR", vars, "ADMIN: SITE "+displayArgs+" failed: "+response)), nil
 	}
 	return p.commandResponse(evt, displayArgs, responseLines), nil
+}
+
+func sanitizeDisplaySITEArgs(args string) string {
+	fields := strings.Fields(strings.TrimSpace(args))
+	if len(fields) == 0 {
+		return args
+	}
+	switch strings.ToUpper(fields[0]) {
+	case "ADDUSER", "GADDUSER", "CHPASS", "READD":
+		if len(fields) >= 3 {
+			fields[2] = "********"
+		}
+	}
+	return strings.Join(fields, " ")
 }
 
 func (p *Plugin) runSITE(siteArgs string) ([]string, error) {

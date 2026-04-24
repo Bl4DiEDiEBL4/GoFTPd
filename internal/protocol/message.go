@@ -23,6 +23,7 @@ func init() {
 	gob.Register(&AsyncResponseFileContent{})
 	gob.Register(&AsyncResponseMediaInfo{})
 	gob.Register(&AsyncResponseTransferStats{})
+	gob.Register(&AsyncResponseCommandResult{})
 	gob.Register(&ConnectInfo{})
 	gob.Register(&TransferStatus{})
 	gob.Register(&TransferLiveStat{})
@@ -232,6 +233,13 @@ type AsyncResponseTransferStats struct {
 }
 
 func (ar *AsyncResponseTransferStats) GetIndex() string { return ar.Index }
+
+type AsyncResponseCommandResult struct {
+	Index  string
+	Output string
+}
+
+func (ar *AsyncResponseCommandResult) GetIndex() string { return ar.Index }
 
 type TransferLiveStat struct {
 	TransferIndex int32

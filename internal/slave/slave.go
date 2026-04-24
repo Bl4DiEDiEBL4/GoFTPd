@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -255,6 +256,9 @@ func (s *Slave) handleCommand(ac *protocol.AsyncCommand) interface{} {
 
 	case "transferStats":
 		return s.handleTransferStats(ac)
+
+	case "runCommand":
+		return s.handleRunCommand(ac)
 
 	case "abort":
 		return s.handleAbort(ac)
@@ -649,6 +653,88 @@ func (s *Slave) handleTransferStats(ac *protocol.AsyncCommand) interface{} {
 		return true
 	})
 	return &protocol.AsyncResponseTransferStats{Index: ac.Index, Stats: stats}
+}
+
+func (s *Slave) handleRunCommand(ac *protocol.AsyncCommand) interface{} {
+	if len(ac.Args) < 5 {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "runCommand: not enough args"}
+	}
+
+	command := strings.TrimSpace(ac.Args[0])
+	if command == "" {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "runCommand: empty command"}
+	}
+
+	timeoutSeconds, _ := strconv.Atoi(strings.TrimSpace(ac.Args[1]))
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 30
+	}
+
+	var args []string
+	if err := json.Unmarshal([]byte(ac.Args[2]), &args); err != nil {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("runCommand args decode failed: %v", err)}
+	}
+
+	env := map[string]string{}
+	if err := json.Unmarshal([]byte(ac.Args[3]), &env); err != nil {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("runCommand env decode failed: %v", err)}
+	}
+
+	dirPath := strings.TrimSpace(ac.Args[4])
+	localPath := s.resolveLocalPath(dirPath)
+	env["GOFTPD_HOOK_TARGET"] = "slave"
+	env["GOFTPD_SLAVE_NAME"] = s.name
+	if localPath != "" {
+		env["GOFTPD_LOCAL_PATH"] = localPath
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, command, args...)
+	cmd.Env = append(os.Environ(), flattenEnvMap(env)...)
+	if localPath != "" {
+		cmd.Dir = localPath
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := err.Error()
+		if trimmed := strings.TrimSpace(string(out)); trimmed != "" {
+			msg = msg + ": " + trimmed
+		}
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: msg}
+	}
+	return &protocol.AsyncResponseCommandResult{Index: ac.Index, Output: strings.TrimSpace(string(out))}
+}
+
+func (s *Slave) resolveLocalPath(dirPath string) string {
+	cleaned := strings.TrimLeft(filepath.Clean(dirPath), `/\`)
+	for _, root := range s.roots {
+		candidate := filepath.Join(root, cleaned)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	if len(s.roots) == 0 {
+		return ""
+	}
+	return filepath.Join(s.roots[0], cleaned)
+}
+
+func flattenEnvMap(env map[string]string) []string {
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		k = strings.TrimSpace(k)
+		if k != "" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, k+"="+env[k])
+	}
+	return out
 }
 
 // handleRemerge - slave scans its roots and sends all files to master.

@@ -1,6 +1,7 @@
 package master
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"goftpd/internal/protocol"
@@ -87,6 +88,32 @@ func IssueTransferStats(rs *RemoteSlave) (string, error) {
 		return "", err
 	}
 	return index, rs.SendCommand(&protocol.AsyncCommand{Index: index, Name: "transferStats"})
+}
+
+func IssueRunCommand(rs *RemoteSlave, command string, args []string, env map[string]string, timeoutSeconds int, dirPath string) (string, error) {
+	index, err := rs.FetchIndex()
+	if err != nil {
+		return "", err
+	}
+	argsJSON, err := json.Marshal(args)
+	if err != nil {
+		return "", err
+	}
+	envJSON, err := json.Marshal(env)
+	if err != nil {
+		return "", err
+	}
+	return index, rs.SendCommand(&protocol.AsyncCommand{
+		Index: index,
+		Name:  "runCommand",
+		Args: []string{
+			command,
+			fmt.Sprintf("%d", timeoutSeconds),
+			string(argsJSON),
+			string(envJSON),
+			dirPath,
+		},
+	})
 }
 
 // IssueListen tells the slave to open a passive data port.
