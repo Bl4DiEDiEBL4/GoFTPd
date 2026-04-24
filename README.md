@@ -37,13 +37,12 @@ PASV/CPSV/PORT, SSCN, and PROT P.
 ## Quick Start
 
 ```bash
-./build.sh
+./setup.sh build
 ./generate_certs.sh "My FTPd"
 cp etc/config-example.yml etc/config.yml
 ./goftpd
 
 cd sitebot
-./build.sh
 cp etc/config.yml.example etc/config.yml
 ./sitebot -config etc/config.yml
 ```
@@ -51,7 +50,13 @@ cp etc/config.yml.example etc/config.yml
 For a first-time guided setup, use:
 
 ```bash
-./setup-interactive.sh
+./setup.sh install
+```
+
+If you only want to compile both binaries without touching config setup, use:
+
+```bash
+./setup.sh build
 ```
 
 It asks for master/slave mode, ports, PASV/proxy style, certificate name,
@@ -67,7 +72,7 @@ use those values as the prompt defaults for the new run.
 To back up generated interactive configs and start over cleanly, use:
 
 ```bash
-./setup-interactive.sh --clean
+./setup.sh clean
 ```
 
 Cleanup mode:
