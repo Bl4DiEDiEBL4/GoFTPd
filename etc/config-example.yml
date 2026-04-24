@@ -170,8 +170,8 @@ msg_path:       "etc/msgs"      # Directory with welcome/rules/goodbye message t
 #  TLS — used on both master and slaves (same cert pair on all boxes).
 # =============================================================================
 tls_enabled: true
-tls_cert:    ./etc/server.crt
-tls_key:     ./etc/server.key
+tls_cert:    ./etc/certs/server.crt
+tls_key:     ./etc/certs/server.key
 
 
 # =============================================================================

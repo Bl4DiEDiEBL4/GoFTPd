@@ -7,6 +7,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"goftpd/internal/acl"
 )
 
 type sessionSnapshot struct {
@@ -93,6 +95,20 @@ func kickActiveUser(username string) int {
 		return true
 	})
 	return kicked
+}
+
+func UpdateActiveSessionACL(engine *acl.Engine) {
+	if engine == nil {
+		return
+	}
+	activeSessions.Range(func(key, value interface{}) bool {
+		s, ok := value.(*Session)
+		if !ok || s == nil {
+			return true
+		}
+		s.ACLEngine = engine
+		return true
+	})
 }
 
 func remoteAddrString(conn net.Conn) string {
