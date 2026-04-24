@@ -22,7 +22,10 @@ func (s *Session) HandleSiteRehash(args []string) bool {
 	}
 
 	log.Printf("[REHASH] %s reloaded config from %s", s.User.Name, path)
-	fmt.Fprintf(s.Conn, "200- Config reloaded from %s\r\n", path)
+	fmt.Fprintf(s.Conn, "200- Reloaded: %s\r\n", path)
+	fmt.Fprintf(s.Conn, "200- Reloaded: etc/permissions.yml\r\n")
+	fmt.Fprintf(s.Conn, "200- Reloaded: plugin config_file entries referenced from %s\r\n", path)
+	fmt.Fprintf(s.Conn, "200- Applied: zipscript, plugin blocks, invite/sitebot settings, sections, slave policies, limits, logging\r\n")
 	fmt.Fprintf(s.Conn, "200- (port, TLS, storage_path, mode require restart)\r\n")
 	fmt.Fprintf(s.Conn, "200 Rehash complete.\r\n")
 	return false

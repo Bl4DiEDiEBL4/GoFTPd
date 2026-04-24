@@ -29,9 +29,10 @@ func createUserFromArgs(s *Session, username, plaintextPassword, primaryGroup st
 	}
 
 	var ips []string
-	for _, ip := range ipArgs {
-		if !strings.Contains(ip, "@") {
-			ip = "*@" + ip
+	for _, rawIP := range ipArgs {
+		ip := normalizeUserIP(rawIP)
+		if ip == "" {
+			return nil, "", fmt.Errorf("invalid IP mask %q", strings.TrimSpace(rawIP))
 		}
 		ips = append(ips, ip)
 	}
@@ -566,7 +567,21 @@ func normalizeUserIP(ip string) string {
 	if !strings.Contains(ip, "@") {
 		ip = "*@" + ip
 	}
+	if !looksLikeUserIPMask(ip) {
+		return ""
+	}
 	return ip
+}
+
+func looksLikeUserIPMask(ip string) bool {
+	if !strings.Contains(ip, "@") {
+		return false
+	}
+	host := strings.TrimSpace(strings.SplitN(ip, "@", 2)[1])
+	if host == "" {
+		return false
+	}
+	return strings.ContainsAny(host, ".*:") || strings.EqualFold(host, "*")
 }
 
 func containsExact(values []string, needle string) bool {
