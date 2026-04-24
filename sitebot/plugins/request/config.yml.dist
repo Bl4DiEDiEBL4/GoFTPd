@@ -8,7 +8,7 @@ password: "goftpd"
 tls: true
 insecure_skip_verify: true
 timeout_seconds: 10
-channels: ["#goftpd"]
+channels: ["#goftpd-chat"]
 staff_channels: ["#goftpd-staff"]
 staff_hosts: []
 # reply_target supports "channel", "notice", or a fixed "#channel".

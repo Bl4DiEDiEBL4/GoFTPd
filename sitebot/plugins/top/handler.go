@@ -373,17 +373,31 @@ func (p *Plugin) render(key string, vars map[string]string, fallback string) str
 }
 
 func formatBytes(bytes int64) string {
-	units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
+	if bytes < 0 {
+		bytes = 0
+	}
+	const (
+		kb = 1024
+		mb = 1024 * 1024
+		gb = 1024 * 1024 * 1024
+		tb = 1024 * 1024 * 1024 * 1024
+		pb = 1024 * 1024 * 1024 * 1024 * 1024
+	)
 	value := float64(bytes)
-	unit := units[0]
-	for i := 0; i < len(units)-1 && value >= 1024; i++ {
-		value /= 1024
-		unit = units[i+1]
+	switch {
+	case bytes >= pb:
+		return fmt.Sprintf("%.2f PB", value/float64(pb))
+	case bytes >= tb:
+		return fmt.Sprintf("%.2f TB", value/float64(tb))
+	case bytes >= gb:
+		return fmt.Sprintf("%.2f GB", value/float64(gb))
+	case bytes >= mb:
+		return fmt.Sprintf("%.2f MB", value/float64(mb))
+	case bytes >= kb:
+		return fmt.Sprintf("%.2f KB", value/float64(kb))
+	default:
+		return fmt.Sprintf("%d B", bytes)
 	}
-	if unit == "B" {
-		return fmt.Sprintf("%d %s", bytes, unit)
-	}
-	return fmt.Sprintf("%.2f %s", value, unit)
 }
 
 func configValue(section, flat map[string]interface{}, sectionKey, flatKey string) interface{} {

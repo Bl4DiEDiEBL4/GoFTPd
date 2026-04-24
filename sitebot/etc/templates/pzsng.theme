@@ -373,11 +373,11 @@ announce.BANNEDCMD_LINE = "%b{%c01{BANNED:}} %c05{%line}"
 
 announce.BANNEDCMD_ERROR = "%b{%c01{BANNED:}} %c04{%response}"
 
-announce.TOPCMD_HEADER = "%c03{TOP UPLOADERS FOR THE DAY:} %c01{[ }%c06{%count} Users %c01{]}"
+announce.TOPCMD_HEADER = "%c03{TOP UPLOADERS FOR THE DAY:} %c01{[ }%b{%count} %c01{Users ]}"
 
-announce.TOPCMD_ENTRY = "%c01{[ }%c06{%rank} %c01{]} %b{%user} %c01{- (}%files %c01{Files) - (}%size%c01{)}"
+announce.TOPCMD_ENTRY = "%c01{[ }%c06{%rank} %c01{]} %b{%user} %c01{- (}%b{%files} %c01{Files) - (}%b{%size}%c01{)}"
 
-announce.TOPCMD_TOTAL = "%c03{TOTAL UPLOADS FOR THE DAY:} %c01{( }%files %c01{Files ) - ( }%size %c01{)}"
+announce.TOPCMD_TOTAL = "%c03{TOTAL UPLOADS FOR THE DAY:} %c01{( }%b{%files} %c01{Files ) - ( }%b{%size}%c01{)}"
 
 announce.TOPCMD_EMPTY = "%b{%c03{TOP:}} %c05{No uploads recorded for today.}"
 

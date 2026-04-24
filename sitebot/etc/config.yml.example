@@ -11,6 +11,7 @@ event_fifo: "/GoFTPd/etc/goftpd.sitebot.fifo"
 # YAML expands the anchors anywhere they are referenced below.
 channel_sets:
   main:    &chan_main    ["#goftpd"]
+  chat:    &chan_chat    ["#goftpd-chat"]
   spam:    &chan_spam    ["#goftpd-spam"]
   staff:   &chan_staff   ["#goftpd-staff"]
   foreign: &chan_foreign ["#goftpd-foreign"]
@@ -32,6 +33,7 @@ irc:
   autojoin_delay_ms: 250
   channels:
     - "#goftpd"
+    - "#goftpd-chat"
     - "#goftpd-spam"
     - "#goftpd-staff"
 
@@ -50,6 +52,7 @@ encryption:
   enabled: true
   keys:
     "#goftpd": "cbc:YourBlowfishKeyHere123456"
+    "#goftpd-chat": "cbc:YourBlowfishKeyHere123456"
     "#goftpd-spam": "cbc:YourBlowfishKeyHere123456"
     "#goftpd-staff": "cbc:YourBlowfishKeyHere123456"
     "#goftpd-foreign": "cbc:YourBlowfishKeyHere123456"
@@ -60,7 +63,7 @@ announce:
   config_file: "plugins/announce/config.yml"
 
 help:
-  channels: *chan_main
+  channels: *chan_chat
   reply_target: "pm"
   lines:
     - "!help - show this help in PM"

@@ -7,6 +7,6 @@ search_default: 4
 #   "notice"   = reply as a private NOTICE to the user
 #   "#channel" = always reply in that fixed IRC channel
 reply_target: "channel"
-channels: ["#goftpd"]
+channels: ["#goftpd-chat"]
 staff_channels: ["#goftpd-staff"]
 staff_hosts: []

@@ -5,7 +5,7 @@
 #   !top 10
 #   !top 25
 users_dir: "../etc/users"
-channels: ["#goftpd"]
+channels: ["#goftpd-chat"]
 # reply_target supports "channel", "notice", "pm", or a fixed "#channel".
 reply_target: "channel"
 default_count: 10

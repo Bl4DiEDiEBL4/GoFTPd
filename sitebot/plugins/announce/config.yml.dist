@@ -5,6 +5,6 @@ type_routes:
   UNNUKE: ["#goftpd-nuke"]
   NEWDAY: ["#goftpd"]
   SPEEDTEST: ["#goftpd"]
-  TOP: ["#goftpd"]
+  TOP: ["#goftpd-chat"]
   LOGIN: ["#goftpd-staff"]
   SELFIP: ["#goftpd-staff"]
