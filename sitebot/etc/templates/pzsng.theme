@@ -367,6 +367,8 @@ announce.BNC_DOWN = "%c04{%index}.- %c06{%name} %c01{at} %c05{%host}%c01{:}%c05{
 
 announce.BNC_ERROR = "%b{%c01{BNC:}} %c04{%response}"
 
+announce.LOGINFAIL = "%b{%c02{LOGiN:}} %c04{%message}"
+
 announce.BANNEDCMD_LINE = "%b{%c01{BANNED:}} %c05{%line}"
 
 announce.BANNEDCMD_ERROR = "%b{%c01{BANNED:}} %c04{%response}"
@@ -390,6 +392,14 @@ announce.BW_ERROR = "%b{%c01{BANDWiDTH:}} %c04{%response}"
 announce.RULESCMD_LINE = "%b{%c01{RULES:}} %c05{%line}"
 
 announce.RULESCMD_ERROR = "%b{%c01{RULES:}} %c04{%response}"
+announce.SELFIPCMD_OK = "%b{%c02{IP:}} %c05{%response}"
+announce.SELFIPCMD_LINE = "%b{%c02{IP:}} %c05{%line}"
+announce.SELFIPCMD_ERROR = "%b{%c02{IP:}} %c04{%response}"
+announce.SELFIPCMD_DENIED = "%b{%c02{IP:}} %c04{%response}"
+announce.SELFIPCMD_HELP = "%b{%c02{IP:}} %c05{%line}"
+announce.HELPCMD_HEADER = "%b{%c02{HELP:}} %c05{available user commands}"
+announce.HELPCMD_LINE = "%b{%c02{HELP:}} %c05{%line}"
+announce.HELPCMD_ERROR = "%b{%c02{HELP:}} %c04{%response}"
 announce.CTRLCMD_OK = "%b{%c02{CONTROL:}} %c05{%response}"
 announce.CTRLCMD_ERROR = "%b{%c02{CONTROL:}} %c04{%response}"
 announce.CTRLCMD_DENIED = "%b{%c02{CONTROL:}} %c04{Staff command only.}"
@@ -398,7 +408,10 @@ announce.TOPICCMD_ERROR = "%b{%c02{TOPIC:}} %c04{%response}"
 announce.TOPICCMD_DENIED = "%b{%c02{TOPIC:}} %c04{Staff command only.}"
 announce.TOPICCMD_USAGE = "%b{%c02{TOPIC:}} %c01{Usage:} %c05{!topic #channel topic text}"
 
-announce.NUKE = "%b{%c01{NUKE:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{by} %c04{%u_name}"
+announce.NUKE = "%b{%c04{NUKED:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}}"
+announce.NUKE_FACTOR = "%b{%c04{NUKED:}} %c01{Was nuked factor} %c04{%b{%multiplier_label}} %c01{by} %c07{%b{%u_name}}"
+announce.NUKE_REASON = "%b{%c04{NUKED:}} %c01{[reason]} %c14{-->} %c04{%b{%reason}}"
+announce.NUKE_NUKEES = "%b{%c04{NUKED:}} %c01{[nukees]} %c14{-->} %c07{%nukees}"
 
 announce.UNNUKE = "%b{%c01{UNNUKE:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{by} %c04{%u_name}"
 

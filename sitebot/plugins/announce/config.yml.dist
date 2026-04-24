@@ -6,3 +6,4 @@ type_routes:
   NEWDAY: ["#goftpd"]
   SPEEDTEST: ["#goftpd"]
   TOP: ["#goftpd"]
+  LOGIN: ["#goftpd-staff"]

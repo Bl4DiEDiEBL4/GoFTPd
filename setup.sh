@@ -322,7 +322,7 @@ ensure_enabled_plugin_configs() {
     local repaired_any="false"
     local missing_any="false"
 
-    local daemon_plugins=(dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre)
+    local daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre)
     if [ -f "${daemon_config}" ]; then
         for plugin_name in "${daemon_plugins[@]}"; do
             enabled_value="$(daemon_plugin_enabled_in_config "${daemon_config}" "${plugin_name}")"
@@ -845,7 +845,7 @@ configure_daemon() {
     local daemon_enabled=()
     local daemon_disabled=()
     if [ "${daemon_mode}" = "master" ]; then
-        daemon_plugins=(dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre)
+        daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre)
     fi
 
     local plugin_name
@@ -1206,6 +1206,7 @@ save_state_file() {
     write_state_var SETUP_BLOWFISH_KEY_ARCHIVE "${SETUP_BLOWFISH_KEY_ARCHIVE:-${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}}"
     write_state_var SETUP_BLOWFISH_KEY_NUKE "${SETUP_BLOWFISH_KEY_NUKE:-${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}}"
     write_state_var SETUP_DAEMON_PLUGIN_DATEDDIRS "${SETUP_DAEMON_PLUGIN_DATEDDIRS:-true}"
+    write_state_var SETUP_DAEMON_PLUGIN_AUTONUKE "${SETUP_DAEMON_PLUGIN_AUTONUKE:-false}"
     write_state_var SETUP_DAEMON_PLUGIN_TVMAZE "${SETUP_DAEMON_PLUGIN_TVMAZE:-true}"
     write_state_var SETUP_DAEMON_PLUGIN_IMDB "${SETUP_DAEMON_PLUGIN_IMDB:-true}"
     write_state_var SETUP_DAEMON_PLUGIN_MEDIAINFO "${SETUP_DAEMON_PLUGIN_MEDIAINFO:-true}"

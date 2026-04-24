@@ -122,6 +122,9 @@ rules:
   - type: sitecmd
     path: BANNED
     required: "*"
+  - type: sitecmd
+    path: SELFIP
+    required: "*"
 
   # Affil/staff workflow commands.
   # PRE is intentionally open here. The PRE plugin itself checks affil
@@ -188,9 +191,6 @@ rules:
     required: "1"
   - type: sitecmd
     path: GRPNFO
-    required: "1"
-  - type: sitecmd
-    path: TRAFFIC
     required: "1"
   - type: sitecmd
     path: UNDUPE

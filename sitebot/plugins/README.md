@@ -11,8 +11,13 @@ NOTICE) that the bot sends to channels.
 - **imdb** - async movie lookup on MKD, posts MOVIE-INFO to channels
 - **news** - handles `!news`, `!addnews`, `!delnews` IRC commands, persists to JSONL
 - **free** - handles `!free` (disk space) IRC command
+- **affils** - handles `!affils`, showing configured affil groups from the shared affils file
+- **request** - handles `!request`, `!requests`, `!reqfill`, `!reqdel`, `!reqwipe`
 - **bnc** - handles `!bnc` FTP login health checks across one or more configured targets
+- **bw** - handles `!bw`, querying SITE BW through the daemon
+- **admincommander** - staff bridge for `!site`, `!nuke`, `!unnuke` and other allowed SITE commands
 - **banned** - handles `!banned` by querying `SITE BANNED`
+- **selfip** - handles `!ip`, `!ips`, `!addip`, `!delip`, `!chgip` through `SITE SELFIP`
 - **top** - handles `!top`, reading daily upload stats from goftpd user files and optionally auto-announcing the leaderboard
 - **rules** - handles `!rules`, reading a configured rules file or falling back to `SITE RULES`
 - **topic** - handles staff-only `!topic #channel topic text`, using FiSH topic encryption when a channel key exists
@@ -165,6 +170,7 @@ func (p *MyPlugin) SetAsyncEmitter(fn func(outType, text, section, relpath strin
 | `EventRaceUser`       | One per racer in HOF                                    |
 | `EventRaceFooter`     | STATS_END line                                          |
 | `EventNewUser`        | New user added via SITE ADDUSER                         |
+| `EventLoginFail`      | Login denied (unknown user, deleted user, bad password, IP issue, etc.) |
 | `EventInvite`         | SITE INVITE - handled by bot directly, plugins skipped  |
 | `EventCommand`        | IRC `!cmd` from a user (news, free, etc.)               |
 | `EventDiskStatus`     | Slave disk status report                                |

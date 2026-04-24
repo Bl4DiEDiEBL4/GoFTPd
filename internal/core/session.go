@@ -36,6 +36,11 @@ func sanitizeLoggedFTPLine(line string) string {
 				fields[3] = "********"
 			}
 			return strings.Join(fields, " ")
+		case "SELFIP":
+			if len(fields) >= 5 {
+				fields[4] = "********"
+			}
+			return strings.Join(fields, " ")
 		}
 	}
 	return line
@@ -60,6 +65,8 @@ type Session struct {
 	DataTLS       bool           // Data channel encryption state (PROT P)
 	GroupMap      map[string]int // groupname -> GID mapping
 	StartedAt     time.Time
+	PendingUser   string
+	PendingReason string
 
 	// Passthrough transfer state (drftpd-style direct client→slave)
 	PretCmd         string      // "STOR", "RETR", or "" — set by PRET

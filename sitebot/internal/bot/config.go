@@ -25,8 +25,15 @@ type Config struct {
 	IRC                IRCConfig      `yaml:"irc"`
 	Encryption         EncConfig      `yaml:"encryption"`
 	Announce           AnnounceConfig `yaml:"announce"`
+	Help               HelpConfig     `yaml:"help"`
 	Sections           []SectionRoute `yaml:"sections"`
 	Plugins            PluginsConfig  `yaml:"plugins"`
+}
+
+type HelpConfig struct {
+	Channels    []string `yaml:"channels"`
+	ReplyTarget string   `yaml:"reply_target"`
+	Lines       []string `yaml:"lines"`
 }
 
 type IRCConfig struct {
@@ -99,6 +106,12 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.Plugins.Config == nil {
 		cfg.Plugins.Config = map[string]interface{}{}
+	}
+	if len(cfg.Help.Channels) == 0 {
+		cfg.Help.Channels = []string{"#goftpd"}
+	}
+	if strings.TrimSpace(cfg.Help.ReplyTarget) == "" {
+		cfg.Help.ReplyTarget = "pm"
 	}
 	if !cfg.LogConsole {
 		// default false value from yaml means either unset or explicit false.
@@ -262,6 +275,7 @@ func (c *Config) Rehash() (string, error) {
 
 	c.Encryption = fresh.Encryption
 	c.Announce = fresh.Announce
+	c.Help = fresh.Help
 	c.Sections = fresh.Sections
 	c.Plugins = fresh.Plugins
 	return c.configPath, nil

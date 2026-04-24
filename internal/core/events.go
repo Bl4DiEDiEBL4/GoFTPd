@@ -28,6 +28,7 @@ const (
 	EventRaceUser      EventType = "RACEUSER"   // one per racer in HOF
 	EventRaceFooter    EventType = "RACEFOOTER" // STATS_END line
 	EventNewUser       EventType = "NEWUSER"
+	EventLoginFail     EventType = "LOGINFAIL"
 	EventMKDir         EventType = "MKDIR"
 	EventRMDir         EventType = "RMDIR"
 	EventRename        EventType = "RENAME"
@@ -526,4 +527,17 @@ func copyMap(in map[string]string) map[string]string {
 		out[k] = v
 	}
 	return out
+}
+
+func (s *Session) emitLoginFailure(username, remoteIP, reason string) {
+	if s == nil || s.Config == nil {
+		return
+	}
+	data := map[string]string{
+		"username":    strings.TrimSpace(username),
+		"remote_ip":   strings.TrimSpace(remoteIP),
+		"remote_mask": "*@" + strings.TrimSpace(remoteIP),
+		"reason":      strings.TrimSpace(reason),
+	}
+	s.emitEvent(EventLoginFail, "", "", 0, 0, data)
 }

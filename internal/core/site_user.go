@@ -427,6 +427,150 @@ func (s *Session) HandleSiteDelIP(args []string) bool {
 	return false
 }
 
+func (s *Session) HandleSiteSelfIP(args []string) bool {
+	if !s.User.HasFlag("1") {
+		fmt.Fprintf(s.Conn, "550 Access denied.\r\n")
+		return false
+	}
+	if len(args) < 3 {
+		fmt.Fprintf(s.Conn, "501 Usage: SITE SELFIP <LIST|ADD|DEL|CHG> <user> <pass> [args]\r\n")
+		return false
+	}
+
+	action := strings.ToUpper(strings.TrimSpace(args[0]))
+	username := strings.TrimSpace(args[1])
+	password := args[2]
+
+	targetUser, authReason := s.authenticateSelfIPUser(username, password)
+	if targetUser == nil {
+		fmt.Fprintf(s.Conn, "550 Authentication failed: %s.\r\n", authReason)
+		return false
+	}
+
+	switch action {
+	case "LIST":
+		fmt.Fprintf(s.Conn, "200- IPs for %s:\r\n", targetUser.Name)
+		if len(targetUser.IPs) == 0 {
+			fmt.Fprintf(s.Conn, "200- No IPs configured.\r\n")
+		}
+		for i, ip := range targetUser.IPs {
+			fmt.Fprintf(s.Conn, "200- [%02d] %s\r\n", i+1, ip)
+		}
+		fmt.Fprintf(s.Conn, "200 End of IP list.\r\n")
+		return false
+	case "ADD":
+		if len(args) < 4 {
+			fmt.Fprintf(s.Conn, "501 Usage: SITE SELFIP ADD <user> <pass> <ident@ip> [ident@ip ...]\r\n")
+			return false
+		}
+		added := 0
+		for _, ip := range args[3:] {
+			ip = normalizeUserIP(ip)
+			if ip == "" || containsExact(targetUser.IPs, ip) {
+				continue
+			}
+			targetUser.IPs = append(targetUser.IPs, ip)
+			added++
+		}
+		targetUser.Save()
+		fmt.Fprintf(s.Conn, "200 Added %d IP(s) to %s (total: %d).\r\n", added, targetUser.Name, len(targetUser.IPs))
+		return false
+	case "DEL":
+		if len(args) < 4 {
+			fmt.Fprintf(s.Conn, "501 Usage: SITE SELFIP DEL <user> <pass> <ident@ip> [ident@ip ...]\r\n")
+			return false
+		}
+		removed := 0
+		for _, ip := range args[3:] {
+			ip = normalizeUserIP(ip)
+			for i, existing := range targetUser.IPs {
+				if existing == ip {
+					targetUser.IPs = append(targetUser.IPs[:i], targetUser.IPs[i+1:]...)
+					removed++
+					break
+				}
+			}
+		}
+		targetUser.Save()
+		fmt.Fprintf(s.Conn, "200 Removed %d IP(s) from %s (remaining: %d).\r\n", removed, targetUser.Name, len(targetUser.IPs))
+		return false
+	case "CHG", "CHANGE":
+		if len(args) < 5 {
+			fmt.Fprintf(s.Conn, "501 Usage: SITE SELFIP CHG <user> <pass> <oldip> <newip>\r\n")
+			return false
+		}
+		oldIP := normalizeUserIP(args[3])
+		newIP := normalizeUserIP(args[4])
+		if oldIP == "" || newIP == "" {
+			fmt.Fprintf(s.Conn, "550 Invalid IP argument.\r\n")
+			return false
+		}
+		replaced := false
+		for i, existing := range targetUser.IPs {
+			if existing == oldIP {
+				targetUser.IPs[i] = newIP
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			fmt.Fprintf(s.Conn, "550 IP %s not found on %s.\r\n", oldIP, targetUser.Name)
+			return false
+		}
+		targetUser.Save()
+		fmt.Fprintf(s.Conn, "200 Changed IP for %s: %s -> %s.\r\n", targetUser.Name, oldIP, newIP)
+		return false
+	default:
+		fmt.Fprintf(s.Conn, "501 Usage: SITE SELFIP <LIST|ADD|DEL|CHG> <user> <pass> [args]\r\n")
+		return false
+	}
+}
+
+func (s *Session) authenticateSelfIPUser(username, password string) (*user.User, string) {
+	u, err := user.LoadUser(username, s.GroupMap)
+	if err != nil {
+		if _, statErr := os.Stat(deletedUserPath(username)); statErr == nil {
+			return nil, "user deleted"
+		}
+		return nil, "user not found"
+	}
+
+	passwordOK := false
+	passwds, err := LoadPasswdFile(s.Config.PasswdFile)
+	if err == nil {
+		if hash, ok := passwds[u.Name]; ok {
+			passwordOK = VerifyPassword(password, hash)
+		}
+	}
+	if !passwordOK && u.Password != "" {
+		passwordOK = (u.Password == password)
+	}
+	if !passwordOK {
+		return nil, "password not accepted"
+	}
+	return u, ""
+}
+
+func normalizeUserIP(ip string) string {
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return ""
+	}
+	if !strings.Contains(ip, "@") {
+		ip = "*@" + ip
+	}
+	return ip
+}
+
+func containsExact(values []string, needle string) bool {
+	for _, value := range values {
+		if value == needle {
+			return true
+		}
+	}
+	return false
+}
+
 // HandleSiteDelUser deletes a user account.
 // Usage: SITE DELUSER <user>
 func (s *Session) HandleSiteDelUser(args []string) bool {

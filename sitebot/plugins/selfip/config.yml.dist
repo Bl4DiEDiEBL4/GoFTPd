@@ -1,0 +1,17 @@
+# Self-service IRC gateway for user IP management.
+# Commands:
+#   !ip                      (sends help by PM)
+#   !ips <user> <pass>
+#   !addip <user> <pass> <ident@ip> [ident@ip ...]
+#   !delip <user> <pass> <ident@ip> [ident@ip ...]
+#   !chgip <user> <pass> <oldip> <newip>
+host: "127.0.0.1"
+port: 21212
+user: "goftpd"
+password: "goftpd"
+tls: true
+insecure_skip_verify: true
+timeout_seconds: 10
+channels: ["#goftpd"]
+# reply_target supports "channel", "notice", "pm", or a fixed "#channel".
+reply_target: "pm"

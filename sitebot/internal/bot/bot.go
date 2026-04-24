@@ -26,6 +26,7 @@ import (
 	newsplugin "goftpd/sitebot/plugins/news"
 	requestplugin "goftpd/sitebot/plugins/request"
 	rulesplugin "goftpd/sitebot/plugins/rules"
+	selfipplugin "goftpd/sitebot/plugins/selfip"
 	topplugin "goftpd/sitebot/plugins/top"
 	topicplugin "goftpd/sitebot/plugins/topic"
 	tvmazeplugin "goftpd/sitebot/plugins/tvmaze"
@@ -255,6 +256,19 @@ func (b *Bot) initializePlugins() error {
 			return err
 		}
 	}
+	if enabled, ok := b.Config.Plugins.Enabled["SelfIP"]; ok && enabled {
+		selfip := selfipplugin.New()
+		cfg := map[string]interface{}{"debug": b.Debug, "theme_file": b.Config.Announce.ThemeFile}
+		for k, v := range b.Config.Plugins.Config {
+			cfg[k] = v
+		}
+		if err := selfip.Initialize(cfg); err != nil {
+			return err
+		}
+		if err := b.registerPlugin("SelfIP", selfip); err != nil {
+			return err
+		}
+	}
 	if enabled, ok := b.Config.Plugins.Enabled["Top"]; ok && enabled {
 		top := topplugin.New()
 		top.SetAsyncEmitter(func(outType, text, section, relpath string) {
@@ -405,7 +419,9 @@ func (b *Bot) commandEventFromPrivmsg(line string) *event.Event {
 			log.Printf("[Bot] Failed to decrypt command from %s in %s: %v", sender, target, err)
 		}
 	}
-	if !strings.HasPrefix(target, "#") || !strings.HasPrefix(msg, "!") {
+	isChannel := strings.HasPrefix(target, "#")
+	isPrivate := strings.EqualFold(strings.TrimSpace(target), strings.TrimSpace(b.Config.IRC.Nick))
+	if (!isChannel && !isPrivate) || !strings.HasPrefix(msg, "!") {
 		return nil
 	}
 
@@ -421,7 +437,13 @@ func (b *Bot) commandEventFromPrivmsg(line string) *event.Event {
 	evt := event.NewEvent(event.EventCommand, sender, "", target, command)
 	evt.Data["command"] = command
 	evt.Data["args"] = args
-	evt.Data["channel"] = target
+	if isChannel {
+		evt.Data["channel"] = target
+	} else {
+		evt.Data["channel"] = ""
+		evt.Data["private"] = "true"
+		evt.Data["private_target"] = target
+	}
 	evt.Data["host"] = host
 	evt.Data["raw"] = msg
 	if b.Debug {
@@ -619,6 +641,10 @@ func (b *Bot) handleEvent(evt *event.Event) {
 		b.handleInviteEvent(evt)
 		return
 	}
+	if handled, outs := b.handleHelpCommand(evt); handled {
+		b.sendOutputs(evt, outs)
+		return
+	}
 	if handled, outs, after := b.handleControlCommand(evt); handled {
 		b.sendOutputs(evt, outs)
 		if after != nil {
@@ -733,6 +759,101 @@ func (b *Bot) handleControlCommand(evt *event.Event) (bool, []plugin.Output, fun
 		"command":  cmd,
 		"response": "restarting sitebot...",
 	}, "CONTROL: restarting sitebot...")), b.RestartProcess
+}
+
+func (b *Bot) handleHelpCommand(evt *event.Event) (bool, []plugin.Output) {
+	if evt.Type != event.EventCommand || !strings.EqualFold(strings.TrimSpace(evt.Data["command"]), "help") {
+		return false, nil
+	}
+	if !b.helpAllowed(evt) {
+		return true, b.helpReplies(evt, b.renderBotLine("HELPCMD_ERROR", map[string]string{
+			"response": "command not enabled in this channel.",
+		}, "HELP: command not enabled in this channel."))
+	}
+
+	lines := b.Config.Help.Lines
+	if len(lines) == 0 {
+		lines = b.defaultHelpLines()
+	}
+	rendered := make([]string, 0, len(lines)+1)
+	rendered = append(rendered, b.renderBotLine("HELPCMD_HEADER", map[string]string{}, "HELP: available user commands"))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		rendered = append(rendered, b.renderBotLine("HELPCMD_LINE", map[string]string{"line": line}, "HELP: "+line))
+	}
+	return true, b.helpReplies(evt, rendered...)
+}
+
+func (b *Bot) helpAllowed(evt *event.Event) bool {
+	if strings.EqualFold(strings.TrimSpace(evt.Data["private"]), "true") {
+		return true
+	}
+	channel := strings.TrimSpace(evt.Data["channel"])
+	for _, allowed := range b.Config.Help.Channels {
+		if strings.EqualFold(strings.TrimSpace(allowed), channel) {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *Bot) defaultHelpLines() []string {
+	lines := []string{"!help - show this help in PM"}
+	enabled := b.Config.Plugins.Enabled
+	if enabled["Rules"] {
+		lines = append(lines, "!rules - show site rules in PM")
+	}
+	if enabled["Top"] {
+		lines = append(lines, "!top [5|10|25] - show daily top uploaders")
+	}
+	if enabled["Request"] {
+		lines = append(lines, "!request <release> - add a request")
+		lines = append(lines, "!requests - list requests")
+		lines = append(lines, "!reqfill <id|release> - mark a request filled")
+		lines = append(lines, "!reqdel <id|release> - delete your own request")
+	}
+	if enabled["Free"] {
+		lines = append(lines, "!free / !df - show free disk space")
+	}
+	if enabled["BNC"] {
+		lines = append(lines, "!bnc - show site health checks")
+	}
+	if enabled["BW"] {
+		lines = append(lines, "!bw - show bandwidth summary")
+	}
+	if enabled["Banned"] {
+		lines = append(lines, "!banned [filter] - show banned rules in PM")
+	}
+	if enabled["SelfIP"] {
+		lines = append(lines, "!ip - PM help for self-service IP commands")
+	}
+	return lines
+}
+
+func (b *Bot) helpReplies(evt *event.Event, lines ...string) []plugin.Output {
+	target := evt.User
+	notice := false
+	replyTarget := strings.TrimSpace(b.Config.Help.ReplyTarget)
+	switch {
+	case strings.HasPrefix(replyTarget, "#"):
+		target = replyTarget
+	case strings.EqualFold(replyTarget, "notice"):
+		notice = true
+	default:
+		target = evt.User
+	}
+	out := make([]plugin.Output, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		out = append(out, plugin.Output{Type: "COMMAND", Target: target, Notice: notice, Text: line})
+	}
+	return out
 }
 
 func (b *Bot) Reload() error {
@@ -869,6 +990,10 @@ func (b *Bot) renderControl(key string, vars map[string]string, fallback string)
 		return tmpl.Render(raw, vars)
 	}
 	return fallback
+}
+
+func (b *Bot) renderBotLine(key string, vars map[string]string, fallback string) string {
+	return b.renderControl(key, vars, fallback)
 }
 
 func wildcardMatch(pattern, value string) bool {

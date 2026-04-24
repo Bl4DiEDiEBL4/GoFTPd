@@ -1,0 +1,184 @@
+enabled: false
+
+# Compatibility-first autonuke plugin.
+# It scans release directories on an interval, keeps warning state in state_dir,
+# and uses a local FTP account to execute the normal SITE NUKE command.
+
+# Local daemon login used for SITE NUKE / SITE WIPE.
+host: "127.0.0.1"
+port: 21212
+user: "NUKEBOT"
+password: "change-me"
+tls: true
+insecure_skip_verify: true
+timeout_seconds: 10
+
+# Persistent state for warning/lock files.
+state_dir: "logs/autonuke"
+
+# Prefix used by normal nukes on site.
+nuked_prefix: "[NUKED]-"
+
+# Polling interval.
+scan_interval_seconds: 600
+
+# If release_patterns is empty, inherit zipscript.sections.release_check.
+use_zipscript_release_check: true
+release_patterns: []
+
+# Legacy-style extra roots to ignore. PRE child dirs are added dynamically to
+# the exclude list at runtime.
+affils_dirs:
+  - "/PRE"
+
+# Release names containing these substrings are skipped entirely.
+exclude_name_contains:
+  - "PRE"
+  - "nfofix"
+  - "nfo.fix"
+  - "nfo.update"
+  - "dirfix"
+  - "dir.fix"
+  - "sample.fix"
+  - "samplefix"
+  - "repack"
+  - ".fix."
+  - "_fix_"
+  - "missing"
+  - "COMPLETE"
+
+# Markers that count as "approved" and keep a release out of autonuke.
+approval_markers:
+  - "[Approved_by_"
+  - ".approved"
+  - ".allow"
+check_complete_dir: true
+
+# Excluded from the nukees output shown in announces.
+user_exclude: "goftpd"
+
+empty:
+  enabled: true
+  warn_enabled: true
+  warn_after_min: 60
+  nuke_after_min: 240
+  multiplier: 10
+  reason: "Empty"
+
+half_empty:
+  enabled: true
+  warn_enabled: true
+  warn_after_min: 60
+  nuke_after_min: 240
+  multiplier: 10
+  reason: "Half-Empty"
+  payload_extensions:
+    - "mpg"
+    - "m2v"
+    - "mpeg"
+    - "zip"
+    - "rar"
+    - "r00"
+    - "r01"
+    - "mp3"
+    - "000"
+    - "001"
+    - "flac"
+    - "mkv"
+
+incomplete:
+  enabled: true
+  warn_enabled: true
+  warn_after_min: 60
+  nuke_after_min: 240
+  multiplier: 10
+  reason: "Incomplete"
+  jump_on:
+    - "CD1"
+    - "CD2"
+    - "CD3"
+    - "CD4"
+    - "CD5"
+    - "CD6"
+    - "CD7"
+    - "DISC1"
+    - "DISC2"
+    - "DISC3"
+    - "DISC4"
+    - "DVD1"
+    - "DVD2"
+    - "DVD3"
+    - "DVD4"
+    - "D01"
+    - "D02"
+    - "D03"
+    - "D04"
+
+# Legacy BANDIRS/ALLOWDIRS can still be used via upper-case keys if you prefer.
+banned:
+  enabled: true
+  warn_enabled: true
+  warn_after_min: 1
+  nuke_after_min: 1
+  default_multiplier: 10
+  rules:
+    - path: "/MP3/*/*"
+      patterns: ["-FLAC-"]
+      multiplier: 10
+      description: "Banned release naming"
+    - path: "/X265/*"
+      patterns: [".MULTI."]
+      multiplier: 10
+      description: "Banned release naming"
+    - path: "/X264-SD/*"
+      patterns: [".MULTI."]
+      multiplier: 10
+      description: "Banned release naming"
+    - path: "/X264-HD-720P/*"
+      patterns: [".MULTI."]
+      multiplier: 10
+      description: "Banned release naming"
+    - path: "/X264-HD-1080P/*"
+      patterns: [".MULTI."]
+      multiplier: 10
+      description: "Banned release naming"
+    - path: "/TV-SD/*"
+      patterns: ["MULTI"]
+      multiplier: 10
+      description: "Banned release naming"
+    - path: "/TV-720P/*"
+      patterns: ["MULTI", "BLURAY"]
+      multiplier: 10
+      description: "Banned release naming"
+    - path: "/TV-2160P/*"
+      patterns: ["MULTI", "BLURAY"]
+      multiplier: 10
+      description: "Banned release naming"
+    - path: "/TV-1080P/*"
+      patterns: ["MULTI", "BLURAY"]
+      multiplier: 10
+      description: "Banned release naming"
+    - path: "/BLURAY/*"
+      patterns: [".D01.", ".D02.", ".D03."]
+      multiplier: 10
+      description: "Banned release naming"
+    - path: "/APPS/*"
+      patterns: [".BLURAY.", ".MULTI."]
+      multiplier: 10
+      description: "Banned release naming"
+    - path: "/GAMES/*"
+      patterns: ["_NSW", ".PS4.", ".PS5."]
+      multiplier: 10
+      description: "Banned release naming"
+
+allowed:
+  enabled: false
+  warn_enabled: true
+  warn_after_min: 1
+  nuke_after_min: 20
+  default_multiplier: 3
+  rules: []
+
+delete_nukes:
+  enabled: true
+  delete_after_min: 180

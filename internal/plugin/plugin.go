@@ -139,6 +139,7 @@ type MasterBridge interface {
 	CacheMediaInfo(path string, fields map[string]string)
 	FileExists(path string) bool
 	GetFileSize(path string) int64
+	GetSFVData(dirPath string) map[string]uint32
 	PluginGetVFSRaceStats(dirPath string) (users []RaceUser, groups []RaceGroup, totalBytes int64, present int, total int)
 }
 

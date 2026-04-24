@@ -378,9 +378,47 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 			outs = append(outs, plugin.Output{Type: "STATS", Text: "\u00a0"})
 		}
 	case event.EventNuke:
-		outs = append(outs, plugin.Output{Type: "NUKE", Text: p.render("NUKE", vars, fmt.Sprintf("NUKE: [%s] %s by %s", section, rel, evt.User))})
+		nuker := strings.TrimSpace(vars["u_name"])
+		if nuker == "" {
+			nuker = evt.User
+		}
+		if multiplier := strings.TrimSpace(vars["multiplier"]); multiplier != "" {
+			vars["multiplier_label"] = "x" + multiplier
+		}
+		outs = append(outs, plugin.Output{Type: "NUKE", Text: p.render("NUKE", vars, fmt.Sprintf("NUKED: [%s] %s", section, rel))})
+		if multiplier := strings.TrimSpace(vars["multiplier"]); multiplier != "" && nuker != "" {
+			outs = append(outs, plugin.Output{Type: "NUKE", Text: p.render("NUKE_FACTOR", vars, fmt.Sprintf("NUKED: Was nuked factor x%s by %s", multiplier, nuker))})
+		}
+		if reason := strings.TrimSpace(vars["reason"]); reason != "" {
+			outs = append(outs, plugin.Output{Type: "NUKE", Text: p.render("NUKE_REASON", vars, fmt.Sprintf("NUKED: [reason] --> %s", reason))})
+		}
+		if nukees := strings.TrimSpace(vars["nukees"]); nukees != "" {
+			outs = append(outs, plugin.Output{Type: "NUKE", Text: p.render("NUKE_NUKEES", vars, fmt.Sprintf("NUKED: [nukees] --> %s", nukees))})
+		}
 	case event.EventUnnuke:
 		outs = append(outs, plugin.Output{Type: "UNNUKE", Text: p.render("UNNUKE", vars, fmt.Sprintf("UNNUKE: [%s] %s by %s", section, rel, evt.User))})
+	case event.EventLoginFail:
+		message := strings.TrimSpace(vars["message"])
+		if message == "" {
+			switch strings.TrimSpace(vars["reason"]) {
+			case "user_deleted":
+				message = fmt.Sprintf("%s could not log in, user deleted.", vars["username"])
+			case "bad_password":
+				message = fmt.Sprintf("%s could not log in, bad password.", vars["username"])
+			case "ip_not_allowed":
+				message = fmt.Sprintf("%s could not log in, ip %s not allowed.", vars["username"], vars["remote_ip"])
+			case "ip_restricted":
+				message = fmt.Sprintf("%s could not log in, ip %s not in whitelist.", vars["username"], vars["remote_ip"])
+			case "account_expired":
+				message = fmt.Sprintf("%s could not log in, account expired.", vars["username"])
+			case "tls_required":
+				message = fmt.Sprintf("%s could not log in, TLS required.", vars["username"])
+			default:
+				message = fmt.Sprintf("denied unknown connection from %s at ip %s.", vars["remote_mask"], vars["remote_ip"])
+			}
+		}
+		vars["message"] = message
+		outs = append(outs, plugin.Output{Type: "LOGIN", Text: p.render("LOGINFAIL", vars, "LOGiN: "+message)})
 	case event.EventPre:
 		group := vars["group"]
 		user := vars["user"]

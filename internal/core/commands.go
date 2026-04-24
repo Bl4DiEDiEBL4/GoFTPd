@@ -173,9 +173,16 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			fmt.Fprintf(s.Conn, "501 Syntax error.\r\n")
 			return false
 		}
+		s.PendingUser = args[0]
+		s.PendingReason = ""
 		s.User = nil
 		u, err := user.LoadUser(args[0], s.GroupMap)
 		if err != nil {
+			if _, statErr := os.Stat(deletedUserPath(args[0])); statErr == nil {
+				s.PendingReason = "user_deleted"
+			} else {
+				s.PendingReason = "unknown_user"
+			}
 			if s.Config.Debug {
 				log.Printf("[AUTH] Failed to load user '%s': %v", args[0], err)
 			}
@@ -201,6 +208,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						if s.Config.Debug {
 							log.Printf("[PASS] User %s login rejected: IP %s not in whitelist", s.User.Name, remoteIP)
 						}
+						s.emitLoginFailure(s.User.Name, remoteIP, "ip_restricted")
 						fmt.Fprintf(s.Conn, "530 Login not allowed from this IP.\r\n")
 						return false
 					}
@@ -208,6 +216,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			}
 
 			if s.User.IsExpired() {
+				s.emitLoginFailure(s.User.Name, remoteIP, "account_expired")
 				fmt.Fprintf(s.Conn, "530 Account expired.\r\n")
 				return false
 			}
@@ -228,11 +237,13 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				passwordOK = (s.User.Password == pass)
 			}
 			if !passwordOK {
+				s.emitLoginFailure(s.User.Name, remoteIP, "bad_password")
 				fmt.Fprintf(s.Conn, "530 Login incorrect.\r\n")
 				return false
 			}
 
 			if !s.User.IPAllowed(remoteIP) {
+				s.emitLoginFailure(s.User.Name, remoteIP, "ip_not_allowed")
 				fmt.Fprintf(s.Conn, "530 IP not allowed.\r\n")
 				return false
 			}
@@ -249,11 +260,14 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				if s.Config.Debug {
 					log.Printf("[PASS] User %s rejected: TLS required on control channel", s.User.Name)
 				}
+				s.emitLoginFailure(s.User.Name, remoteIP, "tls_required")
 				fmt.Fprintf(s.Conn, "530 TLS required.\r\n")
 				return false
 			}
 
 			s.IsLogged = true
+			s.PendingUser = ""
+			s.PendingReason = ""
 			if strings.TrimSpace(s.User.CurrentDir) != "" {
 				s.CurrentDir = path.Clean(s.User.CurrentDir)
 			}
@@ -266,6 +280,12 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			fmt.Fprintf(s.Conn, "230 User logged in.\r\n")
 
 		} else {
+			remoteIP, _, _ := net.SplitHostPort(s.Conn.RemoteAddr().String())
+			reason := s.PendingReason
+			if reason == "" {
+				reason = "unknown_user"
+			}
+			s.emitLoginFailure(s.PendingUser, remoteIP, reason)
 			fmt.Fprintf(s.Conn, "530 Login incorrect.\r\n")
 		}
 

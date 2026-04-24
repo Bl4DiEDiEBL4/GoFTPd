@@ -431,6 +431,9 @@ zipscript:
       group: false              # create <group_path>/<Group>/<Release> symlinks
 
 plugins:
+  autonuke:
+    enabled: false
+    config_file: "plugins/autonuke/config.yml"
   dateddirs:
     enabled: true
     config_file: "plugins/dateddirs/config.yml"

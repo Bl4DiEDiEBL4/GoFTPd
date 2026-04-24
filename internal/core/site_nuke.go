@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -85,6 +86,7 @@ func (s *Session) HandleSiteNuke(args []string) bool {
 	// Apply nuke to each uploader
 	now := time.Now().Unix()
 	totalNuked := int64(0)
+	nukeeLine := FormatNukees(BuildNukeUserStats(uploaderBytes), []string{"goftpd", s.User.Name})
 
 	for username, bytes := range uploaderBytes {
 		// Load user
@@ -112,7 +114,7 @@ func (s *Session) HandleSiteNuke(args []string) bool {
 
 		// Save user
 		if err := u.Save(); err == nil && s.Config.Debug {
-			fmt.Printf("[NUKE] Updated %s: -%d credits (ratio %d), %d times nuked\n",
+			log.Printf("[NUKE] Updated %s: -%d credits (ratio %d), %d times nuked",
 				username, nukedCredits, u.Ratio, u.NukeStat.Files)
 		}
 
@@ -132,6 +134,7 @@ func (s *Session) HandleSiteNuke(args []string) bool {
 		"multiplier": strconv.Itoa(multiplier),
 		"reason":     reason,
 		"users":      strconv.Itoa(len(uploaderBytes)),
+		"nukees":     nukeeLine,
 	})
 	fmt.Fprintf(s.Conn, "200 Nuked: x%d multiplier, %d MB, %d users affected, %d credits removed. Reason: %s\r\n",
 		multiplier, len(uploaderBytes), len(uploaderBytes), totalNuked, reason)
@@ -215,7 +218,7 @@ func (s *Session) HandleSiteUnnuke(args []string) bool {
 		u.NukeStat = user.StatLine{}
 
 		if err := u.Save(); err == nil && s.Config.Debug {
-			fmt.Printf("[UNNUKE] Restored %s: +%d credits (ratio %d)\n", username, nukedCredits, u.Ratio)
+			log.Printf("[UNNUKE] Restored %s: +%d credits (ratio %d)", username, nukedCredits, u.Ratio)
 		}
 
 		totalRestored += nukedCredits
@@ -251,18 +254,22 @@ func (s *Session) handleSiteNukeVFS(bridge MasterBridge, target string, multipli
 		return false
 	}
 
-	uploaderBytes := vfsUploaderBytes(bridge.ListDir(dirPath))
-	totalNuked := s.applyNukeCredits(uploaderBytes, multiplier)
-	newName := "[NUKED]-" + dirName
-	bridge.RenameFile(dirPath, path.Dir(dirPath), newName)
+	uploaderBytes := VFSUploaderBytes(bridge.ListDir(dirPath))
+	nukeeLine := FormatNukees(BuildNukeUserStats(uploaderBytes), []string{"goftpd", s.User.Name})
+	result, err := PerformSystemNuke(bridge, s.GroupMap, dirPath, multiplier, reason, "[NUKED]-")
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Nuke failed: %v\r\n", err)
+		return false
+	}
 
 	s.emitEvent(EventNuke, dirPath, dirName, 0, 0, map[string]string{
 		"multiplier": strconv.Itoa(multiplier),
 		"reason":     reason,
-		"users":      strconv.Itoa(len(uploaderBytes)),
+		"users":      strconv.Itoa(result.UsersAffected),
+		"nukees":     nukeeLine,
 	})
 	fmt.Fprintf(s.Conn, "200 Nuked %s: x%d multiplier, %d MB, %d users affected, %d credits removed. Reason: %s\r\n",
-		dirPath, multiplier, bytesToMB(sumBytes(uploaderBytes)), len(uploaderBytes), totalNuked, reason)
+		dirPath, multiplier, BytesToMB(SumBytes(VFSUploaderBytes(bridge.ListDir(result.NewPath)))), result.UsersAffected, result.TotalCreditsRemoved, reason)
 	return true
 }
 
@@ -282,8 +289,8 @@ func (s *Session) handleSiteUnnukeVFS(bridge MasterBridge, target string) bool {
 		return false
 	}
 
-	uploaderBytes := vfsUploaderBytes(bridge.ListDir(dirPath))
-	totalRestored := s.applyUnnukeCredits(uploaderBytes)
+	uploaderBytes := VFSUploaderBytes(bridge.ListDir(dirPath))
+	totalRestored := ApplyUnnukeCredits(s.GroupMap, uploaderBytes, s.Config.NukeMaxMultiplier)
 	originalName := strings.TrimPrefix(dirName, "[NUKED]-")
 	bridge.RenameFile(dirPath, path.Dir(dirPath), originalName)
 
@@ -292,7 +299,7 @@ func (s *Session) handleSiteUnnukeVFS(bridge MasterBridge, target string) bool {
 		"users": strconv.Itoa(len(uploaderBytes)),
 	})
 	fmt.Fprintf(s.Conn, "200 Unnuked %s: %d MB, %d users affected, %d credits restored.\r\n",
-		dirPath, bytesToMB(sumBytes(uploaderBytes)), len(uploaderBytes), totalRestored)
+		dirPath, BytesToMB(SumBytes(uploaderBytes)), len(uploaderBytes), totalRestored)
 	return true
 }
 
@@ -356,69 +363,4 @@ func (s *Session) resolveSiteDir(bridge MasterBridge, target string, wantNuked b
 func (s *Session) dirNukeStateOK(dirPath string, wantNuked bool) bool {
 	isNuked := strings.HasPrefix(path.Base(dirPath), "[NUKED]-")
 	return isNuked == wantNuked
-}
-
-func vfsUploaderBytes(entries []MasterFileEntry) map[string]int64 {
-	uploaderBytes := make(map[string]int64)
-	for _, entry := range entries {
-		if entry.IsDir || strings.HasPrefix(entry.Name, ".") {
-			continue
-		}
-		owner := entry.Owner
-		if owner == "" {
-			owner = "unknown"
-		}
-		uploaderBytes[owner] += entry.Size
-	}
-	return uploaderBytes
-}
-
-func (s *Session) applyNukeCredits(uploaderBytes map[string]int64, multiplier int) int64 {
-	now := time.Now().Unix()
-	totalNuked := int64(0)
-	for username, bytes := range uploaderBytes {
-		u, err := user.LoadUser(username, s.GroupMap)
-		if err != nil {
-			continue
-		}
-		nukedCredits := bytes * int64(u.Ratio) * int64(multiplier)
-		u.Credits -= nukedCredits
-		if u.Credits < 0 {
-			u.Credits = 0
-		}
-		u.NukeStat.Meta = now
-		u.NukeStat.Files++
-		u.NukeStat.Bytes += bytes
-		_ = u.Save()
-		totalNuked += nukedCredits
-	}
-	return totalNuked
-}
-
-func (s *Session) applyUnnukeCredits(uploaderBytes map[string]int64) int64 {
-	totalRestored := int64(0)
-	for username, bytes := range uploaderBytes {
-		u, err := user.LoadUser(username, s.GroupMap)
-		if err != nil {
-			continue
-		}
-		restored := bytes * int64(u.Ratio) * int64(s.Config.NukeMaxMultiplier)
-		u.Credits += restored
-		u.NukeStat = user.StatLine{}
-		_ = u.Save()
-		totalRestored += restored
-	}
-	return totalRestored
-}
-
-func sumBytes(values map[string]int64) int64 {
-	total := int64(0)
-	for _, n := range values {
-		total += n
-	}
-	return total
-}
-
-func bytesToMB(bytes int64) int64 {
-	return bytes / 1024 / 1024
 }

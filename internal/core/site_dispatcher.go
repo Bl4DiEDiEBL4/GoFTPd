@@ -20,7 +20,7 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 	remainingArgs := args[1:]
 
 	if s.Config.Debug {
-		log.Printf("[SITE] siteCmd=%q remainingArgs=%q", siteCmd, remainingArgs)
+		log.Printf("[SITE] siteCmd=%q remainingArgs=%q", siteCmd, sanitizeSiteArgsForLog(siteCmd, remainingArgs))
 	}
 	if !s.canUseSiteCommand(siteCmd) {
 		fmt.Fprintf(s.Conn, "550 Access denied: SITE %s is not allowed.\r\n", siteCmd)
@@ -71,6 +71,8 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 		return s.HandleSiteAddIP(remainingArgs)
 	case "DELIP":
 		return s.HandleSiteDelIP(remainingArgs)
+	case "SELFIP":
+		return s.HandleSiteSelfIP(remainingArgs)
 	case "FLAGS":
 		return s.HandleSiteFlags(remainingArgs)
 	case "CHGRP":
@@ -190,6 +192,25 @@ func siteCommandFlagsAllowed(s *Session, required string) bool {
 		}
 	}
 	return true
+}
+
+func sanitizeSiteArgsForLog(command string, args []string) []string {
+	if len(args) == 0 {
+		return args
+	}
+	command = strings.ToUpper(strings.TrimSpace(command))
+	clean := append([]string(nil), args...)
+	switch command {
+	case "SELFIP":
+		if len(clean) >= 3 {
+			clean[2] = "********"
+		}
+	case "ADDUSER", "GADDUSER", "CHPASS", "READD":
+		if len(clean) >= 2 {
+			clean[1] = "********"
+		}
+	}
+	return clean
 }
 
 type pluginSiteContext struct {

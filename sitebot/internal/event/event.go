@@ -14,6 +14,7 @@ const (
 	EventRaceUser      EventType = "RACEUSER"
 	EventRaceFooter    EventType = "RACEFOOTER"
 	EventNewUser       EventType = "NEWUSER"
+	EventLoginFail     EventType = "LOGINFAIL"
 	EventMKDir         EventType = "MKDIR"
 	EventRMDir         EventType = "RMDIR"
 	EventRename        EventType = "RENAME"

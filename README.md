@@ -212,6 +212,7 @@ Built-in daemon plugins:
 
 | Plugin | What it does |
 |--------|--------------|
+| `autonuke` | Periodically scans configured release paths and uses the normal nuke pipeline for empty, incomplete, half-empty, or banned releases |
 | `dateddirs` | Creates date-based section folders and today symlinks |
 | `tvmaze` | Writes `.tvmaze` metadata for configured TV sections |
 | `imdb` | Writes `.imdb` metadata for configured movie sections |
@@ -277,11 +278,11 @@ Implemented daemon SITE commands include:
 | Area | Commands |
 |------|----------|
 | Info | `HELP`, `RULES`, `WHO`, `SWHO`, `USERS`, `USER`, `SEEN`, `LASTLOGIN`, `GROUPS`, `GROUP`, `GINFO`, `GRPNFO`, `TRAFFIC` |
-| Users/groups | `ADDUSER`, `GADDUSER`, `DELUSER`, `READD`, `RENUSER`, `CHPASS`, `ADDIP`, `DELIP`, `FLAGS`, `CHGRP`, `CHPGRP`, `GADMIN`, `GRPADD`, `GRPDEL`, `GRP` |
+| Users/groups | `ADDUSER`, `GADDUSER`, `DELUSER`, `READD`, `RENUSER`, `CHPASS`, `ADDIP`, `DELIP`, `SELFIP`, `FLAGS`, `CHGRP`, `CHPGRP`, `GADMIN`, `GRPADD`, `GRPDEL`, `GRP` |
 | Release/admin | `NUKE`, `UNNUKE`, `UNDUPE`, `WIPE`, `KICK`, `REHASH`, `REMERGE`, `CHMOD` |
 | Search/rescan | `SEARCH`, `RACE`, `RESCAN`, `XDUPE` |
 | IRC/sitebot | `INVITE` |
-| Plugins | `PRE`, `ADDAFFIL`, `DELAFFIL`, `AFFILS`, `REQUEST`, `REQUESTS`, `REQFILL`, `REQFILLED`, `REQDEL`, `REQWIPE`, `BANNED` |
+| Plugins | `PRE`, `ADDAFFIL`, `DELAFFIL`, `AFFILS`, `REQUEST`, `REQUESTS`, `REQFILL`, `REQFILLED`, `REQDEL`, `REQWIPE`, `BANNED`, `SELFIP` |
 
 Command access is controlled through `sitecmd` ACL rules in
 `etc/permissions.yml`.
@@ -315,6 +316,7 @@ Built-in sitebot plugins:
 | `Affils` | `!affils` |
 | `Request` | `!request`, `!requests`, `!reqfill`, `!reqdel`, staff `!reqwipe` |
 | `Banned` | `!banned`, `!banned <filter>`, `!banned allow [filter]` |
+| `SelfIP` | `!ip`, `!ips`, `!addip`, `!delip`, `!chgip` via PM-safe self-service IP management |
 | `Top` | `!top`, `!top 5`, `!top 10`, `!top 25`, optional timed TOP announce |
 | `Rules` | `!rules` (reads `rules_file` when configured, otherwise uses `SITE RULES`) |
 | `Topic` | staff-only `!topic #channel topic text` with FiSH topic encryption when a key exists |

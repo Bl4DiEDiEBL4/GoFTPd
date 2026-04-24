@@ -5,6 +5,7 @@ release nuked, etc.) and doing work with the master's VFS bridge.
 
 ## Built-in plugins
 
+- **autonuke** - periodically scans release paths and auto-nukes empty, incomplete, half-empty, or banned releases using the normal nuke pipeline
 - **tvmaze** - async TV show lookup on MKD, writes `.tvmaze` into the release dir
 - **imdb** - async movie lookup on MKD (via imdbapi.dev), writes `.imdb`
 - **speedtest** - creates fixed-size test files and emits SPEEDTEST events

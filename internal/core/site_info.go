@@ -39,6 +39,7 @@ var baseSiteHelpEntries = []siteHelpEntry{
 	{Command: "CHPASS", Usage: "<user> <newpass>", Summary: "Change a user's password", Area: "Users/groups"},
 	{Command: "ADDIP", Usage: "<user> <ident@ip> [ident@ip ...]", Summary: "Add IP(s) to a user", Area: "Users/groups"},
 	{Command: "DELIP", Usage: "<user> <ident@ip> [ident@ip ...]", Summary: "Delete IP(s) from a user", Area: "Users/groups"},
+	{Command: "SELFIP", Usage: "<LIST|ADD|DEL|CHG> <user> <pass> [args]", Summary: "Self-service user IP management", Area: "Users/groups"},
 	{Command: "FLAGS", Usage: "<user> <+|-|=><flags>", Summary: "Change user flags", Area: "Users/groups"},
 	{Command: "CHGRP", Usage: "<user> <group> [group2 ...]", Summary: "Add or remove group membership", Area: "Users/groups"},
 	{Command: "CHPGRP", Usage: "<user> <group>", Summary: "Change primary group", Area: "Users/groups"},

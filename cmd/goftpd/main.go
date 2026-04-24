@@ -21,6 +21,7 @@ import (
 	"goftpd/internal/protocol"
 	"goftpd/internal/slave"
 	"goftpd/internal/timeutil"
+	"goftpd/plugins/autonuke"
 	"goftpd/plugins/dateddirs"
 	"goftpd/plugins/imdb"
 	"goftpd/plugins/mediainfo"
@@ -248,9 +249,16 @@ func main() {
 		if pluginCfg["debug"] == nil {
 			pluginCfg["debug"] = cfg.Debug
 		}
+		if canonicalName == "autonuke" {
+			if _, ok := pluginCfg["zipscript_release_check"]; !ok {
+				pluginCfg["zipscript_release_check"] = append([]string(nil), cfg.Zipscript.Sections.ReleaseCheck...)
+			}
+		}
 
 		var p plugin.Plugin
 		switch canonicalName {
+		case "autonuke":
+			p = autonuke.New()
 		case "dateddirs":
 			p = dateddirs.New()
 		case "tvmaze":

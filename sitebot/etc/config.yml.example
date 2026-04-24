@@ -59,6 +59,17 @@ encryption:
 announce:
   config_file: "plugins/announce/config.yml"
 
+help:
+  channels: *chan_main
+  reply_target: "pm"
+  lines:
+    - "!help - show this help in PM"
+    - "!rules - show site rules in PM"
+    - "!top [5|10|25] - show daily top uploaders"
+    - "!request <release> - add a request"
+    - "!requests - list requests"
+    - "!ip - PM help for self-service IP commands"
+
 sections:
   - name: "DEFAULT"
     channels: *chan_staff
@@ -332,6 +343,7 @@ plugins:
     BNC: true
     Control: true
     Banned: true
+    SelfIP: true
     Top: true
     BW: true
     Rules: true
@@ -365,6 +377,8 @@ plugins:
       config_file: "plugins/bw/config.yml"
     rules:
       config_file: "plugins/rules/config.yml"
+    selfip:
+      config_file: "plugins/selfip/config.yml"
     topic:
       config_file: "plugins/topic/config.yml"
     admin_commander:
