@@ -71,8 +71,6 @@ func loadUserFile(name, path string, groupMap map[string]int) (*User, error) {
 		return nil, err
 	}
 
-	fmt.Printf("[DEBUG] Loading user file: %s\n", path)
-
 	// Parse userfile format
 	u := &User{
 		Name:   name,  // Keep original case

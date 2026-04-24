@@ -54,6 +54,8 @@ func NewBot(cfg *Config) *Bot {
 
 func (b *Bot) Start() error {
 	log.Println("[Bot] Starting GoSitebot")
+	log.Printf("[STARTUP] GoSitebot [irc=%s:%d] [nick=%s] [channels=%d]",
+		b.Config.IRC.Host, b.Config.IRC.Port, b.Config.IRC.Nick, len(uniqueChannels(b.Config)))
 	b.IRC = irc.NewBot(b.Config.IRC.Host, b.Config.IRC.Port, b.Config.IRC.Nick, b.Config.IRC.User, b.Config.IRC.RealName)
 	b.IRC.SSL = b.Config.IRC.SSL
 	b.IRC.Password = b.Config.IRC.Password

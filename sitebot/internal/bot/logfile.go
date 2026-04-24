@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -24,6 +25,52 @@ type rotatingLog struct {
 
 type filteredConsoleWriter struct {
 	target io.Writer
+}
+
+func startupColorEnabled() bool {
+	if os.Getenv("TERM") == "" || strings.EqualFold(os.Getenv("TERM"), "dumb") {
+		return false
+	}
+	info, err := os.Stderr.Stat()
+	if err != nil {
+		return false
+	}
+	return (info.Mode() & os.ModeCharDevice) != 0
+}
+
+func PrintStartupBanner(subtitle string) {
+	reset := ""
+	bold := ""
+	cyan := ""
+	green := ""
+	yellow := ""
+	if startupColorEnabled() {
+		reset = "\033[0m"
+		bold = "\033[1m"
+		cyan = "\033[36m"
+		green = "\033[32m"
+		yellow = "\033[33m"
+	}
+	lines := []struct {
+		color string
+		text  string
+	}{
+		{cyan + bold, "=============================================================="},
+		{cyan + bold, "   ______      ________________  ____ "},
+		{green + bold, "  / ____/___  / ____/_  __/ __ \\/ __ \\"},
+		{green + bold, " / / __/ __ \\/ /_    / / / /_/ / / / /"},
+		{yellow + bold, "/ /_/ / /_/ / __/   / / / ____/ /_/ / "},
+		{yellow + bold, "\\____/\\____/_/     /_/ /_/   /_____/  "},
+		{cyan + bold, "=============================================================="},
+	}
+	for _, line := range lines {
+		fmt.Fprintf(os.Stderr, "%s%s%s\n", line.color, line.text, reset)
+	}
+	if strings.TrimSpace(subtitle) != "" {
+		fmt.Fprintf(os.Stderr, "%s%s%s\n\n", yellow, subtitle, reset)
+	} else {
+		fmt.Fprintln(os.Stderr)
+	}
 }
 
 func newRotatingLog(basePath string, deleteAfterDays int) (*rotatingLog, error) {
@@ -111,6 +158,22 @@ func (w filteredConsoleWriter) Write(p []byte) (int, error) {
 
 func shouldWriteConsoleLog(p []byte) bool {
 	line := strings.ToLower(string(p))
+	allowMarkers := []string{
+		"[startup]",
+		"[bot] starting gositebot",
+		"[bot] plugin loaded:",
+		"[bot] plugin load complete:",
+		"[bot] fifo reader starting",
+		"[bot] fifo appeared",
+		"[bot] fifo opened",
+		"[rehash] reloaded",
+		"failed to connect to irc",
+	}
+	for _, marker := range allowMarkers {
+		if strings.Contains(line, marker) {
+			return true
+		}
+	}
 	markers := []string{
 		" error",
 		"[error]",
