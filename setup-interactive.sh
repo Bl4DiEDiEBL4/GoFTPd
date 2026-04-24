@@ -475,6 +475,20 @@ ensure_fifo() {
     fi
 }
 
+ensure_script_permissions() {
+    local script_path
+    for script_path in \
+        "${ROOT_DIR}/build.sh" \
+        "${ROOT_DIR}/generate_certs.sh" \
+        "${ROOT_DIR}/setup-interactive.sh" \
+        "${ROOT_DIR}/sitebot/build.sh"
+    do
+        if [ -f "${script_path}" ]; then
+            chmod +x "${script_path}" 2>/dev/null || true
+        fi
+    done
+}
+
 save_state_file() {
     mkdir -p "$(dirname "${STATE_FILE}")"
     : > "${STATE_FILE}"
@@ -549,6 +563,7 @@ say "This will only ask setup questions when a real config file is missing."
 configure_daemon
 configure_sitebot
 save_state_file
+ensure_script_permissions
 ensure_fifo
 build_everything
 
