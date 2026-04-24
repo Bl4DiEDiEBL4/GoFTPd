@@ -276,6 +276,12 @@ rules:
   # ---------------------------------------------------------------------------
   # Directory logs/search: PRE is restricted to flag 1; everything else is open.
   # ---------------------------------------------------------------------------
+  - type: list
+    path: /site/PRE/*
+    required: "1"
+  - type: list
+    path: /site/*
+    required: "*"
   - type: dirlog
     path: /site/PRE/*
     required: "1"
