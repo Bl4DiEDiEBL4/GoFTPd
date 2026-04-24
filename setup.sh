@@ -134,6 +134,64 @@ run_cleanup_mode() {
     exit 0
 }
 
+generate_tls_certs() {
+    local site_name out_dir ca_cn server_cn client_cn org
+    site_name="${1:-${GOFTPD_CERT_NAME:-GoFTPd}}"
+    out_dir="${ROOT_DIR}/etc/certs"
+    ca_cn="${site_name} Root CA"
+    server_cn="${site_name} FTP"
+    client_cn="${site_name} Slave"
+    org="${site_name}"
+
+    show_banner
+    say_color "${C_YELLOW}${C_BOLD}" "Generating TLS certificates"
+    say "Site name: ${site_name}"
+    say ""
+
+    mkdir -p "${out_dir}"
+    (
+        cd "${out_dir}"
+
+        openssl ecparam -genkey -name secp384r1 -out ca.key
+        openssl req -new -x509 -sha384 -days 3650 -key ca.key -out ca.crt \
+            -subj "/CN=${ca_cn}/O=${org}"
+
+        openssl ecparam -genkey -name secp384r1 -out server.key
+        openssl req -new -sha384 -key server.key -out server.csr \
+            -subj "/CN=${server_cn}/O=${org}"
+        openssl x509 -req -sha384 -days 3650 -in server.csr \
+            -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt
+
+        openssl ecparam -genkey -name secp384r1 -out client.key
+        openssl req -new -sha384 -key client.key -out client.csr \
+            -subj "/CN=${client_cn}/O=${org}"
+        openssl x509 -req -sha384 -days 3650 -in client.csr \
+            -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt
+
+        rm -f *.csr *.srl
+    )
+
+    say ""
+    say "Certificates generated in ${out_dir}/"
+    say ""
+    say "  Site name:   ${site_name}"
+    say "  Issued by:   ${ca_cn}"
+    say "  Server cert: ${server_cn}"
+    say "  Slave cert:  ${client_cn}"
+    say ""
+    say "  ECDSA P-384 keys -> TLSv1.3 TLS_AES_256_GCM_SHA384"
+    say ""
+    say "  ca.crt      - CA certificate"
+    say "  server.crt  - Master/FTP certificate"
+    say "  server.key  - Master/FTP private key"
+    say "  client.crt  - Slave certificate"
+    say "  client.key  - Slave private key"
+    say ""
+    say "Update etc/config.yml:"
+    say "  tls_cert: ./etc/certs/server.crt"
+    say "  tls_key:  ./etc/certs/server.key"
+}
+
 bool_to_prompt_default() {
     local value="${1:-}"
     case "${value}" in
@@ -573,7 +631,7 @@ configure_daemon() {
     if [ ! -f "etc/certs/server.crt" ] || [ ! -f "etc/certs/server.key" ]; then
         if prompt_yes_no "Generate TLS certificates now?" "$(bool_to_prompt_default "${SETUP_GENERATE_CERTS:-true}")"; then
             SETUP_GENERATE_CERTS="true"
-            ./generate_certs.sh "${cert_name}"
+            generate_tls_certs "${cert_name}"
         else
             SETUP_GENERATE_CERTS="false"
         fi
@@ -736,7 +794,6 @@ ensure_fifo() {
 ensure_script_permissions() {
     local script_path
     for script_path in \
-        "${ROOT_DIR}/generate_certs.sh" \
         "${ROOT_DIR}/setup.sh" \
         "${ROOT_DIR}/sitebot/sitebot"
     do
@@ -1004,6 +1061,7 @@ show_usage() {
     say_color "${C_YELLOW}" "Usage:"
     say "  ./setup.sh install   Run guided install/config setup"
     say "  ./setup.sh build     Build daemon and sitebot only"
+    say "  ./setup.sh certs     Generate fresh TLS certificates"
     say "  ./setup.sh clean     Back up generated configs and reset install state"
     say "  ./setup.sh backup    Alias for clean"
     say "  ./setup.sh help      Show this help"
@@ -1011,12 +1069,18 @@ show_usage() {
     say "Notes:"
     say "  - 'install' loads ${STATE_FILE} as defaults when you allow it."
     say "  - 'build' just runs the daemon and sitebot build scripts."
+    say "  - 'certs' writes CA, server, and slave certs into ./etc/certs."
     say "  - 'clean' keeps ${STATE_FILE} but backs up generated configs, FIFO, and certs."
 }
 
 case "${1:-help}" in
     --clean|clean|backup|--reset|reset)
         run_cleanup_mode
+        ;;
+    certs|--certs)
+        ensure_script_permissions
+        generate_tls_certs "${2:-${GOFTPD_CERT_NAME:-GoFTPd}}"
+        exit 0
         ;;
     build|--build)
         show_banner

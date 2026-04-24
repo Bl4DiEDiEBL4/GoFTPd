@@ -38,7 +38,7 @@ PASV/CPSV/PORT, SSCN, and PROT P.
 
 ```bash
 ./setup.sh build
-./generate_certs.sh "My FTPd"
+./setup.sh certs "My FTPd"
 cp etc/config-example.yml etc/config.yml
 ./goftpd
 
@@ -57,6 +57,12 @@ If you only want to compile both binaries without touching config setup, use:
 
 ```bash
 ./setup.sh build
+```
+
+If you only want to generate fresh TLS certificates, use:
+
+```bash
+./setup.sh certs "My FTPd"
 ```
 
 It asks for master/slave mode, ports, PASV/proxy style, certificate name,
