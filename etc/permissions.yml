@@ -304,6 +304,12 @@ rules:
   # ---------------------------------------------------------------------------
   - type: nuke
     path: /site/*
+    required: "@goftpd"
+  - type: unnuke
+    path: /site/*
+    required: "@goftpd"
+  - type: nuke
+    path: /site/*
     required: "1 A =NUKERS"
   - type: unnuke
     path: /site/*
