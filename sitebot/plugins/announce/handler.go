@@ -419,6 +419,22 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 		}
 		vars["message"] = message
 		outs = append(outs, plugin.Output{Type: "LOGIN", Text: p.render("LOGINFAIL", vars, "LOGiN: "+message)})
+	case event.EventSelfIP:
+		message := strings.TrimSpace(vars["message"])
+		if message == "" {
+			switch strings.ToUpper(strings.TrimSpace(vars["action"])) {
+			case "ADD":
+				message = fmt.Sprintf("%s added IP(s): %s.", vars["username"], vars["new_ip"])
+			case "DEL":
+				message = fmt.Sprintf("%s removed IP(s): %s.", vars["username"], vars["old_ip"])
+			case "CHG":
+				message = fmt.Sprintf("%s changed IP: %s -> %s.", vars["username"], vars["old_ip"], vars["new_ip"])
+			default:
+				message = fmt.Sprintf("%s updated IP settings.", vars["username"])
+			}
+		}
+		vars["message"] = message
+		outs = append(outs, plugin.Output{Type: "SELFIP", Text: p.render("SELFIPLOG", vars, "IPLOG: "+message)})
 	case event.EventPre:
 		group := vars["group"]
 		user := vars["user"]

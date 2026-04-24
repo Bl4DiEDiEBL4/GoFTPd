@@ -7,3 +7,4 @@ type_routes:
   SPEEDTEST: ["#goftpd"]
   TOP: ["#goftpd"]
   LOGIN: ["#goftpd-staff"]
+  SELFIP: ["#goftpd-staff"]

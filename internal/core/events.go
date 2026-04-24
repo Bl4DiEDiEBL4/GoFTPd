@@ -29,6 +29,7 @@ const (
 	EventRaceFooter    EventType = "RACEFOOTER" // STATS_END line
 	EventNewUser       EventType = "NEWUSER"
 	EventLoginFail     EventType = "LOGINFAIL"
+	EventSelfIP        EventType = "SELFIP"
 	EventMKDir         EventType = "MKDIR"
 	EventRMDir         EventType = "RMDIR"
 	EventRename        EventType = "RENAME"
@@ -540,4 +541,18 @@ func (s *Session) emitLoginFailure(username, remoteIP, reason string) {
 		"reason":      strings.TrimSpace(reason),
 	}
 	s.emitEvent(EventLoginFail, "", "", 0, 0, data)
+}
+
+func (s *Session) emitSelfIPChange(username, action, oldIP, newIP string, count int) {
+	if s == nil || s.Config == nil {
+		return
+	}
+	data := map[string]string{
+		"username": strings.TrimSpace(username),
+		"action":   strings.TrimSpace(action),
+		"count":    fmt.Sprintf("%d", count),
+		"old_ip":   strings.TrimSpace(oldIP),
+		"new_ip":   strings.TrimSpace(newIP),
+	}
+	s.emitEvent(EventSelfIP, "", "", 0, 0, data)
 }

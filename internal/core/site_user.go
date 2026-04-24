@@ -473,6 +473,9 @@ func (s *Session) HandleSiteSelfIP(args []string) bool {
 			added++
 		}
 		targetUser.Save()
+		if added > 0 {
+			s.emitSelfIPChange(targetUser.Name, "ADD", "", strings.Join(args[3:], ", "), added)
+		}
 		fmt.Fprintf(s.Conn, "200 Added %d IP(s) to %s (total: %d).\r\n", added, targetUser.Name, len(targetUser.IPs))
 		return false
 	case "DEL":
@@ -492,6 +495,9 @@ func (s *Session) HandleSiteSelfIP(args []string) bool {
 			}
 		}
 		targetUser.Save()
+		if removed > 0 {
+			s.emitSelfIPChange(targetUser.Name, "DEL", strings.Join(args[3:], ", "), "", removed)
+		}
 		fmt.Fprintf(s.Conn, "200 Removed %d IP(s) from %s (remaining: %d).\r\n", removed, targetUser.Name, len(targetUser.IPs))
 		return false
 	case "CHG", "CHANGE":
@@ -518,6 +524,7 @@ func (s *Session) HandleSiteSelfIP(args []string) bool {
 			return false
 		}
 		targetUser.Save()
+		s.emitSelfIPChange(targetUser.Name, "CHG", oldIP, newIP, 1)
 		fmt.Fprintf(s.Conn, "200 Changed IP for %s: %s -> %s.\r\n", targetUser.Name, oldIP, newIP)
 		return false
 	default:

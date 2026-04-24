@@ -128,6 +128,7 @@ func (p *Plugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 func (p *Plugin) help(evt *event.Event) []plugin.Output {
 	lines := []string{
 		p.render("SELFIPCMD_HELP", map[string]string{"line": "Use these commands in a PM to the bot so your password stays out of channel."}, "SELFIP: Use these commands in a PM to the bot so your password stays out of channel."),
+		p.render("SELFIPCMD_HELP", map[string]string{"line": "All IP changes are logged to staff for abuse tracking."}, "SELFIP: All IP changes are logged to staff for abuse tracking."),
 		p.render("SELFIPCMD_HELP", map[string]string{"line": "!ips <user> <pass> - list your current IPs"}, "SELFIP: !ips <user> <pass> - list your current IPs"),
 		p.render("SELFIPCMD_HELP", map[string]string{"line": "!addip <user> <pass> <ident@ip> [ident@ip ...] - add IP(s)"}, "SELFIP: !addip <user> <pass> <ident@ip> [ident@ip ...] - add IP(s)"),
 		p.render("SELFIPCMD_HELP", map[string]string{"line": "!delip <user> <pass> <ident@ip> [ident@ip ...] - remove IP(s)"}, "SELFIP: !delip <user> <pass> <ident@ip> [ident@ip ...] - remove IP(s)"),
