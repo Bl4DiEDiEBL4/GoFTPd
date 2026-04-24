@@ -108,10 +108,12 @@ func regexpRAR(name string) bool {
 	if strings.HasSuffix(name, ".rar") {
 		return true
 	}
-	if len(name) >= 4 && name[len(name)-4] == '.' && name[len(name)-3] == 'r' {
-		return name[len(name)-2] >= '0' && name[len(name)-2] <= '9' && name[len(name)-1] >= '0' && name[len(name)-1] <= '9'
+	idx := strings.LastIndexByte(name, '.')
+	if idx < 0 || idx+4 != len(name) {
+		return false
 	}
-	return false
+	ext := name[idx+1:]
+	return len(ext) == 3 && ext[0] >= 'r' && ext[0] <= 'z' && ext[1] >= '0' && ext[1] <= '9' && ext[2] >= '0' && ext[2] <= '9'
 }
 func isZipFile(name string) bool {
 	return strings.HasSuffix(name, ".zip")

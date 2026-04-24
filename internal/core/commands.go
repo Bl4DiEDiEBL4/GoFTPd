@@ -2175,7 +2175,15 @@ func zipDirComplete(entries []MasterFileEntry, expected int) bool {
 }
 
 func populateUploadRaceData(bridge MasterBridge, cfg *Config, dirPath, fileName string, fileSize int64, data map[string]string) ([]VFSRaceUser, int64, int, bool) {
-	if !zipscript.IsRacePayloadFileForDir(cfg.Zipscript, dirPath, fileName) {
+	sfvEntries := bridge.GetSFVData(dirPath)
+	isTrackedPayload := zipscript.IsRacePayloadFileForDir(cfg.Zipscript, dirPath, fileName)
+	if sfvEntries != nil {
+		_, isTrackedPayload = sfvEntries[strings.ToLower(strings.TrimSpace(path.Base(strings.ReplaceAll(fileName, "\\", "/"))))]
+		if !isTrackedPayload {
+			isTrackedPayload = zipscript.IsRacePayloadFileForDir(cfg.Zipscript, dirPath, fileName)
+		}
+	}
+	if !isTrackedPayload {
 		return nil, 0, 0, false
 	}
 	data["file_mbytes"] = mbString(fileSize)
@@ -2216,7 +2224,7 @@ func populateUploadRaceData(bridge MasterBridge, cfg *Config, dirPath, fileName 
 		}
 		return nil, 0, 0, false
 	}
-	if sfvEntries := bridge.GetSFVData(dirPath); sfvEntries != nil {
+	if sfvEntries != nil {
 		users, _, totalBytes, present, total := bridge.GetVFSRaceStats(dirPath)
 		if total > 0 {
 			data["relname"] = path.Base(dirPath)

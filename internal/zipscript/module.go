@@ -204,7 +204,11 @@ func ValidateUpload(cfg Config, dirPath, fileName string, existingNames []string
 
 	lowerName := strings.ToLower(strings.TrimSpace(fileName))
 	isSFV := strings.HasSuffix(lowerName, ".sfv")
-	isPayload := IsRacePayloadFileForDir(cfg, dirPath, fileName)
+	listedInSFV := false
+	if sfvEntries != nil {
+		_, listedInSFV = sfvEntries[raceEntryKey(fileName)]
+	}
+	isPayload := IsRacePayloadFileForDir(cfg, dirPath, fileName) || listedInSFV
 	if UsesZip(cfg, dirPath) {
 		if !IsAllowedTypeForDir(cfg, dirPath, fileName) {
 			return fmt.Errorf("zipscript: file type %q is not allowed here", normalizedExt(fileName))
@@ -226,9 +230,13 @@ func ValidateUpload(cfg Config, dirPath, fileName string, existingNames []string
 	}
 
 	if hasDirSFV && !isSFV && isPayload {
-		if _, ok := sfvEntries[raceEntryKey(fileName)]; !ok {
+		if !listedInSFV {
 			return fmt.Errorf("zipscript: %q is not listed in the .sfv", fileName)
 		}
+	}
+
+	if listedInSFV {
+		return nil
 	}
 
 	if !IsAllowedTypeForDir(cfg, dirPath, fileName) {
@@ -263,7 +271,7 @@ func IsAllowedTypeForDir(cfg Config, dirPath, fileName string) bool {
 	if isPrimaryAudioPayload(dirPath, ext) {
 		return true
 	}
-	if scenePayloadExts[ext] || regexp.MustCompile(`^r\d\d$`).MatchString(ext) {
+	if scenePayloadExts[ext] || isSceneMultipartExt(ext) {
 		return true
 	}
 	if IsIgnoredType(cfg, fileName) {
@@ -323,13 +331,18 @@ func IsRacePayloadFileForDir(cfg Config, dirPath, fileName string) bool {
 		return false
 	}
 	name := strings.ToLower(strings.TrimSpace(fileName))
-	if regexp.MustCompile(`(?i)\.(rar|r\d\d)$`).MatchString(name) {
+	if strings.HasSuffix(name, ".rar") || isSceneMultipartExt(normalizedExt(name)) {
 		return true
 	}
 	if UsesZip(cfg, dirPath) && regexp.MustCompile(`(?i)\.(zip|z\d\d)$`).MatchString(name) {
 		return true
 	}
 	return isMediaInfoFile(name)
+}
+
+func isSceneMultipartExt(ext string) bool {
+	ext = strings.ToLower(strings.TrimSpace(ext))
+	return len(ext) == 3 && ext[0] >= 'r' && ext[0] <= 'z' && ext[1] >= '0' && ext[1] <= '9' && ext[2] >= '0' && ext[2] <= '9'
 }
 
 func CanTriggerRaceEnd(cfg Config, sfvEntries map[string]uint32, fileName string) bool {
