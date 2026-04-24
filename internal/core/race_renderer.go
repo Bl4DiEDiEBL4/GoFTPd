@@ -104,7 +104,8 @@ func row(w io.Writer, cols ...string) {
 
 	buf := []byte{cpVT}
 	for i, c := range cols {
-		buf = append(buf, []byte(fmt.Sprintf("%-*s", widths[i], c))...)
+		cell := clean(c, widths[i])
+		buf = append(buf, []byte(fmt.Sprintf("%-*s", widths[i], cell))...)
 		buf = append(buf, cpVT)
 	}
 	buf = append(buf, '\r', '\n')
@@ -218,10 +219,10 @@ func RenderRaceStats(w io.Writer, users []VFSRaceUser, groups []VFSRaceGroup, to
 	raw(w, sep(cpLT, cpCR, cpRT, 28, 11, 8, 11, 8))
 
 	for i, u := range users {
-		label := fmt.Sprintf("#%-2d %-14s/%s",
+		label := fmt.Sprintf("#%-2d %s/%s",
 			i+1,
-			clean(u.Name, 14),
-			clean(u.Group, 14),
+			clean(u.Name, 12),
+			clean(u.Group, 12),
 		)
 
 		row(
@@ -240,9 +241,9 @@ func RenderRaceStats(w io.Writer, users []VFSRaceUser, groups []VFSRaceGroup, to
 		raw(w, sep(cpLT, cpCR, cpRT, 28, 11, 8, 11, 8))
 
 		for i, g := range groups {
-			label := fmt.Sprintf("#%-2d %-28s",
+			label := fmt.Sprintf("#%-2d %s",
 				i+1,
-				clean(g.Name, 28),
+				clean(g.Name, 24),
 			)
 
 			row(
