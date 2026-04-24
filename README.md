@@ -67,10 +67,10 @@ use those values as the prompt defaults for the new run.
 To back up generated interactive configs and start over cleanly, use:
 
 ```bash
-./setup-interactive-clean.sh
+./setup-interactive.sh --clean
 ```
 
-The cleanup helper:
+Cleanup mode:
 
 - backs up generated daemon and sitebot configs
 - backs up generated plugin `config.yml` files

@@ -97,7 +97,7 @@ if [ -f goftpd ]; then
     echo "  ./goftpd"
     echo ""
     echo "Guided setup:"
-    echo "  ./setup-interactive.sh"
+    echo "  ./setup.sh install"
 else
     echo "❌ Build failed"
     exit 1

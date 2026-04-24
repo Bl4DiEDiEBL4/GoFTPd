@@ -6,9 +6,43 @@ cd "${ROOT_DIR}"
 STATE_FILE="${ROOT_DIR}/etc/setup-interactive.env"
 FIFO_PATH_DEFAULT="${ROOT_DIR}/etc/goftpd.sitebot.fifo"
 SITEBOT_CONFIG_DEFAULT="${ROOT_DIR}/sitebot/etc/config.yml"
+TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
+BACKUP_DIR="${ROOT_DIR}/backups/setup-interactive-${TIMESTAMP}"
+
+if [ -t 1 ]; then
+    C_RESET="$(printf '\033[0m')"
+    C_BOLD="$(printf '\033[1m')"
+    C_CYAN="$(printf '\033[36m')"
+    C_GREEN="$(printf '\033[32m')"
+    C_YELLOW="$(printf '\033[33m')"
+else
+    C_RESET=""
+    C_BOLD=""
+    C_CYAN=""
+    C_GREEN=""
+    C_YELLOW=""
+fi
 
 say() {
     printf '%s\n' "$*"
+}
+
+say_color() {
+    local color="$1"
+    shift
+    printf '%b%s%b\n' "${color}" "$*" "${C_RESET}"
+}
+
+show_banner() {
+    say_color "${C_CYAN}${C_BOLD}" "=================================================="
+    say_color "${C_CYAN}${C_BOLD}" "   GoFTPd Interactive Setup"
+    say_color "${C_CYAN}${C_BOLD}" "=================================================="
+    say_color "${C_GREEN}" "      ____      ___________ _____     __"
+    say_color "${C_GREEN}" "     / ___| ___|  ___|_   _|  _  \\   / /"
+    say_color "${C_GREEN}" "    | |  _ / _ \\ |_    | | | |_) | / / "
+    say_color "${C_GREEN}" "    | |_| |  __/  _|   | | |  __/ / /  "
+    say_color "${C_GREEN}" "     \\____|\\___|_|     |_| |_|   /_/   "
+    printf '\n'
 }
 
 prompt_default() {
@@ -39,6 +73,65 @@ prompt_yes_no() {
         esac
         say "Please answer y or n."
     done
+}
+
+run_cleanup_mode() {
+    local certs_dir="${ROOT_DIR}/etc/certs"
+
+    backup_and_remove() {
+        local target="$1"
+        if [ ! -e "${target}" ] && [ ! -L "${target}" ]; then
+            return
+        fi
+        local rel
+        rel="${target#${ROOT_DIR}/}"
+        mkdir -p "${BACKUP_DIR}/$(dirname "${rel}")"
+        mv "${target}" "${BACKUP_DIR}/${rel}"
+        say "Moved ${rel} -> ${BACKUP_DIR}/${rel}"
+    }
+
+    collect_generated_configs() {
+        local path
+        printf '%s\n' "${ROOT_DIR}/etc/config.yml"
+        printf '%s\n' "${ROOT_DIR}/sitebot/etc/config.yml"
+        while IFS= read -r path; do
+            printf '%s\n' "${path}"
+        done < <(find "${ROOT_DIR}/plugins" "${ROOT_DIR}/sitebot/plugins" -type f -name 'config.yml' | sort)
+    }
+
+    show_banner
+    say_color "${C_YELLOW}${C_BOLD}" "Cleanup mode"
+    say "This will back up generated configs so you can rerun ./setup-interactive.sh cleanly."
+    say ""
+    say "Backup destination:"
+    say "  ${BACKUP_DIR}"
+    say ""
+
+    if ! prompt_yes_no "Back up and remove generated interactive setup files?" "Y"; then
+        say "Aborted."
+        exit 0
+    fi
+
+    mkdir -p "${BACKUP_DIR}"
+
+    while IFS= read -r target; do
+        backup_and_remove "${target}"
+    done < <(collect_generated_configs)
+
+    backup_and_remove "${SETUP_FIFO_PATH:-${FIFO_PATH_DEFAULT}}"
+    if [ -d "${certs_dir}" ]; then
+        backup_and_remove "${certs_dir}"
+    fi
+
+    say ""
+    say "Cleanup complete."
+    say "Kept installer defaults file:"
+    say "  ${STATE_FILE}"
+    say "Removed generated TLS certs too, so the next interactive setup can create fresh ones."
+    say ""
+    say "You can now run:"
+    say "  ./setup-interactive.sh"
+    exit 0
 }
 
 if [ -f "${STATE_FILE}" ]; then
@@ -655,8 +748,8 @@ ensure_script_permissions() {
     for script_path in \
         "${ROOT_DIR}/build.sh" \
         "${ROOT_DIR}/generate_certs.sh" \
+        "${ROOT_DIR}/setup.sh" \
         "${ROOT_DIR}/setup-interactive.sh" \
-        "${ROOT_DIR}/setup-interactive-clean.sh" \
         "${ROOT_DIR}/sitebot/build.sh"
     do
         if [ -f "${script_path}" ]; then
@@ -751,9 +844,39 @@ build_everything() {
     )
 }
 
-say "=================================================="
-say "GoFTPd Interactive Setup"
-say "=================================================="
+show_usage() {
+    show_banner
+    say_color "${C_BOLD}" "GoFTPd interactive setup helper"
+    say ""
+    say_color "${C_YELLOW}" "Usage:"
+    say "  ./setup-interactive.sh install   Run guided install/config setup"
+    say "  ./setup-interactive.sh clean     Back up generated configs and reset install state"
+    say "  ./setup-interactive.sh help      Show this help"
+    say ""
+    say "Notes:"
+    say "  - 'install' loads ${STATE_FILE} as defaults when you allow it."
+    say "  - 'clean' keeps ${STATE_FILE} but backs up generated configs, FIFO, and certs."
+}
+
+case "${1:-help}" in
+    --clean|clean|--reset|reset)
+        run_cleanup_mode
+        ;;
+    install|--install)
+        ;;
+    help|--help|-h|"")
+        show_usage
+        exit 0
+        ;;
+    *)
+        say "Unknown command: ${1}"
+        say ""
+        show_usage
+        exit 1
+        ;;
+esac
+
+show_banner
 say "This will only ask setup questions when a real config file is missing."
 
 configure_daemon
