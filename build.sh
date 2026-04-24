@@ -1,6 +1,11 @@
 #!/bin/bash
 set -e
 
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DAEMON_CONFIG="${ROOT_DIR}/etc/config.yml"
+SITEBOT_CONFIG="${ROOT_DIR}/sitebot/etc/config.yml"
+FIFO_PATH="${ROOT_DIR}/etc/goftpd.sitebot.fifo"
+
 # Visual Header
 echo "╔═════════════════════════════════════════════════╗"
 echo "║   GoFTPd Build - Master/Slave Architecture      ║"
@@ -79,8 +84,20 @@ if [ -f goftpd ]; then
     echo ""
     ls -lh goftpd
     echo ""
-    echo "Edit: etc/config.yml"
-    echo "Run:  ./goftpd"
+    echo "Config:"
+    echo "  ${DAEMON_CONFIG}"
+    echo ""
+    echo "Sitebot config (if used):"
+    echo "  ${SITEBOT_CONFIG}"
+    echo ""
+    echo "Shared FIFO path:"
+    echo "  ${FIFO_PATH}"
+    echo ""
+    echo "Run:"
+    echo "  ./goftpd"
+    echo ""
+    echo "Guided setup:"
+    echo "  ./setup-interactive.sh"
 else
     echo "❌ Build failed"
     exit 1

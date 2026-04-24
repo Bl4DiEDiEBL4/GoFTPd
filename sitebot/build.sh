@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+FIFO_PATH="${ROOT_DIR}/etc/goftpd.sitebot.fifo"
+
 echo "╔══════════════════════════════════════════════╗"
 echo "║   GoFTPd Sitebot Build                       ║"
 echo "╚══════════════════════════════════════════════╝"
@@ -107,15 +110,15 @@ if [ -f sitebot ]; then
     ls -lh sitebot
     echo ""
     echo "Make sure the FIFO exists:"
-    echo "  mkdir -p /GoFTPd/etc"
-    echo "  [ -p /GoFTPd/etc/goftpd.sitebot.fifo ] || mkfifo /GoFTPd/etc/goftpd.sitebot.fifo"
-    echo "  chmod 666 /GoFTPd/etc/goftpd.sitebot.fifo"
+    echo "  mkdir -p $(dirname "${FIFO_PATH}")"
+    echo "  [ -p ${FIFO_PATH} ] || mkfifo ${FIFO_PATH}"
+    echo "  chmod 666 ${FIFO_PATH}"
     echo ""
     echo "Use this in BOTH daemon and sitebot config:"
-    echo "  event_fifo: /GoFTPd/etc/goftpd.sitebot.fifo"
+    echo "  event_fifo: ${FIFO_PATH}"
     echo ""
     echo "Run:"
-    echo "  ./sitebot -config config.yml"
+    echo "  ./sitebot -config ./etc/config.yml"
 else
     echo "❌ Build failed"
     exit 1

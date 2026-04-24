@@ -58,6 +58,8 @@ It asks for master/slave mode, ports, PASV/proxy style, certificate name,
 channel names, Blowfish keys, and per-plugin enable flags only when the real
 config files do not exist yet. It also saves the answers in
 `etc/setup-interactive.env` so a reinstall or move can reuse them as defaults.
+In slave mode it asks only the slave-specific daemon questions and skips the
+sitebot flow unless you explicitly choose to configure a sitebot there too.
 
 Edit `etc/config.yml` before running it for real. The same config file is used
 for master and slave mode; `mode: master` or `mode: slave` decides which blocks

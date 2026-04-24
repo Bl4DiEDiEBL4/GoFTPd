@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT_DIR}"
 STATE_FILE="${ROOT_DIR}/etc/setup-interactive.env"
+FIFO_PATH_DEFAULT="${ROOT_DIR}/etc/goftpd.sitebot.fifo"
+SITEBOT_CONFIG_DEFAULT="${ROOT_DIR}/sitebot/etc/config.yml"
 
 if [ -f "${STATE_FILE}" ]; then
     # shellcheck disable=SC1090
@@ -287,7 +289,7 @@ configure_daemon() {
 
     local daemon_mode long_name short_name cert_name enabled_bool
     local listen_port public_ip passthrough_mode master_listen_host master_control_port
-    local slave_name slave_master_host slave_master_port slave_roots slave_bind_ip
+    local slave_name slave_master_host slave_master_port slave_roots slave_bind_ip fifo_path
     daemon_mode="$(prompt_mode "${SETUP_DAEMON_MODE:-master}")"
     long_name="$(prompt_default 'Daemon site name' "${SETUP_SITE_NAME:-GoFTPd}")"
     short_name="$(prompt_default 'Daemon short site tag' "${SETUP_SITE_SHORT:-${long_name}}")"
@@ -297,10 +299,14 @@ configure_daemon() {
     SETUP_SITE_NAME="${long_name}"
     SETUP_SITE_SHORT="${short_name}"
     SETUP_CERT_NAME="${cert_name}"
+    fifo_path="${SETUP_FIFO_PATH:-${FIFO_PATH_DEFAULT}}"
+    SETUP_FIFO_PATH="${fifo_path}"
 
     replace_matching_line "${daemon_config}" '^mode:' "mode:         ${daemon_mode}"
     replace_matching_line "${daemon_config}" '^sitename_long:' "sitename_long:  \"${long_name}\""
     replace_matching_line "${daemon_config}" '^sitename_short:' "sitename_short: \"${short_name}\""
+    replace_matching_line "${daemon_config}" '^event_fifo:' "event_fifo:     \"${fifo_path}\""
+    replace_matching_line "${daemon_config}" '^sitebot_config:' "sitebot_config: \"${SETUP_SITEBOT_CONFIG_PATH:-${SITEBOT_CONFIG_DEFAULT}}\""
 
     if [ "${daemon_mode}" = "master" ]; then
         listen_port="$(prompt_default 'FTP listen port' "${SETUP_LISTEN_PORT:-21212}")"
@@ -383,6 +389,14 @@ configure_daemon() {
 
 configure_sitebot() {
     local sitebot_config="sitebot/etc/config.yml"
+    if [ "${SETUP_DAEMON_MODE:-master}" = "slave" ]; then
+        if ! prompt_yes_no "Configure sitebot on this slave too?" "$(bool_to_prompt_default "${SETUP_CONFIGURE_SITEBOT_ON_SLAVE:-false}")"; then
+            SETUP_CONFIGURE_SITEBOT_ON_SLAVE="false"
+            say "Skipping sitebot setup for slave mode."
+            return
+        fi
+        SETUP_CONFIGURE_SITEBOT_ON_SLAVE="true"
+    fi
     if [ -f "${sitebot_config}" ]; then
         say "Sitebot config already exists at ${sitebot_config}; skipping sitebot setup questions."
         return
@@ -394,6 +408,7 @@ configure_sitebot() {
     copy_dist_configs_if_missing "sitebot/plugins"
 
     local main_channel spam_channel staff_channel foreign_channel archive_channel nuke_channel blowfish_key enabled_bool
+    local fifo_path
     main_channel="$(prompt_default 'Main IRC channel' "${SETUP_MAIN_CHANNEL:-#goftpd}")"
     spam_channel="$(prompt_default 'Spam IRC channel' "${SETUP_SPAM_CHANNEL:-#goftpd-spam}")"
     staff_channel="$(prompt_default 'Staff IRC channel' "${SETUP_STAFF_CHANNEL:-#goftpd-staff}")"
@@ -409,6 +424,11 @@ configure_sitebot() {
     SETUP_ARCHIVE_CHANNEL="${archive_channel}"
     SETUP_NUKE_CHANNEL="${nuke_channel}"
     SETUP_BLOWFISH_KEY="${blowfish_key}"
+    fifo_path="${SETUP_FIFO_PATH:-${FIFO_PATH_DEFAULT}}"
+    SETUP_FIFO_PATH="${fifo_path}"
+    SETUP_SITEBOT_CONFIG_PATH="${ROOT_DIR}/sitebot/etc/config.yml"
+
+    replace_matching_line "${sitebot_config}" '^event_fifo:' "event_fifo: \"${fifo_path}\""
 
     set_sitebot_channel_anchor "${sitebot_config}" "main" "chan_main" "${main_channel}"
     set_sitebot_channel_anchor "${sitebot_config}" "spam" "chan_spam" "${spam_channel}"
@@ -437,6 +457,24 @@ configure_sitebot() {
     done
 }
 
+ensure_fifo() {
+    local fifo_path="${SETUP_FIFO_PATH:-${FIFO_PATH_DEFAULT}}"
+    local fifo_dir
+    fifo_dir="$(dirname "${fifo_path}")"
+    mkdir -p "${fifo_dir}"
+    if [ -e "${fifo_path}" ] && [ ! -p "${fifo_path}" ]; then
+        say "Warning: ${fifo_path} exists but is not a FIFO; leaving it untouched."
+        return
+    fi
+    if [ ! -p "${fifo_path}" ]; then
+        mkfifo "${fifo_path}"
+        chmod 666 "${fifo_path}" || true
+        say "Created FIFO at ${fifo_path}"
+    else
+        say "FIFO already exists at ${fifo_path}"
+    fi
+}
+
 save_state_file() {
     mkdir -p "$(dirname "${STATE_FILE}")"
     : > "${STATE_FILE}"
@@ -449,6 +487,8 @@ save_state_file() {
     write_state_var SETUP_SITE_SHORT "${SETUP_SITE_SHORT:-GoFTPd}"
     write_state_var SETUP_CERT_NAME "${SETUP_CERT_NAME:-GoFTPd}"
     write_state_var SETUP_GENERATE_CERTS "${SETUP_GENERATE_CERTS:-true}"
+    write_state_var SETUP_FIFO_PATH "${SETUP_FIFO_PATH:-${FIFO_PATH_DEFAULT}}"
+    write_state_var SETUP_SITEBOT_CONFIG_PATH "${SETUP_SITEBOT_CONFIG_PATH:-${SITEBOT_CONFIG_DEFAULT}}"
     write_state_var SETUP_DAEMON_MODE "${SETUP_DAEMON_MODE:-master}"
     write_state_var SETUP_LISTEN_PORT "${SETUP_LISTEN_PORT:-21212}"
     write_state_var SETUP_PUBLIC_IP "${SETUP_PUBLIC_IP:-1.2.3.4}"
@@ -474,6 +514,7 @@ save_state_file() {
     write_state_var SETUP_DAEMON_PLUGIN_SPEEDTEST "${SETUP_DAEMON_PLUGIN_SPEEDTEST:-true}"
     write_state_var SETUP_DAEMON_PLUGIN_REQUEST "${SETUP_DAEMON_PLUGIN_REQUEST:-true}"
     write_state_var SETUP_DAEMON_PLUGIN_PRE "${SETUP_DAEMON_PLUGIN_PRE:-true}"
+    write_state_var SETUP_CONFIGURE_SITEBOT_ON_SLAVE "${SETUP_CONFIGURE_SITEBOT_ON_SLAVE:-false}"
     write_state_var SETUP_SITEBOT_PLUGIN_ANNOUNCE "${SETUP_SITEBOT_PLUGIN_ANNOUNCE:-true}"
     write_state_var SETUP_SITEBOT_PLUGIN_TVMAZE "${SETUP_SITEBOT_PLUGIN_TVMAZE:-true}"
     write_state_var SETUP_SITEBOT_PLUGIN_IMDB "${SETUP_SITEBOT_PLUGIN_IMDB:-true}"
@@ -508,6 +549,7 @@ say "This will only ask setup questions when a real config file is missing."
 configure_daemon
 configure_sitebot
 save_state_file
+ensure_fifo
 build_everything
 
 say ""
