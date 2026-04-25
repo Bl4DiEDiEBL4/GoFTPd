@@ -67,7 +67,7 @@ func New() *Plugin {
 		affilsFile:      "etc/affils.yml",
 		permissionsFile: "etc/permissions.yml",
 		groupFile:       "etc/group",
-		aclBase:         "/site",
+		aclBase:         "/",
 		adminFlags:      "1",
 	}
 }
@@ -1077,7 +1077,7 @@ func findPreCatchallInsertIndex(seq *yaml.Node) int {
 	}
 	for i, entry := range seq.Content {
 		switch cleanAbs(mappingScalarValue(entry, "path")) {
-		case "/site/PRE/*", "/site/*":
+		case "/PRE/*", "/*", "/site/PRE/*", "/site/*":
 			return i
 		}
 	}
@@ -1160,12 +1160,12 @@ func renderPermissionsFile(cfg permissionsFileConfig) string {
 #   - If nothing matches, flag 1 users are allowed by default.
 #
 # path:
-#   - Paths are virtual paths under acl_base_path, normally /site.
-#   - "*" is a wildcard. /site/* matches everything below /site.
+#   - Paths are virtual paths under acl_base_path, normally /.
+#   - "*" is a wildcard. /* matches everything below /.
 #   - A trailing slash limits wildcard matches to one directory level,
 #     glftpd-style:
-#       /site/series/*/ matches /site/series/Release/
-#       but not /site/series/Release/Sample/
+#       /series/*/ matches /series/Release/
+#       but not /series/Release/Sample/
 #
 # required:
 #   "*"           anyone

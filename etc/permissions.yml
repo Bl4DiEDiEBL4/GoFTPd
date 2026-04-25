@@ -12,11 +12,13 @@
 #   - If nothing matches, flag 1 users are still allowed by default.
 #
 # Paths
-#   - Paths are virtual paths under `acl_base_path`, normally `/site`.
-#   - `*` is a wildcard. `/site/*` matches everything below `/site`.
+#   - Paths are matched against the visible virtual FTP tree.
+#   - With the default `acl_base_path: "/"`, a visible FTP path like `/MP3`
+#     is checked as `/MP3` in this file.
+#   - `*` is a wildcard. `/*` matches everything below that ACL prefix.
 #   - A trailing slash keeps wildcard matching to one directory level:
-#       `/site/TV/*/` matches `/site/TV/Release/`
-#       but not `/site/TV/Release/Sample/`
+#       `/TV/*/` matches `/TV/Release/`
+#       but not `/TV/Release/Sample/`
 #
 # Required blocks
 #   - `anyone: true` means public.
@@ -158,27 +160,27 @@ rules:
   # These paths are hidden or blocked unless the user matches the rule.
   # ---------------------------------------------------------------------------
   privpath:
-    - path: /site/LINKS
+    - path: /LINKS
       required:
         all_flags: ["1"]
         all_groups: ["SiteOP"]
 
-    - path: /site/PRE/SiteOP
+    - path: /PRE/SiteOP
       required:
         all_flags: ["1"]
         all_groups: ["SiteOP"]
 
-    - path: /site/PRE/TEST-GRP
+    - path: /PRE/TEST-GRP
       required:
         all_flags: ["1"]
         all_groups: ["SiteOP"]
 
-    - path: /site/ARCHiVE/backup
+    - path: /ARCHiVE/backup
       required:
         all_flags: ["1"]
         all_groups: ["SiteOP"]
 
-    - path: /site/ARCHiVE/COMPLETE
+    - path: /ARCHiVE/COMPLETE
       required:
         all_flags: ["1"]
         all_groups: ["SiteOP"]
@@ -190,48 +192,48 @@ rules:
   # Speedtest is made free in code; these rules only grant access.
   # ---------------------------------------------------------------------------
   upload:
-    - path: /site/*
+    - path: /*
       required: $anyone
 
   resume:
-    - path: /site/*
+    - path: /*
       required: $anyone
 
   download:
-    - path: /site/*
+    - path: /*
       required: $anyone
 
 
   # ---------------------------------------------------------------------------
   # Directory creation and removal
   #
-  # Keep REQUESTS above the general /site rule so it is easy to tighten later.
+  # Keep REQUESTS above the general root rule so it is easy to tighten later.
   # ---------------------------------------------------------------------------
   makedir:
-    - path: /site/REQUESTS/*
+    - path: /REQUESTS/*
       required: $anyone
 
-    - path: /site/*
+    - path: /*
       required: $anyone
 
 
   # ---------------------------------------------------------------------------
   # Listings and dirlog
   #
-  # PRE stays restricted; the rest of /site is visible to everyone.
+  # PRE stays restricted; the rest of the tree is visible to everyone.
   # ---------------------------------------------------------------------------
   list:
-    - path: /site/PRE/*
+    - path: /PRE/*
       required: $siteop
 
-    - path: /site/*
+    - path: /*
       required: $anyone
 
   dirlog:
-    - path: /site/PRE/*
+    - path: /PRE/*
       required: $siteop
 
-    - path: /site/*
+    - path: /*
       required: $anyone
 
 
@@ -239,11 +241,11 @@ rules:
   # Rename rules
   # ---------------------------------------------------------------------------
   rename:
-    - path: /site/*
+    - path: /*
       required: $siteop
 
   renameown:
-    - path: /site/*
+    - path: /*
       required: $anyone
 
 
@@ -251,17 +253,17 @@ rules:
   # Nuke and unnuke
   # ---------------------------------------------------------------------------
   nuke:
-    - path: /site/*
+    - path: /*
       required: $goftpd_bot
 
-    - path: /site/*
+    - path: /*
       required: $nuker
 
   unnuke:
-    - path: /site/*
+    - path: /*
       required: $goftpd_bot
 
-    - path: /site/*
+    - path: /*
       required: $unnuker
 
 
@@ -269,14 +271,14 @@ rules:
   # Delete rules
   # ---------------------------------------------------------------------------
   delete:
-    - path: /site/PRE/*/*
+    - path: /PRE/*/*
       required: $anyone
 
-    - path: /site/*
+    - path: /*
       required: $siteop
 
   deleteown:
-    - path: /site/*
+    - path: /*
       required: $anyone
 
 
@@ -284,7 +286,7 @@ rules:
   # Explicit file move support
   # ---------------------------------------------------------------------------
   filemove:
-    - path: /site/*
+    - path: /*
       required:
         all_groups: ["Admin"]
 
@@ -296,11 +298,11 @@ rules:
   # applies, so this does not allow clobbering an existing filename.
   # ---------------------------------------------------------------------------
   nodupecheck:
-    - path: /site/PRE/*
+    - path: /PRE/*
       required: $anyone
 
-    - path: /site/REQUESTS/*
+    - path: /REQUESTS/*
       required: $anyone
 
-    - path: /site/SPEEDTEST/*
+    - path: /SPEEDTEST/*
       required: $anyone

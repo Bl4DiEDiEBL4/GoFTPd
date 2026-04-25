@@ -21,17 +21,17 @@ func TestSyncAffilPermissionsAddsGeneratedPreRules(t *testing.T) {
 
 rules:
   privpath:
-    - path: /site/LINKS
+    - path: /LINKS
       required: $siteop
   list:
-    - path: /site/PRE/*
+    - path: /PRE/*
       required: $siteop
-    - path: /site/*
+    - path: /*
       required: $anyone
   dirlog:
-    - path: /site/PRE/*
+    - path: /PRE/*
       required: $siteop
-    - path: /site/*
+    - path: /*
       required: $anyone
 `
 	if err := os.WriteFile(filePath, []byte(input), 0644); err != nil {
@@ -43,7 +43,7 @@ rules:
 			Group:  "iND",
 			Predir: "/PRE/iND",
 			Permissions: map[string]interface{}{
-				"acl_path": "/site/PRE/iND",
+				"acl_path": "/PRE/iND",
 				"privpath": true,
 				"list":     true,
 				"dirlog":   true,
@@ -51,7 +51,7 @@ rules:
 		},
 	}
 
-	if err := syncAffilPermissions(filePath, "/site", affils); err != nil {
+	if err := syncAffilPermissions(filePath, "/", affils); err != nil {
 		t.Fatalf("syncAffilPermissions failed: %v", err)
 	}
 
@@ -59,36 +59,36 @@ rules:
 	rules := mappingValueForTest(t, doc.Content[0], "rules")
 
 	privpath := mappingValueForTest(t, rules, "privpath")
-	if !sequenceHasGeneratedPath(privpath, "/site/PRE/iND") {
-		t.Fatalf("expected generated privpath rule for /site/PRE/iND")
+	if !sequenceHasGeneratedPath(privpath, "/PRE/iND") {
+		t.Fatalf("expected generated privpath rule for /PRE/iND")
 	}
 
 	list := mappingValueForTest(t, rules, "list")
-	if !sequenceHasGeneratedPath(list, "/site/PRE/iND") {
-		t.Fatalf("expected generated list rule for /site/PRE/iND")
+	if !sequenceHasGeneratedPath(list, "/PRE/iND") {
+		t.Fatalf("expected generated list rule for /PRE/iND")
 	}
-	if firstPathInSequence(list) != "/site/PRE/iND" {
+	if firstPathInSequence(list) != "/PRE/iND" {
 		t.Fatalf("expected generated list rule before PRE catch-all, got first path %q", firstPathInSequence(list))
 	}
 
 	dirlog := mappingValueForTest(t, rules, "dirlog")
-	if !sequenceHasGeneratedPath(dirlog, "/site/PRE/iND") {
-		t.Fatalf("expected generated dirlog rule for /site/PRE/iND")
+	if !sequenceHasGeneratedPath(dirlog, "/PRE/iND") {
+		t.Fatalf("expected generated dirlog rule for /PRE/iND")
 	}
-	if firstPathInSequence(dirlog) != "/site/PRE/iND" {
+	if firstPathInSequence(dirlog) != "/PRE/iND" {
 		t.Fatalf("expected generated dirlog rule before PRE catch-all, got first path %q", firstPathInSequence(dirlog))
 	}
 }
 
 func TestSyncAffilPermissionsRemovesStaleGeneratedRules(t *testing.T) {
 	filePath := filepath.Join(t.TempDir(), "permissions.yml")
-	input := `rules:
+input := `rules:
   privpath: []
   list:
-    - path: /site/PRE/*
+    - path: /PRE/*
       required: $siteop
   dirlog:
-    - path: /site/PRE/*
+    - path: /PRE/*
       required: $siteop
 `
 	if err := os.WriteFile(filePath, []byte(input), 0644); err != nil {
@@ -96,15 +96,15 @@ func TestSyncAffilPermissionsRemovesStaleGeneratedRules(t *testing.T) {
 	}
 
 	affils := []AffilRule{
-		{Group: "iND", Predir: "/PRE/iND", Permissions: map[string]interface{}{"acl_path": "/site/PRE/iND"}},
-		{Group: "GRPTST", Predir: "/PRE/GRPTST", Permissions: map[string]interface{}{"acl_path": "/site/PRE/GRPTST"}},
+		{Group: "iND", Predir: "/PRE/iND", Permissions: map[string]interface{}{"acl_path": "/PRE/iND"}},
+		{Group: "GRPTST", Predir: "/PRE/GRPTST", Permissions: map[string]interface{}{"acl_path": "/PRE/GRPTST"}},
 	}
-	if err := syncAffilPermissions(filePath, "/site", affils); err != nil {
+	if err := syncAffilPermissions(filePath, "/", affils); err != nil {
 		t.Fatalf("initial sync failed: %v", err)
 	}
 
 	affils = affils[:1]
-	if err := syncAffilPermissions(filePath, "/site", affils); err != nil {
+	if err := syncAffilPermissions(filePath, "/", affils); err != nil {
 		t.Fatalf("second sync failed: %v", err)
 	}
 
@@ -113,10 +113,10 @@ func TestSyncAffilPermissionsRemovesStaleGeneratedRules(t *testing.T) {
 		t.Fatalf("read permissions file: %v", err)
 	}
 	text := string(content)
-	if strings.Contains(text, "/site/PRE/GRPTST") {
+	if strings.Contains(text, "/PRE/GRPTST") {
 		t.Fatalf("expected stale generated GRPTST rules to be removed")
 	}
-	if !strings.Contains(text, "/site/PRE/iND") {
+	if !strings.Contains(text, "/PRE/iND") {
 		t.Fatalf("expected iND rules to remain after sync")
 	}
 }

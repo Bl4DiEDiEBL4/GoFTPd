@@ -7,7 +7,7 @@
 # This file is the source of truth for affil predirs and their PRE visibility.
 #
 # permissions:
-#   acl_path         optional ACL path override; defaults to /site + predir
+#   acl_path         optional ACL path override; defaults to acl_base_path + predir
 #   privpath         true/false to sync a privpath rule for this predir
 #   list             true/false to sync a list rule for this predir
 #   dirlog           true/false to sync a dirlog rule for this predir
@@ -20,7 +20,7 @@ groups:
   - group: "GoFTPd"
     predir: "/PRE/GoFTPd"
     permissions:
-      acl_path: "/site/PRE/GoFTPd"
+      acl_path: "/PRE/GoFTPd"
       privpath: true
       list: true
       dirlog: true
@@ -31,7 +31,7 @@ groups:
   - group: "GRPTST"
     predir: "/PRE/GRPTST"
     permissions:
-      acl_path: "/site/PRE/GRPTST"
+      acl_path: "/PRE/GRPTST"
       privpath: true
       list: true
       dirlog: true

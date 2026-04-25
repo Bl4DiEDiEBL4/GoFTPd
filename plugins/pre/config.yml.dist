@@ -3,7 +3,7 @@ affils_file: "etc/affils.yml"
 
 permissions_file: "etc/permissions.yml"
 group_file: "etc/group"
-acl_base_path: "/site"
+acl_base_path: "/"
 admin_flags: "1"
 
 # Base PRE root used for affil predirs.

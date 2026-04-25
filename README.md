@@ -172,6 +172,11 @@ rule type. The first matching rule decides access. If no action rule matches,
 matching `privpath` rules are checked. If nothing matches, flag `1` users are
 allowed by default.
 
+`acl_base_path` controls which virtual tree the ACL engine matches against.
+The shipped default is now `acl_base_path: "/"`, so the permissions file
+mirrors the visible FTP tree directly. A visible FTP path like `/MP3/Release`
+is checked against ACL rules as `/MP3/Release`.
+
 The example config now uses the structured ACL format with reusable `roles:`
 and grouped rule blocks such as `sitecmd:`, `list:`, and `nuke:`.
 

@@ -170,8 +170,8 @@ sections:
 # =============================================================================
 #  Storage + paths
 # =============================================================================
-storage_path:   ./site          # Master: fallback path. Slave: default root if `roots:` empty.
-acl_base_path:  "/site"         # Virtual FTP root as seen by clients (usually "/site")
+storage_path:   ./site          # Master: local fallback tree. Slave: default root if `roots:` empty.
+acl_base_path:  "/"             # Match ACL rules against the visible virtual FTP tree.
 passwd_file:    "etc/passwd"    # Password hash file (bcrypt / apr1)
 msg_path:       "etc/msgs"      # Directory with welcome/rules/goodbye message templates
 
