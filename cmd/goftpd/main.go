@@ -107,6 +107,9 @@ func main() {
 			cfg.TLSKey,
 			time.Duration(intFromCfg(cfg.Master, "heartbeat_timeout", 60))*time.Second,
 		)
+		if err := sm.ConfigureAuthAllowlist(stringSliceFromCfg(cfg.Master, "slave_allowlist")); err != nil {
+			log.Fatalf("Invalid master.slave_allowlist: %v", err)
+		}
 		sm.ConfigureAuthGuard(
 			intFromCfg(cfg.Master, "slave_auth_fail_limit", 2),
 			time.Duration(intFromCfg(cfg.Master, "slave_auth_fail_window_seconds", 900))*time.Second,
@@ -456,6 +459,40 @@ func intFromCfg(m map[string]interface{}, key string, def int) int {
 		return int(val)
 	default:
 		return def
+	}
+}
+
+func stringSliceFromCfg(m map[string]interface{}, key string) []string {
+	if m == nil {
+		return nil
+	}
+	raw, ok := m[key]
+	if !ok || raw == nil {
+		return nil
+	}
+	switch v := raw.(type) {
+	case []string:
+		out := make([]string, 0, len(v))
+		for _, s := range v {
+			s = strings.TrimSpace(s)
+			if s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				s = strings.TrimSpace(s)
+				if s != "" {
+					out = append(out, s)
+				}
+			}
+		}
+		return out
+	default:
+		return nil
 	}
 }
 

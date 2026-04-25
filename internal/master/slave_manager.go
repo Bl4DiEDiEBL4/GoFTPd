@@ -29,6 +29,7 @@ type SlaveManager struct {
 	authFailLimit    int
 	authFailWindow   time.Duration
 	authBanDuration  time.Duration
+	authAllowNets    []*net.IPNet
 
 	slaves   map[string]*RemoteSlave
 	slavesMu sync.RWMutex
@@ -99,6 +100,37 @@ func (sm *SlaveManager) ConfigureAuthGuard(limit int, window, banDuration time.D
 	sm.authFailLimit = limit
 	sm.authFailWindow = window
 	sm.authBanDuration = banDuration
+}
+
+func (sm *SlaveManager) ConfigureAuthAllowlist(values []string) error {
+	nets := make([]*net.IPNet, 0, len(values))
+	for _, raw := range values {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		if strings.Contains(raw, "/") {
+			_, network, err := net.ParseCIDR(raw)
+			if err != nil {
+				return fmt.Errorf("invalid slave allowlist entry %q: %w", raw, err)
+			}
+			nets = append(nets, network)
+			continue
+		}
+		ip := net.ParseIP(raw)
+		if ip == nil {
+			return fmt.Errorf("invalid slave allowlist IP %q", raw)
+		}
+		bits := 32
+		if ip.To4() == nil {
+			bits = 128
+		}
+		nets = append(nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+	}
+	sm.authMu.Lock()
+	sm.authAllowNets = nets
+	sm.authMu.Unlock()
+	return nil
 }
 
 func (sm *SlaveManager) publishDiskStatus(rs *RemoteSlave) {
@@ -227,6 +259,12 @@ func (sm *SlaveManager) acceptLoop() {
 		}
 
 		ip, remoteAddr := splitRemoteAddr(conn.RemoteAddr())
+		if !sm.isAuthAllowed(ip) {
+			log.Printf("[SlaveManager] Denied slave connection from %s (not in allowlist)", remoteAddr)
+			sm.publishSecurityEvent(ip, remoteAddr, "deny", "slave control IP not in allowlist", 0, time.Time{})
+			conn.Close()
+			continue
+		}
 		if banned, until := sm.isAuthBanned(ip); banned {
 			log.Printf("[SlaveManager] Blocked banned slave connection from %s until %s", remoteAddr, until.Format(time.RFC3339))
 			conn.Close()
@@ -386,6 +424,28 @@ func (sm *SlaveManager) isAuthBanned(ip string) (bool, time.Time) {
 		state.FirstSeen = time.Time{}
 	}
 	return false, time.Time{}
+}
+
+func (sm *SlaveManager) isAuthAllowed(ip string) bool {
+	if strings.TrimSpace(ip) == "" {
+		return false
+	}
+	parsed := net.ParseIP(strings.TrimSpace(ip))
+	if parsed == nil {
+		return false
+	}
+	sm.authMu.Lock()
+	nets := append([]*net.IPNet(nil), sm.authAllowNets...)
+	sm.authMu.Unlock()
+	if len(nets) == 0 {
+		return true
+	}
+	for _, network := range nets {
+		if network != nil && network.Contains(parsed) {
+			return true
+		}
+	}
+	return false
 }
 
 func splitRemoteAddr(addr net.Addr) (ip string, raw string) {

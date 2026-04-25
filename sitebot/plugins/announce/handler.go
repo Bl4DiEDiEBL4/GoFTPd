@@ -448,6 +448,8 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 			strikes := strings.TrimSpace(vars["strikes"])
 			limit := strings.TrimSpace(vars["limit"])
 			switch strings.ToLower(strings.TrimSpace(vars["action"])) {
+			case "deny":
+				message = fmt.Sprintf("denied slave-port connection from %s - %s", remote, reason)
 			case "ban":
 				until := strings.TrimSpace(vars["banned_until"])
 				message = fmt.Sprintf("slave port banned %s after %s/%s failed handshakes - %s", remote, strikes, limit, reason)
