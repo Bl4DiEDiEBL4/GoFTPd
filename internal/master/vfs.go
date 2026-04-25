@@ -37,6 +37,14 @@ type VFSDirMeta struct {
 	MediaInfo  map[string]string // cached release media fields, e.g. genre/year
 }
 
+type VFSRaceCache struct {
+	Users      []RaceUserStat
+	Groups     []RaceGroupStat
+	TotalBytes int64
+	Present    int
+	Total      int
+}
+
 type VFSSearchResult struct {
 	Path    string
 	Files   int
@@ -51,6 +59,7 @@ type VirtualFileSystem struct {
 	files         map[string]*VFSFile
 	children      map[string]map[string]struct{}
 	dirMeta       map[string]*VFSDirMeta // dir path -> metadata (SFV cache etc)
+	raceState     map[string]*VFSRaceCache
 	protectedDirs map[string]bool
 	mu            sync.RWMutex
 }
@@ -60,6 +69,7 @@ func NewVirtualFileSystem() *VirtualFileSystem {
 		files:         make(map[string]*VFSFile),
 		children:      make(map[string]map[string]struct{}),
 		dirMeta:       make(map[string]*VFSDirMeta),
+		raceState:     make(map[string]*VFSRaceCache),
 		protectedDirs: make(map[string]bool),
 	}
 	vfs.files["/"] = &VFSFile{Path: "/", IsDir: true, Seen: true}
@@ -105,6 +115,7 @@ func (vfs *VirtualFileSystem) AddFile(path string, file VFSFile) {
 	if file.IsDir {
 		vfs.ensureChildrenBucketLocked(path)
 	}
+	vfs.refreshRaceStateForPathLocked(path)
 }
 
 func (vfs *VirtualFileSystem) AddSymlink(linkPath, targetPath string) {
@@ -129,6 +140,7 @@ func (vfs *VirtualFileSystem) AddSymlink(linkPath, targetPath string) {
 	vfs.ensureParentDirsLocked(linkPath, "")
 	vfs.linkChildLocked(cleanVFSPath(filepath.Dir(linkPath)), linkPath)
 	vfs.ensureChildrenBucketLocked(linkPath)
+	vfs.refreshRaceStateForPathLocked(linkPath)
 }
 
 func (vfs *VirtualFileSystem) Chmod(path string, mode uint32) {
@@ -176,6 +188,7 @@ func (vfs *VirtualFileSystem) PurgeUnseen(slaveName string) {
 	}
 	if changed {
 		vfs.rebuildChildrenLocked()
+		vfs.rebuildAllRaceStatesLocked()
 	}
 }
 
@@ -205,6 +218,7 @@ func (vfs *VirtualFileSystem) SetProtectedDirs(paths []string) {
 		}
 	}
 	vfs.rebuildChildrenLocked()
+	vfs.rebuildAllRaceStatesLocked()
 }
 
 func (vfs *VirtualFileSystem) GetFile(path string) *VFSFile {
@@ -228,6 +242,7 @@ func (vfs *VirtualFileSystem) DeleteFile(path string) {
 		}
 	}
 	vfs.rebuildChildrenLocked()
+	vfs.rebuildAllRaceStatesLocked()
 }
 
 // ListDirectory returns direct children of a directory.
@@ -318,6 +333,7 @@ func (vfs *VirtualFileSystem) RenameFile(from, to string) {
 		vfs.dirMeta[mv.new] = meta
 	}
 	vfs.rebuildChildrenLocked()
+	vfs.rebuildAllRaceStatesLocked()
 }
 
 // ClearSlave removes all files belonging to a slave (called when slave goes offline)
@@ -334,6 +350,7 @@ func (vfs *VirtualFileSystem) ClearSlave(slaveName string) {
 	}
 	if changed {
 		vfs.rebuildChildrenLocked()
+		vfs.rebuildAllRaceStatesLocked()
 	}
 }
 
@@ -488,6 +505,7 @@ func (vfs *VirtualFileSystem) LoadFromDisk(filePath string) error {
 		vfs.protectedDirs = make(map[string]bool)
 	}
 	vfs.rebuildChildrenLocked()
+	vfs.rebuildAllRaceStatesLocked()
 
 	log.Printf("[VFS] Loaded %d entries from %s", len(vfs.files), filePath)
 	return nil
@@ -523,6 +541,7 @@ func (vfs *VirtualFileSystem) SetSFVData(dirPath string, sfvName string, entries
 	}
 	meta.SFVEntries = normalized
 	meta.SFVName = sfvName
+	vfs.refreshRaceStateLocked(dirPath)
 }
 
 // SetMediaInfo caches release-level mediainfo fields on a directory.
@@ -569,14 +588,15 @@ func (vfs *VirtualFileSystem) GetSFVData(dirPath string) *VFSDirMeta {
 
 // RaceUserStat holds per-user race statistics computed from VFS.
 type RaceUserStat struct {
-	Name      string
-	Group     string
-	Files     int
-	Bytes     int64
-	Speed     float64 // bytes/sec average across this user's files
-	PeakSpeed float64 // bytes/sec of this user's fastest single file
-	SlowSpeed float64 // bytes/sec of this user's slowest single file
-	Percent   int
+	Name       string
+	Group      string
+	Files      int
+	Bytes      int64
+	Speed      float64 // bytes/sec average across this user's files
+	PeakSpeed  float64 // bytes/sec of this user's fastest single file
+	SlowSpeed  float64 // bytes/sec of this user's slowest single file
+	Percent    int
+	DurationMs int64 // sum of file durations for this user
 }
 
 // RaceGroupStat holds per-group race statistics.
@@ -595,101 +615,15 @@ func (vfs *VirtualFileSystem) GetRaceStats(dirPath string) (users []RaceUserStat
 	defer vfs.mu.RUnlock()
 
 	dirPath = filepath.Clean(dirPath)
-	meta := vfs.dirMeta[dirPath]
-	if meta == nil || len(meta.SFVEntries) == 0 {
+	cache := vfs.raceState[dirPath]
+	if cache == nil {
 		return
 	}
-
-	total = len(meta.SFVEntries)
-	userMap := make(map[string]*RaceUserStat)
-	groupMap := make(map[string]*RaceGroupStat)
-
-	prefix := dirPath + "/"
-	if dirPath == "/" {
-		prefix = "/"
-	}
-
-	presentFiles := make(map[string]*VFSFile)
-	for path, f := range vfs.files {
-		if f == nil || f.IsDir || !strings.HasPrefix(path, prefix) {
-			continue
-		}
-		rel := path[len(prefix):]
-		if strings.Contains(rel, "/") || strings.Contains(rel, "\\") {
-			continue
-		}
-		presentFiles[raceFileKey(rel)] = f
-	}
-
-	for sfvFile := range meta.SFVEntries {
-		f := presentFiles[raceFileKey(sfvFile)]
-		if f == nil {
-			continue
-		}
-		present++
-		totalBytes += f.Size
-
-		owner := f.Owner
-		if owner == "" {
-			owner = "unknown"
-		}
-		group := f.Group
-		if group == "" {
-			group = "NoGroup"
-		}
-
-		// User stats
-		us, ok := userMap[owner]
-		if !ok {
-			us = &RaceUserStat{Name: owner, Group: group}
-			userMap[owner] = us
-		}
-		us.Files++
-		us.Bytes += f.Size
-		if f.XferTime > 0 {
-			fileSpeed := float64(f.Size) / (float64(f.XferTime) / 1000.0)
-			us.Speed += fileSpeed
-			if fileSpeed > us.PeakSpeed {
-				us.PeakSpeed = fileSpeed
-			}
-			if us.SlowSpeed == 0 || fileSpeed < us.SlowSpeed {
-				us.SlowSpeed = fileSpeed
-			}
-		}
-
-		// Group stats
-		gs, ok := groupMap[group]
-		if !ok {
-			gs = &RaceGroupStat{Name: group}
-			groupMap[group] = gs
-		}
-		gs.Files++
-		gs.Bytes += f.Size
-		if f.XferTime > 0 {
-			gs.Speed += float64(f.Size) / (float64(f.XferTime) / 1000.0)
-		}
-	}
-
-	// Calculate percentages and build sorted lists
-	for _, us := range userMap {
-		if total > 0 {
-			us.Percent = (us.Files * 100) / total
-		}
-		if us.Files > 0 {
-			us.Speed = us.Speed / float64(us.Files) // average speed
-		}
-		users = append(users, *us)
-	}
-	for _, gs := range groupMap {
-		if total > 0 {
-			gs.Percent = (gs.Files * 100) / total
-		}
-		if gs.Files > 0 {
-			gs.Speed = gs.Speed / float64(gs.Files)
-		}
-		groups = append(groups, *gs)
-	}
-
+	users = append(users, cache.Users...)
+	groups = append(groups, cache.Groups...)
+	totalBytes = cache.TotalBytes
+	present = cache.Present
+	total = cache.Total
 	return
 }
 
@@ -812,4 +746,140 @@ func (vfs *VirtualFileSystem) rebuildChildrenLocked() {
 		children[parent][path] = struct{}{}
 	}
 	vfs.children = children
+}
+
+func (vfs *VirtualFileSystem) rebuildAllRaceStatesLocked() {
+	if vfs.raceState == nil {
+		vfs.raceState = make(map[string]*VFSRaceCache)
+	}
+	for dirPath := range vfs.raceState {
+		delete(vfs.raceState, dirPath)
+	}
+	for dirPath, meta := range vfs.dirMeta {
+		if meta == nil || len(meta.SFVEntries) == 0 {
+			continue
+		}
+		vfs.refreshRaceStateLocked(dirPath)
+	}
+}
+
+func (vfs *VirtualFileSystem) refreshRaceStateForPathLocked(path string) {
+	dirPath := cleanVFSPath(filepath.Dir(path))
+	vfs.refreshRaceStateLocked(dirPath)
+}
+
+func (vfs *VirtualFileSystem) refreshRaceStateLocked(dirPath string) {
+	dirPath = cleanVFSPath(dirPath)
+	meta := vfs.dirMeta[dirPath]
+	if meta == nil || len(meta.SFVEntries) == 0 {
+		delete(vfs.raceState, dirPath)
+		return
+	}
+	if vfs.raceState == nil {
+		vfs.raceState = make(map[string]*VFSRaceCache)
+	}
+
+	userMap := make(map[string]*RaceUserStat)
+	groupMap := make(map[string]*RaceGroupStat)
+	presentFiles := make(map[string]*VFSFile)
+	for childPath := range vfs.children[dirPath] {
+		f := vfs.files[childPath]
+		if f == nil || f.IsDir {
+			continue
+		}
+		presentFiles[raceFileKey(filepath.Base(childPath))] = f
+	}
+
+	cache := &VFSRaceCache{
+		Total: len(meta.SFVEntries),
+	}
+	for sfvFile := range meta.SFVEntries {
+		f := presentFiles[raceFileKey(sfvFile)]
+		if f == nil {
+			continue
+		}
+		cache.Present++
+		cache.TotalBytes += f.Size
+
+		owner := f.Owner
+		if owner == "" {
+			owner = "unknown"
+		}
+		group := f.Group
+		if group == "" {
+			group = "NoGroup"
+		}
+
+		us := userMap[owner]
+		if us == nil {
+			us = &RaceUserStat{Name: owner, Group: group}
+			userMap[owner] = us
+		}
+		us.Files++
+		us.Bytes += f.Size
+		if f.XferTime > 0 {
+			fileSpeed := float64(f.Size) / (float64(f.XferTime) / 1000.0)
+			us.Speed += fileSpeed
+			if fileSpeed > us.PeakSpeed {
+				us.PeakSpeed = fileSpeed
+			}
+			if us.SlowSpeed == 0 || fileSpeed < us.SlowSpeed {
+				us.SlowSpeed = fileSpeed
+			}
+			us.DurationMs += f.XferTime
+		}
+
+		gs := groupMap[group]
+		if gs == nil {
+			gs = &RaceGroupStat{Name: group}
+			groupMap[group] = gs
+		}
+		gs.Files++
+		gs.Bytes += f.Size
+		if f.XferTime > 0 {
+			gs.Speed += float64(f.Size) / (float64(f.XferTime) / 1000.0)
+		}
+	}
+
+	cache.Users = make([]RaceUserStat, 0, len(userMap))
+	for _, us := range userMap {
+		if cache.Total > 0 {
+			us.Percent = (us.Files * 100) / cache.Total
+		}
+		if us.Files > 0 {
+			us.Speed = us.Speed / float64(us.Files)
+		}
+		cache.Users = append(cache.Users, *us)
+	}
+	sort.Slice(cache.Users, func(i, j int) bool {
+		if cache.Users[i].Files != cache.Users[j].Files {
+			return cache.Users[i].Files > cache.Users[j].Files
+		}
+		if cache.Users[i].Bytes != cache.Users[j].Bytes {
+			return cache.Users[i].Bytes > cache.Users[j].Bytes
+		}
+		return strings.ToLower(cache.Users[i].Name) < strings.ToLower(cache.Users[j].Name)
+	})
+
+	cache.Groups = make([]RaceGroupStat, 0, len(groupMap))
+	for _, gs := range groupMap {
+		if cache.Total > 0 {
+			gs.Percent = (gs.Files * 100) / cache.Total
+		}
+		if gs.Files > 0 {
+			gs.Speed = gs.Speed / float64(gs.Files)
+		}
+		cache.Groups = append(cache.Groups, *gs)
+	}
+	sort.Slice(cache.Groups, func(i, j int) bool {
+		if cache.Groups[i].Files != cache.Groups[j].Files {
+			return cache.Groups[i].Files > cache.Groups[j].Files
+		}
+		if cache.Groups[i].Bytes != cache.Groups[j].Bytes {
+			return cache.Groups[i].Bytes > cache.Groups[j].Bytes
+		}
+		return strings.ToLower(cache.Groups[i].Name) < strings.ToLower(cache.Groups[j].Name)
+	})
+
+	vfs.raceState[dirPath] = cache
 }

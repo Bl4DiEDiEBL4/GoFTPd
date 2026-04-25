@@ -829,23 +829,23 @@ func (b *Bridge) CacheMediaInfo(dirPath string, fields map[string]string) {
 // GetVFSRaceStats returns race statistics for a directory,
 // counting ONLY files that are listed in the cached SFV data.
 func (b *Bridge) GetVFSRaceStats(dirPath string) ([]core.VFSRaceUser, []core.VFSRaceGroup, int64, int, int) {
-	if b.raceDB != nil {
+	users, groups, totalBytes, present, total := b.sm.GetVFS().GetRaceStats(dirPath)
+	if total == 0 && b.raceDB != nil {
 		return b.raceDB.GetRaceStats(filepath.Clean(dirPath))
 	}
-
-	users, groups, totalBytes, present, total := b.sm.GetVFS().GetRaceStats(dirPath)
 
 	coreUsers := make([]core.VFSRaceUser, len(users))
 	for i, u := range users {
 		coreUsers[i] = core.VFSRaceUser{
-			Name:      u.Name,
-			Group:     u.Group,
-			Files:     u.Files,
-			Bytes:     u.Bytes,
-			Speed:     u.Speed,
-			PeakSpeed: u.PeakSpeed,
-			SlowSpeed: u.SlowSpeed,
-			Percent:   u.Percent,
+			Name:       u.Name,
+			Group:      u.Group,
+			Files:      u.Files,
+			Bytes:      u.Bytes,
+			Speed:      u.Speed,
+			PeakSpeed:  u.PeakSpeed,
+			SlowSpeed:  u.SlowSpeed,
+			Percent:    u.Percent,
+			DurationMs: u.DurationMs,
 		}
 	}
 	coreGroups := make([]core.VFSRaceGroup, len(groups))
