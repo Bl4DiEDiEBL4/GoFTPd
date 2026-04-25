@@ -253,15 +253,8 @@ func PublishEvent(cfg *Config, evt Event) {
 }
 
 func sectionFromPath(p string) string {
-	cleaned := path.Clean("/" + strings.TrimSpace(p))
-	if cleaned == "/" || cleaned == "." {
-		return "DEFAULT"
-	}
-	parts := strings.Split(strings.TrimPrefix(cleaned, "/"), "/")
-	if len(parts) == 0 || parts[0] == "" {
-		return "DEFAULT"
-	}
-	return strings.ToUpper(parts[0])
+	section, _ := zipscript.SectionInfoFromPath(p)
+	return section
 }
 
 func sectionFromPathWithConfig(cfg *Config, p string) string {

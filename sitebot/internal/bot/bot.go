@@ -586,11 +586,15 @@ func pathMatches(pattern, p string) bool {
 	if ok, _ := filepath.Match(strings.TrimSpace(pattern), p); ok {
 		return true
 	}
-	return strings.HasPrefix(strings.ToLower(p), strings.ToLower(strings.TrimRight(pattern, "*")))
+	prefix := strings.TrimRight(strings.TrimSpace(pattern), "*")
+	if strings.EqualFold(strings.TrimRight(p, "/"), strings.TrimRight(strings.TrimSuffix(prefix, "/"), "/")) {
+		return true
+	}
+	return strings.HasPrefix(strings.ToLower(p), strings.ToLower(prefix))
 }
 
 func (b *Bot) resolveSection(pathValue, fallback string) string {
-	best := strings.TrimSpace(fallback)
+	best := inferNestedSection(pathValue, fallback)
 	bestScore := -1
 	for _, sec := range b.Config.Sections {
 		for _, pat := range sec.Paths {
@@ -609,6 +613,29 @@ func (b *Bot) resolveSection(pathValue, fallback string) string {
 	}
 	return best
 }
+
+func inferNestedSection(pathValue, fallback string) string {
+	cleaned := filepath.ToSlash(filepath.Clean("/" + strings.TrimSpace(pathValue)))
+	if cleaned == "/" || cleaned == "." {
+		return strings.TrimSpace(fallback)
+	}
+	parts := strings.Split(strings.TrimPrefix(cleaned, "/"), "/")
+	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+		return strings.TrimSpace(fallback)
+	}
+	root := strings.ToUpper(strings.TrimSpace(parts[0]))
+	switch root {
+	case "FOREIGN", "PRE", "ARCHIVE":
+		if len(parts) >= 2 && strings.TrimSpace(parts[1]) != "" {
+			return strings.ToUpper(strings.TrimSpace(parts[1]))
+		}
+	}
+	if strings.TrimSpace(fallback) == "" {
+		return root
+	}
+	return strings.TrimSpace(fallback)
+}
+
 func (b *Bot) routeChannels(evt *event.Event, outType string) []string {
 	if chs := b.Config.Announce.TypeRoutes[outType]; len(chs) > 0 {
 		return nonEmptyChannels(chs)
