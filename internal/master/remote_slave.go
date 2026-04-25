@@ -328,6 +328,9 @@ func (rs *RemoteSlave) Run(masterSlaveManager *SlaveManager) {
 		case *protocol.AsyncResponseFileContent:
 			rs.routeResponse(resp.Index, obj)
 
+		case *protocol.AsyncResponseZipEntryContent:
+			rs.routeResponse(resp.Index, obj)
+
 		case *protocol.AsyncResponseMediaInfo:
 			rs.routeResponse(resp.Index, obj)
 

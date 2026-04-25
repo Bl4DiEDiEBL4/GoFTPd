@@ -1,6 +1,7 @@
 package slave
 
 import (
+	"archive/zip"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -271,6 +273,9 @@ func (s *Slave) handleCommand(ac *protocol.AsyncCommand) interface{} {
 
 	case "readFile":
 		return s.handleReadFile(ac)
+
+	case "readZipEntry":
+		return s.handleReadZipEntry(ac)
 
 	case "mediainfo":
 		return s.handleMediaInfo(ac)
@@ -925,6 +930,56 @@ func (s *Slave) handleReadFile(ac *protocol.AsyncCommand) interface{} {
 	}
 
 	return &protocol.AsyncResponseError{Index: ac.Index, Message: "file not found: " + filePath}
+}
+
+func (s *Slave) handleReadZipEntry(ac *protocol.AsyncCommand) interface{} {
+	if len(ac.Args) < 2 {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "readZipEntry: missing archive path or entry name"}
+	}
+	archivePath := ac.Args[0]
+	entryName := strings.TrimSpace(ac.Args[1])
+	if entryName == "" {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "readZipEntry: empty entry name"}
+	}
+
+	for _, root := range s.roots {
+		fullPath := filepath.Join(root, archivePath)
+		info, err := os.Stat(fullPath)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		zr, err := zip.OpenReader(fullPath)
+		if err != nil {
+			return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("zip open failed: %v", err)}
+		}
+		defer zr.Close()
+		for _, f := range zr.File {
+			base := path.Base(strings.ReplaceAll(f.Name, "\\", "/"))
+			if !strings.EqualFold(base, entryName) || f.FileInfo().IsDir() {
+				continue
+			}
+			if f.UncompressedSize64 > 65536 {
+				return &protocol.AsyncResponseError{Index: ac.Index, Message: "zip entry too large for readZipEntry"}
+			}
+			rc, err := f.Open()
+			if err != nil {
+				return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("zip entry open failed: %v", err)}
+			}
+			data, err := io.ReadAll(rc)
+			_ = rc.Close()
+			if err != nil {
+				return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("zip entry read failed: %v", err)}
+			}
+			return &protocol.AsyncResponseZipEntryContent{
+				Index:     ac.Index,
+				EntryName: f.Name,
+				Content:   data,
+			}
+		}
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("zip entry not found: %s", entryName)}
+	}
+
+	return &protocol.AsyncResponseError{Index: ac.Index, Message: "file not found: " + archivePath}
 }
 
 func (s *Slave) handleMediaInfo(ac *protocol.AsyncCommand) interface{} {

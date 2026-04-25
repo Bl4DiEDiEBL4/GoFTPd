@@ -210,6 +210,9 @@ func ValidateUpload(cfg Config, dirPath, fileName string, existingNames []string
 	}
 	isPayload := IsRacePayloadFileForDir(cfg, dirPath, fileName) || listedInSFV
 	if UsesZip(cfg, dirPath) {
+		if strings.EqualFold(path.Base(strings.ReplaceAll(strings.TrimSpace(fileName), "\\", "/")), "file_id.diz") {
+			return errors.New("zipscript: diz-file is not allowed here")
+		}
 		if !IsAllowedTypeForDir(cfg, dirPath, fileName) {
 			return fmt.Errorf("zipscript: file type %q is not allowed here", normalizedExt(fileName))
 		}

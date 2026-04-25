@@ -250,6 +250,15 @@ func IssueReadFile(rs *RemoteSlave, path string) (string, error) {
 	return index, rs.SendCommand(&protocol.AsyncCommand{Index: index, Name: "readFile", Args: []string{path}})
 }
 
+// IssueReadZipEntry asks the slave to read a small entry from inside a zip archive.
+func IssueReadZipEntry(rs *RemoteSlave, archivePath, entryName string) (string, error) {
+	index, err := rs.FetchIndex()
+	if err != nil {
+		return "", err
+	}
+	return index, rs.SendCommand(&protocol.AsyncCommand{Index: index, Name: "readZipEntry", Args: []string{archivePath, entryName}})
+}
+
 // IssueWriteFile asks the slave to write a small file.
 func IssueWriteFile(rs *RemoteSlave, path string, content string) (string, error) {
 	index, err := rs.FetchIndex()

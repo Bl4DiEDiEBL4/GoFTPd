@@ -28,7 +28,7 @@ func New() *Plugin {
 	return &Plugin{
 		staffChannels: []string{"#goftpd-staff"},
 		staffHosts:    []string{},
-		replyTarget:   "channel",
+		replyTarget:   "notice",
 		encryptTopic:  true,
 		allowedTarget: []string{},
 	}

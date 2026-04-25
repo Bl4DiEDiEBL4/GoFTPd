@@ -1088,6 +1088,10 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
 				existingNames = zipscriptExistingNames(bridge, s.CurrentDir)
+				if shouldBlockZipDIZUpload(s.Config, s.CurrentDir, fileName) {
+					fmt.Fprintf(s.Conn, "550 zipscript: upload file_id.diz inside the zip, not as a standalone file\r\n")
+					return false
+				}
 				if err := zipscript.ValidateUpload(s.Config.Zipscript, s.CurrentDir, fileName, existingNames, bridge.GetSFVData(s.CurrentDir)); err != nil {
 					fmt.Fprintf(s.Conn, "550 %s\r\n", err)
 					return false
@@ -1146,6 +1150,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						log.Printf("[MASTER-ZS] Parsed SFV %s: %d entries", fileName, len(sfvEntries))
 						bridge.CacheSFV(s.CurrentDir, fileName, sfvEntries)
 					}
+				}
+				if err := refreshZipDIZFromArchive(bridge, s.CurrentDir, filePath, fileName); err != nil && s.Config.Debug {
+					log.Printf("[MASTER-ZS] zip diz refresh skipped for %s: %v", filePath, err)
 				}
 				if err := applyAudioZipscriptChecks(s, bridge, filePath, fileName); err != nil {
 					fmt.Fprintf(s.Conn, "226- zipscript audio check failed: %s\r\n", err)
@@ -1289,6 +1296,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						log.Printf("[MASTER-ZS] Parsed SFV %s: %d entries", fileName, len(sfvEntries))
 						bridge.CacheSFV(s.CurrentDir, fileName, sfvEntries)
 					}
+				}
+				if err := refreshZipDIZFromArchive(bridge, s.CurrentDir, filePath, fileName); err != nil && s.Config.Debug {
+					log.Printf("[MASTER-ZS] zip diz refresh skipped for %s: %v", filePath, err)
 				}
 				if err := applyAudioZipscriptChecks(s, bridge, filePath, fileName); err != nil {
 					fmt.Fprintf(s.Conn, "226- zipscript audio check failed: %s\r\n", err)
@@ -2182,6 +2192,28 @@ func zipExpectedPartsFromDIZ(bridge MasterBridge, dirPath string) int {
 		return 0
 	}
 	return n
+}
+
+func shouldBlockZipDIZUpload(cfg *Config, dirPath, fileName string) bool {
+	if cfg == nil || !zipscript.UsesZip(cfg.Zipscript, dirPath) {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(fileName), "file_id.diz")
+}
+
+func refreshZipDIZFromArchive(bridge MasterBridge, dirPath, archivePath, fileName string) error {
+	if bridge == nil || !isZipPayloadName(fileName) {
+		return nil
+	}
+	dizPath := path.Join(dirPath, "file_id.diz")
+	if bridge.GetFileSize(dizPath) >= 0 {
+		return nil
+	}
+	content, err := bridge.ReadZipEntry(archivePath, "file_id.diz")
+	if err != nil || len(content) == 0 {
+		return err
+	}
+	return bridge.WriteFile(dizPath, content)
 }
 
 func zipDirComplete(entries []MasterFileEntry, expected int) bool {

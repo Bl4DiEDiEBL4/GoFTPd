@@ -50,6 +50,7 @@ type MasterBridge interface {
 
 	// ReadFile reads a small file from a slave (for .message/.imdb display).
 	ReadFile(filePath string) ([]byte, error)
+	ReadZipEntry(archivePath, entryName string) ([]byte, error)
 
 	// GetSFVInfo asks a slave to parse an SFV file and return filename→CRC32 entries.
 	GetSFVInfo(sfvPath string) ([]SFVEntryInfo, error)

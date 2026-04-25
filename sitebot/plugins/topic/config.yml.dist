@@ -9,4 +9,5 @@ allowed_targets: []
 # as +OK *<ciphertext> so FiSH clients can decrypt it.
 encrypt_topic: true
 # reply_target supports "channel", "notice", or a fixed "#channel".
-reply_target: "channel"
+# Default is "notice" so !topic confirmations stay out of the public channel.
+reply_target: "notice"

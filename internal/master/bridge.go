@@ -487,6 +487,35 @@ func (b *Bridge) ReadFile(filePath string) ([]byte, error) {
 	return nil, fmt.Errorf("unexpected response type: %T", resp)
 }
 
+func (b *Bridge) ReadZipEntry(archivePath, entryName string) ([]byte, error) {
+	var lastErr error
+	for _, slave := range b.candidateSlavesForPath(archivePath) {
+		index, err := IssueReadZipEntry(slave, archivePath, entryName)
+		if err != nil {
+			lastErr = fmt.Errorf("issue readZipEntry to %s: %w", slave.Name(), err)
+			continue
+		}
+
+		resp, err := slave.FetchResponse(index, 30*time.Second)
+		if err != nil {
+			lastErr = fmt.Errorf("%s: %w", slave.Name(), err)
+			continue
+		}
+		if errResp, ok := resp.(*protocol.AsyncResponseError); ok {
+			lastErr = fmt.Errorf("%s: %s", slave.Name(), errResp.Message)
+			continue
+		}
+		if fc, ok := resp.(*protocol.AsyncResponseZipEntryContent); ok {
+			return fc.Content, nil
+		}
+		lastErr = fmt.Errorf("%s: unexpected response type: %T", slave.Name(), resp)
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("file not found: %s", archivePath)
+}
+
 func (b *Bridge) ProbeMediaInfo(filePath, binary string, timeoutSeconds int) (map[string]string, error) {
 	if strings.TrimSpace(binary) == "" {
 		binary = "mediainfo"
