@@ -103,8 +103,9 @@ func (p *Plugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 		}, "TOPIC: failed to set topic: "+err.Error())), nil
 	}
 	return p.reply(evt, p.render("TOPICCMD_OK", map[string]string{
-		"channel": target,
-		"topic":   topicText,
+		"channel":  target,
+		"topic":    topicText,
+		"response": topicText,
 	}, fmt.Sprintf("TOPIC: set %s", target))), nil
 }
 
