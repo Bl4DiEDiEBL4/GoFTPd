@@ -115,6 +115,7 @@ func (vfs *VirtualFileSystem) AddFile(path string, file VFSFile) {
 	if file.IsDir {
 		vfs.ensureChildrenBucketLocked(path)
 	}
+	vfs.touchAncestorsLocked(path, time.Now().Unix())
 	vfs.refreshRaceStateForPathLocked(path)
 }
 
@@ -140,6 +141,7 @@ func (vfs *VirtualFileSystem) AddSymlink(linkPath, targetPath string) {
 	vfs.ensureParentDirsLocked(linkPath, "")
 	vfs.linkChildLocked(cleanVFSPath(filepath.Dir(linkPath)), linkPath)
 	vfs.ensureChildrenBucketLocked(linkPath)
+	vfs.touchAncestorsLocked(linkPath, time.Now().Unix())
 	vfs.refreshRaceStateForPathLocked(linkPath)
 }
 
@@ -232,6 +234,7 @@ func (vfs *VirtualFileSystem) DeleteFile(path string) {
 	defer vfs.mu.Unlock()
 
 	path = cleanVFSPath(path)
+	parent := cleanVFSPath(filepath.Dir(path))
 	delete(vfs.files, path)
 
 	// Also delete children if directory
@@ -242,6 +245,7 @@ func (vfs *VirtualFileSystem) DeleteFile(path string) {
 		}
 	}
 	vfs.rebuildChildrenLocked()
+	vfs.touchAncestorsLocked(parent, time.Now().Unix())
 	vfs.rebuildAllRaceStatesLocked()
 }
 
@@ -293,6 +297,8 @@ func (vfs *VirtualFileSystem) RenameFile(from, to string) {
 
 	from = cleanVFSPath(from)
 	to = cleanVFSPath(to)
+	fromParent := cleanVFSPath(filepath.Dir(from))
+	toParent := cleanVFSPath(filepath.Dir(to))
 
 	file := vfs.files[from]
 	if file == nil {
@@ -333,6 +339,9 @@ func (vfs *VirtualFileSystem) RenameFile(from, to string) {
 		vfs.dirMeta[mv.new] = meta
 	}
 	vfs.rebuildChildrenLocked()
+	now := time.Now().Unix()
+	vfs.touchAncestorsLocked(fromParent, now)
+	vfs.touchAncestorsLocked(toParent, now)
 	vfs.rebuildAllRaceStatesLocked()
 }
 
@@ -678,6 +687,22 @@ func (vfs *VirtualFileSystem) ensureParentDirsLocked(path string, slaveName stri
 		parent := cleanVFSPath(filepath.Dir(dir))
 		vfs.linkChildLocked(parent, dir)
 		dir = parent
+	}
+}
+
+func (vfs *VirtualFileSystem) touchAncestorsLocked(path string, ts int64) {
+	if ts <= 0 {
+		ts = time.Now().Unix()
+	}
+	current := cleanVFSPath(path)
+	for current != "." && current != "" {
+		if f := vfs.files[current]; f != nil && f.IsDir {
+			f.LastModified = ts
+		}
+		if current == "/" {
+			break
+		}
+		current = cleanVFSPath(filepath.Dir(current))
 	}
 }
 

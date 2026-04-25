@@ -3,6 +3,7 @@ package master
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestVFSListDirectoryUsesDirectChildren(t *testing.T) {
@@ -161,5 +162,35 @@ func TestVFSRaceStatsRefreshAfterDelete(t *testing.T) {
 	}
 	if len(users) != 1 || users[0].Files != 1 {
 		t.Fatalf("expected one surviving user/file after delete, got %+v", users)
+	}
+}
+
+func TestParentDirModTimeBubblesOnChanges(t *testing.T) {
+	vfs := NewVirtualFileSystem()
+	vfs.AddFile("/site", VFSFile{IsDir: true, Seen: true, LastModified: 1})
+	vfs.AddFile("/site/MP3", VFSFile{IsDir: true, Seen: true, LastModified: 1})
+	vfs.AddFile("/site/MP3/release", VFSFile{IsDir: true, Seen: true, LastModified: 1})
+
+	beforeSection := vfs.GetFile("/site/MP3").LastModified
+	beforeRelease := vfs.GetFile("/site/MP3/release").LastModified
+
+	time.Sleep(1100 * time.Millisecond)
+	vfs.AddFile("/site/MP3/release/01-track.mp3", VFSFile{Size: 123, Seen: true})
+
+	afterSection := vfs.GetFile("/site/MP3").LastModified
+	afterRelease := vfs.GetFile("/site/MP3/release").LastModified
+	if afterSection <= beforeSection {
+		t.Fatalf("expected section modtime to increase, got %d <= %d", afterSection, beforeSection)
+	}
+	if afterRelease <= beforeRelease {
+		t.Fatalf("expected release modtime to increase, got %d <= %d", afterRelease, beforeRelease)
+	}
+
+	time.Sleep(1100 * time.Millisecond)
+	deleteBefore := vfs.GetFile("/site/MP3/release").LastModified
+	vfs.DeleteFile("/site/MP3/release/01-track.mp3")
+	deleteAfter := vfs.GetFile("/site/MP3/release").LastModified
+	if deleteAfter <= deleteBefore {
+		t.Fatalf("expected delete to bump release modtime, got %d <= %d", deleteAfter, deleteBefore)
 	}
 }

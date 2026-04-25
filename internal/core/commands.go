@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"goftpd/internal/timeutil"
 	"goftpd/internal/user"
@@ -1559,10 +1560,10 @@ func (s *Session) showGlobalStats(code string, final bool) {
 		code, ulGiB, dlGiB, siteSpeedMiB, freeSpaceMB)
 
 	if final {
-		fmt.Fprintf(s.Conn, "%s  [Section: DEFAULT] [Credits: %.1fGiB] [Ratio: %s]\r\n",
+		fmt.Fprintf(s.Conn, "%s  [Credits: %.1fGiB] [Ratio: %s]\r\n",
 			code, creditsGiB, ratioStr)
 	} else {
-		fmt.Fprintf(s.Conn, "%s- [Section: DEFAULT] [Credits: %.1fGiB] [Ratio: %s]\r\n",
+		fmt.Fprintf(s.Conn, "%s- [Credits: %.1fGiB] [Ratio: %s]\r\n",
 			code, creditsGiB, ratioStr)
 	}
 }
@@ -2181,17 +2182,168 @@ func zipDirCurrentPartState(entries []MasterFileEntry) (total int, highestDigit 
 func zipExpectedPartsFromDIZ(bridge MasterBridge, dirPath string) int {
 	content, err := bridge.ReadFile(path.Join(dirPath, "file_id.diz"))
 	if err != nil || len(content) == 0 {
+		recovered, recoverErr := recoverZipDIZFromDirectory(bridge, dirPath)
+		if recoverErr != nil || len(recovered) == 0 {
+			return 0
+		}
+		content = recovered
+	}
+	return zipExpectedPartsFromDIZContent(content)
+}
+
+func zipExpectedPartsFromDIZContent(content []byte) int {
+	if len(content) == 0 {
 		return 0
 	}
-	m := regexp.MustCompile(`(?i)disk\s*\[\s*\d+\s*/\s*(\d+)\s*\]`).FindStringSubmatch(string(content))
-	if len(m) != 2 {
+	text := normalizeZipDIZText(string(content))
+	if text == "" {
 		return 0
 	}
-	n, err := strconv.Atoi(m[1])
-	if err != nil || n <= 0 {
-		return 0
+
+	patterns := []string{
+		"[?!/##]",
+		"(?!/##)",
+		"[?!!/###]",
+		"(?!!/###)",
+		"[?/#]",
+		"[?/##]",
+		"(?/#)",
+		"[disk:!!/##]",
+		"[disk:?!/##]",
+		"o?/o#",
+		"disks[!!/##",
+		" !/# ",
+		" !!/##&/&!",
+		"&/!!/## ",
+		"[!!/#]",
+		": ?!/##&/",
+		"xx/##",
+		"<!!/##>",
+		"x/##",
+		"! of #",
+		"? of #",
+		"x of #",
+		"ox of o#",
+		"!! of ##",
+		"?! of ##",
+		"xx of ##",
 	}
-	return n
+
+	best := 0
+	for start := 0; start < len(text); start++ {
+		for _, pattern := range patterns {
+			total, ok := matchZipDIZPattern(text, start, pattern)
+			if ok && total > best {
+				best = total
+			}
+		}
+	}
+	return best
+}
+
+func normalizeZipDIZText(text string) string {
+	var b strings.Builder
+	b.Grow(len(text))
+	lastSpace := false
+	for _, r := range text {
+		switch r {
+		case '\x00', '\r', '\n', '\t', ' ':
+			if !lastSpace {
+				b.WriteByte(' ')
+				lastSpace = true
+			}
+		default:
+			b.WriteRune(unicode.ToLower(r))
+			lastSpace = false
+		}
+	}
+	return b.String()
+}
+
+func matchZipDIZPattern(text string, start int, pattern string) (int, bool) {
+	if start >= len(text) {
+		return 0, false
+	}
+	var totalDigits strings.Builder
+	control := 0
+	matches := 0
+	for patIdx := 0; patIdx <= len(pattern)-control-1; patIdx++ {
+		textIdx := start + patIdx
+		if textIdx >= len(text) {
+			return 0, false
+		}
+		ch := text[textIdx]
+		token := pattern[patIdx+control]
+		switch token {
+		case '#':
+			if (ch >= '0' && ch <= '9') || ch == ' ' || ch == 'o' {
+				if ch == 'o' {
+					ch = '0'
+				}
+				matches++
+				totalDigits.WriteByte(ch)
+			}
+		case '?':
+			matches++
+		case '!':
+			if (ch >= '0' && ch <= '9') || ch == 'o' || ch == 'x' {
+				matches++
+			}
+		case '&':
+			control++
+			if patIdx+control >= len(pattern) {
+				return 0, false
+			}
+			next := pattern[patIdx+control]
+			if !(next == '!' && ((ch >= '0' && ch <= '9') || ch == 'o' || ch == 'x')) && ch != next {
+				matches++
+			}
+		default:
+			if token == ch {
+				matches++
+			}
+		}
+	}
+	if matches != len(pattern)-control {
+		return 0, false
+	}
+	raw := strings.TrimSpace(totalDigits.String())
+	if raw == "" {
+		return 0, false
+	}
+	total, err := strconv.Atoi(raw)
+	if err != nil || total <= 0 {
+		return 0, false
+	}
+	return total, true
+}
+
+func recoverZipDIZFromDirectory(bridge MasterBridge, dirPath string) ([]byte, error) {
+	if bridge == nil {
+		return nil, fmt.Errorf("bridge unavailable")
+	}
+	entries := bridge.ListDir(dirPath)
+	var archives []string
+	for _, entry := range entries {
+		if entry.IsDir {
+			continue
+		}
+		if isZipPayloadName(entry.Name) {
+			archives = append(archives, path.Join(dirPath, entry.Name))
+		}
+	}
+	sort.Strings(archives)
+	for _, archivePath := range archives {
+		content, err := bridge.ReadZipEntry(archivePath, "file_id.diz")
+		if err != nil || len(content) == 0 {
+			continue
+		}
+		if writeErr := bridge.WriteFile(path.Join(dirPath, "file_id.diz"), content); writeErr != nil {
+			return nil, writeErr
+		}
+		return content, nil
+	}
+	return nil, fmt.Errorf("file_id.diz not found in any archive")
 }
 
 func shouldBlockZipDIZUpload(cfg *Config, dirPath, fileName string) bool {
