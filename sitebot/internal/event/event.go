@@ -16,6 +16,7 @@ const (
 	EventNewUser       EventType = "NEWUSER"
 	EventLoginFail     EventType = "LOGINFAIL"
 	EventSelfIP        EventType = "SELFIP"
+	EventSlaveAuthFail EventType = "SLAVEAUTHFAIL"
 	EventMKDir         EventType = "MKDIR"
 	EventRMDir         EventType = "RMDIR"
 	EventRename        EventType = "RENAME"

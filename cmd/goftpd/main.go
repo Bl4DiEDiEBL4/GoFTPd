@@ -107,6 +107,11 @@ func main() {
 			cfg.TLSKey,
 			time.Duration(intFromCfg(cfg.Master, "heartbeat_timeout", 60))*time.Second,
 		)
+		sm.ConfigureAuthGuard(
+			intFromCfg(cfg.Master, "slave_auth_fail_limit", 2),
+			time.Duration(intFromCfg(cfg.Master, "slave_auth_fail_window_seconds", 900))*time.Second,
+			time.Duration(intFromCfg(cfg.Master, "slave_auth_ban_seconds", 3600))*time.Second,
+		)
 		sm.SetDiskStatusHook(func(name string, status protocol.DiskStatus, online, available bool, sections []string) {
 			core.PublishEvent(cfg, core.Event{
 				Type:      core.EventDiskStatus,
@@ -119,6 +124,22 @@ func main() {
 					"available":   fmt.Sprintf("%t", available),
 					"sections":    strings.Join(sections, ","),
 				},
+			})
+		})
+		sm.SetSecurityHook(func(ip, remoteAddr, action, reason string, strikes, limit int, bannedUntil time.Time) {
+			data := map[string]string{
+				"remote_ip":    ip,
+				"remote_addr":  remoteAddr,
+				"action":       action,
+				"reason":       reason,
+				"strikes":      fmt.Sprintf("%d", strikes),
+				"limit":        fmt.Sprintf("%d", limit),
+				"banned_until": bannedUntil.Format(time.RFC3339),
+			}
+			core.PublishEvent(cfg, core.Event{
+				Type:      core.EventSlaveAuthFail,
+				Timestamp: time.Now(),
+				Data:      data,
 			})
 		})
 		policies := make(map[string]master.SlaveRoutePolicy, len(cfg.Slaves))

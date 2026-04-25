@@ -8,3 +8,4 @@ type_routes:
   TOP: ["#goftpd-chat"]
   LOGIN: ["#goftpd-staff"]
   SELFIP: ["#goftpd-staff"]
+  SLAVEAUTH: ["#goftpd-staff"]

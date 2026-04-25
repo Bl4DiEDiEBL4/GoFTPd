@@ -26,6 +26,9 @@ type SlaveManager struct {
 	tlsCert          string
 	tlsKey           string
 	heartbeatTimeout time.Duration
+	authFailLimit    int
+	authFailWindow   time.Duration
+	authBanDuration  time.Duration
 
 	slaves   map[string]*RemoteSlave
 	slavesMu sync.RWMutex
@@ -45,6 +48,15 @@ type SlaveManager struct {
 	listener       net.Listener
 	running        atomic.Bool
 	diskStatusHook func(name string, status protocol.DiskStatus, online, available bool, sections []string)
+	securityHook   func(ip, remoteAddr, action, reason string, strikes, limit int, bannedUntil time.Time)
+	authMu         sync.Mutex
+	authState      map[string]*slaveAuthState
+}
+
+type slaveAuthState struct {
+	Strikes     int
+	FirstSeen   time.Time
+	BannedUntil time.Time
 }
 
 // SlaveRoutePolicy is the runtime form of SlavePolicy from config.
@@ -69,11 +81,24 @@ func NewSlaveManager(host string, port int, tlsEnabled bool, tlsCert, tlsKey str
 		slaves:           make(map[string]*RemoteSlave),
 		policies:         make(map[string]SlaveRoutePolicy),
 		vfs:              NewVirtualFileSystem(),
+		authState:        make(map[string]*slaveAuthState),
 	}
 }
 
 func (sm *SlaveManager) SetDiskStatusHook(fn func(name string, status protocol.DiskStatus, online, available bool, sections []string)) {
 	sm.diskStatusHook = fn
+}
+
+func (sm *SlaveManager) SetSecurityHook(fn func(ip, remoteAddr, action, reason string, strikes, limit int, bannedUntil time.Time)) {
+	sm.securityHook = fn
+}
+
+func (sm *SlaveManager) ConfigureAuthGuard(limit int, window, banDuration time.Duration) {
+	sm.authMu.Lock()
+	defer sm.authMu.Unlock()
+	sm.authFailLimit = limit
+	sm.authFailWindow = window
+	sm.authBanDuration = banDuration
 }
 
 func (sm *SlaveManager) publishDiskStatus(rs *RemoteSlave) {
@@ -201,7 +226,14 @@ func (sm *SlaveManager) acceptLoop() {
 			continue
 		}
 
-		log.Printf("[SlaveManager] Accepted connection from %s", conn.RemoteAddr())
+		ip, remoteAddr := splitRemoteAddr(conn.RemoteAddr())
+		if banned, until := sm.isAuthBanned(ip); banned {
+			log.Printf("[SlaveManager] Blocked banned slave connection from %s until %s", remoteAddr, until.Format(time.RFC3339))
+			conn.Close()
+			continue
+		}
+
+		log.Printf("[SlaveManager] Accepted connection from %s", remoteAddr)
 		go sm.handleSlaveConnection(conn)
 	}
 }
@@ -210,12 +242,14 @@ func (sm *SlaveManager) acceptLoop() {
 // () inner loop.
 func (sm *SlaveManager) handleSlaveConnection(conn net.Conn) {
 	stream := protocol.NewObjectStream(conn)
+	ip, remoteAddr := splitRemoteAddr(conn.RemoteAddr())
 
 	// Read slave name (: RemoteSlave.getSlaveNameFromObjectInput)
 	conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 	obj, err := stream.ReadObject()
 	if err != nil {
 		log.Printf("[SlaveManager] Failed to read slave name: %v", err)
+		sm.recordAuthFailure(ip, remoteAddr, fmt.Sprintf("failed to read slave name: %v", err))
 		conn.Close()
 		return
 	}
@@ -224,6 +258,7 @@ func (sm *SlaveManager) handleSlaveConnection(conn net.Conn) {
 	slaveName, ok := obj.(string)
 	if !ok || slaveName == "" {
 		log.Printf("[SlaveManager] Invalid slave name from %s", conn.RemoteAddr())
+		sm.recordAuthFailure(ip, remoteAddr, "invalid slave name")
 		stream.WriteObject(&protocol.AsyncCommand{Index: "error", Name: "error", Args: []string{"invalid slave name"}})
 		conn.Close()
 		return
@@ -244,6 +279,7 @@ func (sm *SlaveManager) handleSlaveConnection(conn net.Conn) {
 	sm.slavesMu.Unlock()
 
 	log.Printf("[SlaveManager] Slave '%s' connected from %s", slaveName, conn.RemoteAddr())
+	sm.clearAuthState(ip)
 
 	// Read initial disk status from slave
 	conn.SetReadDeadline(time.Now().Add(30 * time.Second))
@@ -269,6 +305,99 @@ func (sm *SlaveManager) handleSlaveConnection(conn net.Conn) {
 
 	// Start the main read loop (())
 	rs.Run(sm)
+}
+
+func (sm *SlaveManager) publishSecurityEvent(ip, remoteAddr, action, reason string, strikes int, bannedUntil time.Time) {
+	if sm.securityHook == nil {
+		return
+	}
+	sm.securityHook(ip, remoteAddr, action, reason, strikes, sm.authFailLimit, bannedUntil)
+}
+
+func (sm *SlaveManager) recordAuthFailure(ip, remoteAddr, reason string) {
+	if strings.TrimSpace(ip) == "" {
+		return
+	}
+	now := time.Now()
+
+	sm.authMu.Lock()
+	state := sm.authState[ip]
+	if state == nil {
+		state = &slaveAuthState{}
+		sm.authState[ip] = state
+	}
+	if sm.authFailWindow > 0 && !state.FirstSeen.IsZero() && now.Sub(state.FirstSeen) > sm.authFailWindow {
+		state.Strikes = 0
+		state.FirstSeen = time.Time{}
+		state.BannedUntil = time.Time{}
+	}
+	if state.FirstSeen.IsZero() {
+		state.FirstSeen = now
+	}
+	state.Strikes++
+	strikes := state.Strikes
+	bannedUntil := time.Time{}
+	action := "fail"
+	if sm.authFailLimit > 0 && sm.authBanDuration > 0 && strikes >= sm.authFailLimit {
+		state.BannedUntil = now.Add(sm.authBanDuration)
+		bannedUntil = state.BannedUntil
+		action = "ban"
+	}
+	sm.authMu.Unlock()
+
+	if action == "ban" {
+		log.Printf("[SlaveManager] Banned slave source %s for %s after %d failed handshake(s): %s", remoteAddr, sm.authBanDuration, strikes, reason)
+	} else {
+		log.Printf("[SlaveManager] Slave auth failure from %s (%d/%d): %s", remoteAddr, strikes, sm.authFailLimit, reason)
+	}
+	sm.publishSecurityEvent(ip, remoteAddr, action, reason, strikes, bannedUntil)
+}
+
+func (sm *SlaveManager) clearAuthState(ip string) {
+	if strings.TrimSpace(ip) == "" {
+		return
+	}
+	sm.authMu.Lock()
+	delete(sm.authState, ip)
+	sm.authMu.Unlock()
+}
+
+func (sm *SlaveManager) isAuthBanned(ip string) (bool, time.Time) {
+	if strings.TrimSpace(ip) == "" {
+		return false, time.Time{}
+	}
+	now := time.Now()
+	sm.authMu.Lock()
+	defer sm.authMu.Unlock()
+	state := sm.authState[ip]
+	if state == nil {
+		return false, time.Time{}
+	}
+	if !state.BannedUntil.IsZero() {
+		if now.Before(state.BannedUntil) {
+			return true, state.BannedUntil
+		}
+		state.BannedUntil = time.Time{}
+		state.Strikes = 0
+		state.FirstSeen = time.Time{}
+	}
+	if sm.authFailWindow > 0 && !state.FirstSeen.IsZero() && now.Sub(state.FirstSeen) > sm.authFailWindow {
+		state.Strikes = 0
+		state.FirstSeen = time.Time{}
+	}
+	return false, time.Time{}
+}
+
+func splitRemoteAddr(addr net.Addr) (ip string, raw string) {
+	if addr == nil {
+		return "", ""
+	}
+	raw = strings.TrimSpace(addr.String())
+	host, _, err := net.SplitHostPort(raw)
+	if err == nil {
+		return strings.TrimSpace(host), raw
+	}
+	return raw, raw
 }
 
 // initializeSlaveAfterConnect triggers remerge and marks slave available.

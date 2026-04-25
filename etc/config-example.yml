@@ -37,6 +37,11 @@ master:
   control_port:      1099       # Port slaves connect to
   heartbeat_timeout: 60         # Seconds before the master marks a silent slave offline.
                                 # The master will try a ping at about half this interval.
+  slave_auth_fail_limit: 2      # Built-in guard for bad slave-port handshakes.
+                                # After this many failed pre-auth attempts from one IP
+                                # within the fail window, the IP is temporarily banned.
+  slave_auth_fail_window_seconds: 900
+  slave_auth_ban_seconds: 3600
 
 
 # =============================================================================

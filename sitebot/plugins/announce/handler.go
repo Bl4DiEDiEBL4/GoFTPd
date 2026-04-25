@@ -437,6 +437,31 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 		}
 		vars["message"] = message
 		outs = append(outs, plugin.Output{Type: "SELFIP", Text: p.render("SELFIPLOG", vars, "IPLOG: "+message)})
+	case event.EventSlaveAuthFail:
+		message := strings.TrimSpace(vars["message"])
+		if message == "" {
+			remote := strings.TrimSpace(vars["remote_addr"])
+			if remote == "" {
+				remote = strings.TrimSpace(vars["remote_ip"])
+			}
+			reason := strings.TrimSpace(vars["reason"])
+			strikes := strings.TrimSpace(vars["strikes"])
+			limit := strings.TrimSpace(vars["limit"])
+			switch strings.ToLower(strings.TrimSpace(vars["action"])) {
+			case "ban":
+				until := strings.TrimSpace(vars["banned_until"])
+				message = fmt.Sprintf("slave port banned %s after %s/%s failed handshakes - %s", remote, strikes, limit, reason)
+				if until != "" && until != "0001-01-01T00:00:00Z" {
+					message += " (until " + until + ")"
+				}
+			case "blocked":
+				message = fmt.Sprintf("blocked banned slave-port source %s", remote)
+			default:
+				message = fmt.Sprintf("slave auth failed from %s (%s/%s) - %s", remote, strikes, limit, reason)
+			}
+		}
+		vars["message"] = message
+		outs = append(outs, plugin.Output{Type: "SLAVEAUTH", Text: p.render("SLAVEAUTHFAIL", vars, "SLAVESEC: "+message)})
 	case event.EventPre:
 		group := vars["group"]
 		user := vars["user"]

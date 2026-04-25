@@ -368,6 +368,7 @@ announce.BNC_DOWN = "%c04{%index}.- %c06{%name} %c01{at} %c05{%host}%c01{:}%c05{
 announce.BNC_ERROR = "%b{%c01{BNC:}} %c04{%response}"
 
 announce.LOGINFAIL = "%b{%c02{LOGiN:}} %c04{%message}"
+announce.SLAVEAUTHFAIL = "%b{%c04{SLAVESEC:}} %c07{%message}"
 
 announce.BANNEDCMD_LINE = "%b{%c01{BANNED:}} %c05{%line}"
 
