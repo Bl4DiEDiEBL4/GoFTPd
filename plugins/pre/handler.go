@@ -1,6 +1,7 @@
 package pre
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -105,6 +106,9 @@ func (p *Plugin) Init(svc *plugin.Services, cfg map[string]interface{}) error {
 		p.debug = b
 	}
 	p.affils = normalizeAffils(affilRulesConfig(cfg["affils"]), p.base)
+	if err := syncAffilPermissions(p.permissionsFile, p.aclBase, p.currentAffils()); err != nil {
+		p.logf("could not sync affil permissions from %s into %s: %v", p.affilsFile, p.permissionsFile, err)
+	}
 	return nil
 }
 
@@ -244,7 +248,7 @@ func (p *Plugin) handleAddAffil(ctx plugin.SiteContext, args []string) bool {
 			if strings.TrimSpace(predir) == "" {
 				predir = path.Join(base, group)
 			}
-			if err := ensureAffilPermissions(p.permissionsFile, p.aclPath(predir), group); err != nil {
+			if err := syncAffilPermissions(p.permissionsFile, p.aclBase, normalizeAffils(cfg.Groups, base)); err != nil {
 				ctx.Reply("550 Affil %s already exists, but could not repair permissions: %v\r\n", group, err)
 				return true
 			}
@@ -257,9 +261,13 @@ func (p *Plugin) handleAddAffil(ctx plugin.SiteContext, args []string) bool {
 		Group:  group,
 		Predir: predir,
 		Permissions: map[string]interface{}{
-			"privpath":    p.aclPath(predir),
-			"owner_group": group,
-			"mode":        "0777",
+			"acl_path":        p.aclPath(predir),
+			"privpath":        true,
+			"list":            true,
+			"dirlog":          true,
+			"siteop_override": true,
+			"owner_group":     group,
+			"mode":            "0777",
 		},
 	})
 	sort.Slice(cfg.Groups, func(i, j int) bool {
@@ -284,7 +292,7 @@ func (p *Plugin) handleAddAffil(ctx plugin.SiteContext, args []string) bool {
 		ctx.Reply("200 Continue checking permissions update.\r\n")
 	}
 
-	if err := ensureAffilPermissions(p.permissionsFile, p.aclPath(predir), group); err != nil {
+	if err := syncAffilPermissions(p.permissionsFile, p.aclBase, normalizeAffils(cfg.Groups, base)); err != nil {
 		ctx.Reply("200- Affil %s added with predir %s\r\n", group, predir)
 		ctx.Reply("200- WARNING: could not update %s: %v\r\n", p.permissionsFile, err)
 		ctx.Reply("200 Run SITE REHASH or restart sessions that need new ACL state.\r\n")
@@ -327,7 +335,7 @@ func (p *Plugin) handleDelAffil(ctx plugin.SiteContext, args []string) bool {
 		ctx.Reply("451 Could not update %s: %v\r\n", p.affilsFile, err)
 		return true
 	}
-	if err := removeAffilPermissions(p.permissionsFile, p.aclPath(removed.Predir), removed.Group); err != nil {
+	if err := syncAffilPermissions(p.permissionsFile, p.aclBase, normalizeAffils(cfg.Groups, cfg.Base)); err != nil {
 		ctx.Reply("200- Affil %s removed from %s\r\n", removed.Group, p.affilsFile)
 		ctx.Reply("200- WARNING: could not update %s: %v\r\n", p.permissionsFile, err)
 		ctx.Reply("200 Predir %s was left on disk.\r\n", removed.Predir)
@@ -823,66 +831,295 @@ func validAffilGroup(group string) bool {
 	return true
 }
 
-func ensureAffilPermissions(filePath, aclPredir, group string) error {
-	cfg, err := loadPermissionsFile(filePath)
-	if err != nil && !os.IsNotExist(err) {
-		return err
+func syncAffilPermissions(filePath, aclBase string, affils []AffilRule) error {
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return fmt.Errorf("empty permissions file path")
 	}
-	required := "=" + group + " =SiteOP"
-	rule := permissionRule{Type: "privpath", Path: aclPredir, Required: required}
-	cfg.Rules = removeLegacyAffilRules(cfg.Rules, aclPredir, group)
-	if !hasPermissionRule(cfg.Rules, rule) {
-		cfg.Rules = append([]permissionRule{rule}, cfg.Rules...)
-	}
-	return savePermissionsFile(filePath, cfg)
-}
-
-func removeAffilPermissions(filePath, aclPredir, group string) error {
-	cfg, err := loadPermissionsFile(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return err
 	}
-	required := "=" + group
-	requiredWithSiteOP := "=" + group + " =SiteOP"
-	kept := make([]permissionRule, 0, len(cfg.Rules))
-	for _, rule := range cfg.Rules {
-		ruleRequired := strings.TrimSpace(rule.Required)
-		if (strings.EqualFold(ruleRequired, required) || strings.EqualFold(ruleRequired, requiredWithSiteOP)) &&
-			(strings.EqualFold(rule.Path, aclPredir) || strings.HasPrefix(strings.ToLower(rule.Path), strings.ToLower(aclPredir)+"/")) {
+
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return err
+	}
+	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+		return fmt.Errorf("permissions file is not a structured YAML mapping")
+	}
+
+	root := doc.Content[0]
+	rulesNode := ensureMappingValue(root, "rules")
+	if rulesNode.Kind != yaml.MappingNode {
+		return fmt.Errorf("permissions rules must be a mapping")
+	}
+
+	generated := buildAffilPermissionNodes(aclBase, affils)
+	for _, ruleType := range []string{"privpath", "list", "dirlog"} {
+		seq := ensureRuleSequence(rulesNode, ruleType)
+		removeGeneratedRuleEntries(seq, "pre")
+		insertAt := len(seq.Content)
+		if ruleType == "list" || ruleType == "dirlog" {
+			insertAt = findPreCatchallInsertIndex(seq)
+		}
+		entries := generated[ruleType]
+		if len(entries) > 0 {
+			seq.Content = append(seq.Content[:insertAt], append(entries, seq.Content[insertAt:]...)...)
+		}
+	}
+
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(&doc); err != nil {
+		_ = enc.Close()
+		return err
+	}
+	if err := enc.Close(); err != nil {
+		return err
+	}
+	if bytes.Equal(data, buf.Bytes()) {
+		return nil
+	}
+	return os.WriteFile(filePath, buf.Bytes(), 0644)
+}
+
+func buildAffilPermissionNodes(aclBase string, affils []AffilRule) map[string][]*yaml.Node {
+	type keyedAffil struct {
+		group string
+		path  string
+		rule  AffilRule
+	}
+	keyed := make([]keyedAffil, 0, len(affils))
+	for _, affil := range affils {
+		group := strings.TrimSpace(affil.Group)
+		if group == "" {
 			continue
 		}
-		kept = append(kept, rule)
+		aclPath := affilACLPath(affil, aclBase)
+		if aclPath == "" {
+			continue
+		}
+		keyed = append(keyed, keyedAffil{
+			group: strings.ToLower(group),
+			path:  aclPath,
+			rule:  affil,
+		})
 	}
-	cfg.Rules = kept
-	return savePermissionsFile(filePath, cfg)
+	sort.Slice(keyed, func(i, j int) bool {
+		if keyed[i].path != keyed[j].path {
+			return keyed[i].path < keyed[j].path
+		}
+		return keyed[i].group < keyed[j].group
+	})
+
+	out := map[string][]*yaml.Node{
+		"privpath": {},
+		"list":     {},
+		"dirlog":   {},
+	}
+	for _, item := range keyed {
+		if affilPermissionEnabled(item.rule, "privpath", true) {
+			out["privpath"] = append(out["privpath"], buildAffilRuleEntryNode(item.path, item.rule.Group, affilSiteopOverride(item.rule), "privpath"))
+		}
+		if affilPermissionEnabled(item.rule, "list", true) {
+			out["list"] = append(out["list"], buildAffilRuleEntryNode(item.path, item.rule.Group, affilSiteopOverride(item.rule), "list"))
+		}
+		if affilPermissionEnabled(item.rule, "dirlog", true) {
+			out["dirlog"] = append(out["dirlog"], buildAffilRuleEntryNode(item.path, item.rule.Group, affilSiteopOverride(item.rule), "dirlog"))
+		}
+	}
+	return out
 }
 
-func removeLegacyAffilRules(rules []permissionRule, aclPredir, group string) []permissionRule {
-	required := "=" + group
-	actionPath := path.Join(aclPredir, "*")
-	kept := make([]permissionRule, 0, len(rules))
-	for _, rule := range rules {
-		if strings.EqualFold(strings.TrimSpace(rule.Required), required) {
-			rulePath := strings.TrimSpace(rule.Path)
-			if strings.EqualFold(strings.TrimSpace(rule.Type), "privpath") && strings.EqualFold(rulePath, aclPredir) {
-				continue
-			}
-			if strings.EqualFold(rulePath, actionPath) && isLegacyAffilActionRule(rule.Type) {
-				continue
+func affilACLPath(affil AffilRule, aclBase string) string {
+	if affil.Permissions != nil {
+		for _, key := range []string{"acl_path", "privpath"} {
+			if raw, ok := affil.Permissions[key]; ok {
+				if s, ok := raw.(string); ok && strings.HasPrefix(strings.TrimSpace(s), "/") {
+					return cleanAbs(s)
+				}
 			}
 		}
-		kept = append(kept, rule)
 	}
-	return kept
+	predir := cleanAbs(affil.Predir)
+	base := cleanAbs(aclBase)
+	if strings.EqualFold(base, "/") {
+		return predir
+	}
+	if strings.HasPrefix(strings.ToLower(predir), strings.ToLower(base)+"/") || strings.EqualFold(predir, base) {
+		return predir
+	}
+	return path.Join(base, predir)
 }
 
-func isLegacyAffilActionRule(ruleType string) bool {
-	switch strings.ToLower(strings.TrimSpace(ruleType)) {
-	case "upload", "resume", "download", "makedir", "delete", "rename", "dirlog", "nodupecheck":
-		return true
-	default:
-		return false
+func affilPermissionEnabled(affil AffilRule, key string, fallback bool) bool {
+	if affil.Permissions == nil {
+		return fallback
 	}
+	raw, ok := affil.Permissions[key]
+	if !ok {
+		return fallback
+	}
+	switch v := raw.(type) {
+	case bool:
+		return v
+	case string:
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "true", "yes", "on", "1":
+			return true
+		case "false", "no", "off", "0":
+			return false
+		default:
+			if key == "privpath" && strings.HasPrefix(strings.TrimSpace(v), "/") {
+				return true
+			}
+		}
+	}
+	return fallback
+}
+
+func affilSiteopOverride(affil AffilRule) bool {
+	return affilPermissionEnabled(affil, "siteop_override", true)
+}
+
+func buildAffilRuleEntryNode(aclPath, group string, siteopOverride bool, kind string) *yaml.Node {
+	entry := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	appendMappingScalar(entry, "path", cleanAbs(aclPath))
+	appendMappingNode(entry, "required", buildAffilRequiredNode(group, siteopOverride))
+	appendMappingScalar(entry, "generated_by", "pre")
+	appendMappingScalar(entry, "generated_kind", kind)
+	appendMappingScalar(entry, "generated_group", strings.TrimSpace(group))
+	return entry
+}
+
+func buildAffilRequiredNode(group string, siteopOverride bool) *yaml.Node {
+	group = strings.TrimSpace(group)
+	if !siteopOverride {
+		req := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		appendMappingStringSequence(req, "all_groups", []string{group})
+		return req
+	}
+	req := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	anyOf := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+
+	groupReq := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	appendMappingStringSequence(groupReq, "all_groups", []string{group})
+	anyOf.Content = append(anyOf.Content, groupReq)
+
+	siteopReq := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	appendMappingStringSequence(siteopReq, "all_groups", []string{"SiteOP"})
+	anyOf.Content = append(anyOf.Content, siteopReq)
+
+	flagReq := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	appendMappingStringSequence(flagReq, "all_flags", []string{"1"})
+	anyOf.Content = append(anyOf.Content, flagReq)
+
+	appendMappingNode(req, "any_of", anyOf)
+	return req
+}
+
+func ensureMappingValue(mapping *yaml.Node, key string) *yaml.Node {
+	if mapping == nil || mapping.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(mapping.Content); i += 2 {
+		if strings.EqualFold(strings.TrimSpace(mapping.Content[i].Value), key) {
+			return mapping.Content[i+1]
+		}
+	}
+	value := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	mapping.Content = append(mapping.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
+		value,
+	)
+	return value
+}
+
+func ensureRuleSequence(rulesNode *yaml.Node, ruleType string) *yaml.Node {
+	if rulesNode == nil || rulesNode.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(rulesNode.Content); i += 2 {
+		if strings.EqualFold(strings.TrimSpace(rulesNode.Content[i].Value), ruleType) {
+			if rulesNode.Content[i+1].Kind != yaml.SequenceNode {
+				rulesNode.Content[i+1] = &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+			}
+			return rulesNode.Content[i+1]
+		}
+	}
+	seq := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+	rulesNode.Content = append(rulesNode.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: ruleType},
+		seq,
+	)
+	return seq
+}
+
+func removeGeneratedRuleEntries(seq *yaml.Node, generatedBy string) {
+	if seq == nil || seq.Kind != yaml.SequenceNode {
+		return
+	}
+	kept := make([]*yaml.Node, 0, len(seq.Content))
+	for _, entry := range seq.Content {
+		if strings.EqualFold(strings.TrimSpace(mappingScalarValue(entry, "generated_by")), generatedBy) {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	seq.Content = kept
+}
+
+func findPreCatchallInsertIndex(seq *yaml.Node) int {
+	if seq == nil || seq.Kind != yaml.SequenceNode {
+		return 0
+	}
+	for i, entry := range seq.Content {
+		switch cleanAbs(mappingScalarValue(entry, "path")) {
+		case "/site/PRE/*", "/site/*":
+			return i
+		}
+	}
+	return len(seq.Content)
+}
+
+func mappingScalarValue(node *yaml.Node, key string) string {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return ""
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if strings.EqualFold(strings.TrimSpace(node.Content[i].Value), key) {
+			return strings.TrimSpace(node.Content[i+1].Value)
+		}
+	}
+	return ""
+}
+
+func appendMappingScalar(mapping *yaml.Node, key, value string) {
+	mapping.Content = append(mapping.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: strings.TrimSpace(value)},
+	)
+}
+
+func appendMappingNode(mapping *yaml.Node, key string, value *yaml.Node) {
+	mapping.Content = append(mapping.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
+		value,
+	)
+}
+
+func appendMappingStringSequence(mapping *yaml.Node, key string, values []string) {
+	seq := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		seq.Content = append(seq.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value})
+	}
+	appendMappingNode(mapping, key, seq)
 }
 
 func loadPermissionsFile(filePath string) (permissionsFileConfig, error) {

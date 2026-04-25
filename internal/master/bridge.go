@@ -912,6 +912,11 @@ func (b *Bridge) GetDirMediaInfo(dirPath string) map[string]string {
 }
 
 func (b *Bridge) SearchDirs(query string, limit int) []core.VFSSearchResult {
+	if b.raceDB != nil {
+		if results := b.raceDB.SearchDirs(query, limit); len(results) > 0 {
+			return results
+		}
+	}
 	vfsResults := b.sm.GetVFS().SearchDirs(query, limit)
 	results := make([]core.VFSSearchResult, 0, len(vfsResults))
 	for _, r := range vfsResults {

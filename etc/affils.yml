@@ -4,19 +4,37 @@
 # The sitebot affils plugin reads this for !affils output.
 #
 # SITE ADDAFFIL / SITE DELAFFIL keep this file and permissions.yml in sync.
+# This file is the source of truth for affil predirs and their PRE visibility.
+#
+# permissions:
+#   acl_path         optional ACL path override; defaults to /site + predir
+#   privpath         true/false to sync a privpath rule for this predir
+#   list             true/false to sync a list rule for this predir
+#   dirlog           true/false to sync a dirlog rule for this predir
+#   siteop_override  true/false to keep SiteOP/flag-1 access alongside group
+#   owner_group      metadata for the created predir
+#   mode             mode for the created predir
 base: "/PRE"
 
 groups:
   - group: "GoFTPd"
     predir: "/PRE/GoFTPd"
     permissions:
-      privpath: "/site/PRE/GoFTPd"
+      acl_path: "/site/PRE/GoFTPd"
+      privpath: true
+      list: true
+      dirlog: true
+      siteop_override: true
       owner_group: "GoFTPd"
       mode: "0777"
 
   - group: "GRPTST"
     predir: "/PRE/GRPTST"
     permissions:
-      privpath: "/site/PRE/GRPTST"
+      acl_path: "/site/PRE/GRPTST"
+      privpath: true
+      list: true
+      dirlog: true
+      siteop_override: true
       owner_group: "GRPTST"
       mode: "0777"

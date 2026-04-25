@@ -606,3 +606,57 @@ func (r *RaceDB) GetRaceWallClockMilliseconds(dirPath string) int64 {
 	}
 	return d
 }
+
+func (r *RaceDB) SearchDirs(query string, limit int) []core.VFSSearchResult {
+	if r == nil || r.db == nil {
+		return nil
+	}
+
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+
+	rows, err := r.db.Query(`
+        SELECT
+            rel.path,
+            COALESCE(SUM(CASE WHEN rf.is_present = 1 THEN 1 ELSE 0 END), 0) AS present_files,
+            COALESCE(SUM(CASE WHEN rf.is_present = 1 THEN rf.size_bytes ELSE 0 END), 0) AS present_bytes,
+            MAX(
+                COALESCE(
+                    CASE WHEN rf.updated_at > 0 THEN rf.updated_at END,
+                    rel.updated_at,
+                    rel.created_at
+                )
+            ) AS mod_time
+        FROM releases rel
+        LEFT JOIN release_files rf ON rf.release_id = rel.id
+        WHERE LOWER(rel.path) LIKE ?
+        GROUP BY rel.id, rel.path
+        ORDER BY LOWER(rel.path) ASC
+        LIMIT ?
+    `, "%"+query+"%", limit)
+	if err != nil {
+		log.Printf("[RaceDB] search query failed for %q: %v", query, err)
+		return nil
+	}
+	defer rows.Close()
+
+	results := make([]core.VFSSearchResult, 0, limit)
+	for rows.Next() {
+		var res core.VFSSearchResult
+		if err := rows.Scan(&res.Path, &res.Files, &res.Bytes, &res.ModTime); err != nil {
+			log.Printf("[RaceDB] search row scan failed for %q: %v", query, err)
+			return nil
+		}
+		results = append(results, res)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("[RaceDB] search rows iteration failed for %q: %v", query, err)
+		return nil
+	}
+	return results
+}
