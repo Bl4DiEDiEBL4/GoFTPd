@@ -97,8 +97,12 @@ rules:
         - TRAFFIC
         - SEARCH
         - RACE
+        - RESCAN
         - XDUPE
         - INVITE
+        - GRP
+        - NUKE
+        - UNNUKE
         - REQUEST
         - REQUESTS
         - REQFILL
