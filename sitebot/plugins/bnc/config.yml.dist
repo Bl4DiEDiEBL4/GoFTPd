@@ -10,7 +10,8 @@ channels: ["#goftpd-chat"]
 # reply_target supports "channel", "notice", or a fixed "#channel".
 reply_target: "channel"
 targets:
-  - name: "sitename"
+  # setup.sh replaces this with your configured site name by default.
+  - name: "GoFTPd"
     host: "127.0.0.1"
     port: 21212
   - name: "site2"

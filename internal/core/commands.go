@@ -1648,37 +1648,10 @@ func incompleteMarkerEntries(bridge MasterBridge, cfg *Config, pattern, dirPath 
 			continue
 		}
 		_, _, _, present, total := bridge.GetVFSRaceStats(releasePath)
-		emptyDir := false
-		if total <= 0 {
-			if zipscript.MarkEmptyDirsOnRescan(cfg.Zipscript) {
-				visible := 0
-				for _, child := range bridge.ListDir(releasePath) {
-					if !strings.HasPrefix(child.Name, ".") {
-						visible++
-					}
-				}
-				emptyDir = visible == 0
-			}
-			if !emptyDir {
-				continue
-			}
-		}
-		if total > 0 && present < total {
-			marker := incompleteMarkerName(pattern, e.Name)
-			if marker != "" && !existing[marker] {
-				out = append(out, MasterFileEntry{
-					Name:       marker,
-					IsSymlink:  true,
-					LinkTarget: releasePath,
-					ModTime:    e.ModTime,
-					Owner:      "GoFTPd",
-					Group:      "GoFTPd",
-				})
-				existing[marker] = true
-			}
-		}
+		releaseEntries := bridge.ListDir(releasePath)
+
 		noSFVPattern := zipscript.NoSFVIndicator(cfg.Zipscript)
-		if noSFVPattern != "" && !zipscript.UsesZip(cfg.Zipscript, releasePath) && !hasSFVEntry(bridge.ListDir(releasePath)) {
+		if noSFVPattern != "" && !zipscript.UsesZip(cfg.Zipscript, releasePath) && !hasSFVEntry(releaseEntries) {
 			marker := incompleteMarkerName(noSFVPattern, e.Name)
 			if marker != "" && !existing[marker] {
 				out = append(out, MasterFileEntry{
@@ -1693,8 +1666,38 @@ func incompleteMarkerEntries(bridge MasterBridge, cfg *Config, pattern, dirPath 
 			}
 		}
 		nfoPattern := zipscript.NFOIndicator(cfg.Zipscript)
-		if nfoPattern != "" && !hasNFOEntry(bridge.ListDir(releasePath)) {
+		if nfoPattern != "" && !hasNFOEntry(releaseEntries) {
 			marker := incompleteMarkerName(nfoPattern, e.Name)
+			if marker != "" && !existing[marker] {
+				out = append(out, MasterFileEntry{
+					Name:       marker,
+					IsSymlink:  true,
+					LinkTarget: releasePath,
+					ModTime:    e.ModTime,
+					Owner:      "GoFTPd",
+					Group:      "GoFTPd",
+				})
+				existing[marker] = true
+			}
+		}
+
+		emptyDir := false
+		if total <= 0 {
+			if zipscript.MarkEmptyDirsOnRescan(cfg.Zipscript) {
+				visible := 0
+				for _, child := range releaseEntries {
+					if !strings.HasPrefix(child.Name, ".") {
+						visible++
+					}
+				}
+				emptyDir = visible == 0
+			}
+			if !emptyDir {
+				continue
+			}
+		}
+		if total > 0 && present < total {
+			marker := incompleteMarkerName(pattern, e.Name)
 			if marker != "" && !existing[marker] {
 				out = append(out, MasterFileEntry{
 					Name:       marker,

@@ -12,8 +12,15 @@ allow_space: false
 replace_with: "_"
 bad_chars: '*{^~/,+&\'
 max_requests: 30
+# When true, SITE REQUEST replies with the full current request list instead of
+# a short "added" confirmation line.
 show_on_request: false
+# When true, SITE REQFILL/REQFILLED replies with the updated request list
+# instead of a short "filled" confirmation line.
 show_on_fill: false
+# When false, SITE REQUEST creates REQ-<release> immediately.
+# When true, only the .requests entry is created first and FILLED-<release> is
+# created later at fill time.
 do_not_create_dir_until_filled: false
 reqwipe_flags: "1"
 # FTP users allowed to submit hidden -by:<irc nick> ownership on behalf of

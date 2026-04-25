@@ -328,6 +328,12 @@ be changed once at the top and reused across sections and plugin config. By
 default, race and section announces stay in `#goftpd`, while user `!` commands
 are meant for `#goftpd-chat`.
 
+For FiSH keys, the final config file uses `cbc:<key>`. The interactive
+`setup.sh` prompt expects raw keys only and writes the `cbc:` prefix for you.
+`encryption.keys` are used per channel, while `encryption.private_key` is used
+for encrypted PM/NOTICE replies and encrypted commands sent directly to the
+bot nick.
+
 Sitebot command plugins can use the same split config layout:
 
 ```yaml

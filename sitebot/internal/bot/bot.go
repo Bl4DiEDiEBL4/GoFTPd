@@ -67,6 +67,7 @@ func (b *Bot) Start() error {
 	for ch, key := range b.Config.Encryption.Keys {
 		_ = b.IRC.SetChannelKey(ch, key)
 	}
+	_ = b.IRC.SetPrivateKey(strings.TrimSpace(b.Config.Encryption.PrivateKey))
 	if err := b.initializePlugins(); err != nil {
 		return err
 	}
@@ -410,13 +411,21 @@ func (b *Bot) commandEventFromPrivmsg(line string) *event.Event {
 	}
 	target = strings.TrimSpace(target)
 	msg = strings.TrimSpace(msg)
-	if enc, ok := b.IRC.Keys[target]; ok && strings.HasPrefix(msg, "+OK ") {
+	if strings.HasPrefix(msg, "+OK ") {
 		ciphertext := strings.TrimSpace(strings.TrimPrefix(msg, "+OK "))
 		ciphertext = strings.TrimPrefix(ciphertext, "*")
-		if plain, err := enc.Decrypt(ciphertext); err == nil {
-			msg = cleanIRCText(plain)
-		} else if b.Debug {
-			log.Printf("[Bot] Failed to decrypt command from %s in %s: %v", sender, target, err)
+		var enc *irc.BlowfishEncryptor
+		if targetEnc, ok := b.IRC.Keys[target]; ok {
+			enc = targetEnc
+		} else if strings.EqualFold(strings.TrimSpace(target), strings.TrimSpace(b.Config.IRC.Nick)) {
+			enc = b.IRC.PrivateKey
+		}
+		if enc != nil {
+			if plain, err := enc.Decrypt(ciphertext); err == nil {
+				msg = cleanIRCText(plain)
+			} else if b.Debug {
+				log.Printf("[Bot] Failed to decrypt command from %s in %s: %v", sender, target, err)
+			}
 		}
 	}
 	isChannel := strings.HasPrefix(target, "#")
@@ -866,6 +875,7 @@ func (b *Bot) Reload() error {
 		for ch, key := range b.Config.Encryption.Keys {
 			_ = b.IRC.SetChannelKey(ch, key)
 		}
+		_ = b.IRC.SetPrivateKey(strings.TrimSpace(b.Config.Encryption.PrivateKey))
 		for _, ch := range uniqueChannels(b.Config) {
 			_ = b.IRC.Join(ch)
 		}

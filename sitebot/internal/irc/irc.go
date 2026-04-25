@@ -10,18 +10,19 @@ import (
 )
 
 type Bot struct {
-	Host      string
-	Port      int
-	SSL       bool
-	Nick      string
-	User      string
-	RealName  string
-	Channel   string
-	Password  string
-	Keys      map[string]*BlowfishEncryptor
-	Conn      net.Conn
-	Connected bool
-	Debug     bool
+	Host       string
+	Port       int
+	SSL        bool
+	Nick       string
+	User       string
+	RealName   string
+	Channel    string
+	Password   string
+	Keys       map[string]*BlowfishEncryptor
+	PrivateKey *BlowfishEncryptor
+	Conn       net.Conn
+	Connected  bool
+	Debug      bool
 }
 
 func NewBot(host string, port int, nick, user, realname string) *Bot {
@@ -67,11 +68,18 @@ func (b *Bot) SendRaw(cmd string) error {
 func (b *Bot) SendMessage(channel, msg string) error {
 	if enc, ok := b.Keys[channel]; ok {
 		msg = "+OK *" + enc.Encrypt(msg)
+	} else if !strings.HasPrefix(channel, "#") && b.PrivateKey != nil {
+		msg = "+OK *" + b.PrivateKey.Encrypt(msg)
 	}
 	return b.SendRaw(fmt.Sprintf("PRIVMSG %s :%s", channel, msg))
 }
 
 func (b *Bot) SendNotice(channel, msg string) error {
+	if enc, ok := b.Keys[channel]; ok {
+		msg = "+OK *" + enc.Encrypt(msg)
+	} else if !strings.HasPrefix(channel, "#") && b.PrivateKey != nil {
+		msg = "+OK *" + b.PrivateKey.Encrypt(msg)
+	}
 	return b.SendRaw(fmt.Sprintf("NOTICE %s :%s", channel, msg))
 }
 func (b *Bot) SetTopic(channel, topic string, encrypt bool) error {
@@ -102,6 +110,19 @@ func (b *Bot) SetChannelKey(channel, key string) error {
 		return err
 	}
 	b.Keys[channel] = enc
+	return nil
+}
+
+func (b *Bot) SetPrivateKey(key string) error {
+	if key == "" {
+		b.PrivateKey = nil
+		return nil
+	}
+	enc, err := NewBlowfishEncryptor(key)
+	if err != nil {
+		return err
+	}
+	b.PrivateKey = enc
 	return nil
 }
 func (b *Bot) Listen(handler func(string)) error {

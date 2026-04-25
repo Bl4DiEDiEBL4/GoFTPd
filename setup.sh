@@ -220,6 +220,30 @@ prompt_mode() {
     done
 }
 
+detect_system_timezone() {
+    local tz=""
+    if command -v timedatectl >/dev/null 2>&1; then
+        tz="$(timedatectl show -p Timezone --value 2>/dev/null || true)"
+    fi
+    if [ -z "${tz}" ] && [ -r /etc/timezone ]; then
+        tz="$(tr -d '\r\n' < /etc/timezone)"
+    fi
+    if [ -z "${tz}" ] && [ -n "${TZ:-}" ]; then
+        tz="${TZ}"
+    fi
+    if [ -z "${tz}" ] && [ -L /etc/localtime ] && command -v readlink >/dev/null 2>&1; then
+        local localtime_target
+        localtime_target="$(readlink /etc/localtime 2>/dev/null || true)"
+        case "${localtime_target}" in
+            *zoneinfo/*) tz="${localtime_target#*zoneinfo/}" ;;
+        esac
+    fi
+    if [ -z "${tz}" ]; then
+        tz="Europe/Amsterdam"
+    fi
+    printf '%s' "${tz}"
+}
+
 copy_if_missing() {
     local src="$1"
     local dst="$2"
@@ -258,6 +282,7 @@ sitebot_plugin_config_path() {
         News) printf 'sitebot/plugins/news/config.yml' ;;
         Request) printf 'sitebot/plugins/request/config.yml' ;;
         Rules) printf 'sitebot/plugins/rules/config.yml' ;;
+        SelfIP) printf 'sitebot/plugins/selfip/config.yml' ;;
         TVMaze) printf 'sitebot/plugins/tvmaze/config.yml' ;;
         Top) printf 'sitebot/plugins/top/config.yml' ;;
         Topic) printf 'sitebot/plugins/topic/config.yml' ;;
@@ -343,7 +368,7 @@ ensure_enabled_plugin_configs() {
         done
     fi
 
-    local sitebot_plugins=(Announce TVMaze IMDB News Free Affils Request BNC Control Banned Top BW Rules Topic AdminCommander)
+    local sitebot_plugins=(Announce TVMaze IMDB News Free Affils Request BNC Control Banned SelfIP Top BW Rules Topic AdminCommander)
     if [ -f "${sitebot_config}" ]; then
         for plugin_name in "${sitebot_plugins[@]}"; do
             enabled_value="$(sitebot_plugin_enabled_in_config "${sitebot_config}" "${plugin_name}")"
@@ -568,6 +593,7 @@ rewrite_sitebot_encryption_keys() {
     local foreign_key="${13}"
     local archive_key="${14}"
     local nuke_key="${15}"
+    local private_key="${16}"
     awk -v main_channel="${main_channel}" \
         -v chat_channel="${chat_channel}" \
         -v spam_channel="${spam_channel}" \
@@ -581,7 +607,12 @@ rewrite_sitebot_encryption_keys() {
         -v staff_key="${staff_key}" \
         -v foreign_key="${foreign_key}" \
         -v archive_key="${archive_key}" \
-        -v nuke_key="${nuke_key}" '
+        -v nuke_key="${nuke_key}" \
+        -v private_key="${private_key}" '
+        /^  private_key:/ {
+            print "  private_key: \"cbc:" private_key "\""
+            next
+        }
         BEGIN { in_keys = 0 }
         /^  keys:$/ {
             print
@@ -678,7 +709,7 @@ EOF
     fi
 
     if [ -f "sitebot/plugins/free/config.yml" ]; then
-        set_yaml_array_line "sitebot/plugins/free/config.yml" '^reply_target:' "reply_target: \"${chat_channel}\""
+        set_yaml_array_line "sitebot/plugins/free/config.yml" '^reply_target:' "reply_target: \"channel\""
     fi
 
     if [ -f "sitebot/plugins/admincommander/config.yml" ]; then
@@ -695,6 +726,7 @@ configure_sitebot_plugin_connections() {
     local ftp_insecure="$6"
     local bnc_target_host="$7"
     local bnc_target_port="$8"
+    local bnc_target_name="$9"
 
     if [ -f "sitebot/plugins/request/config.yml" ]; then
         set_yaml_array_line "sitebot/plugins/request/config.yml" '^host:' "host: \"${ftp_host}\""
@@ -741,16 +773,25 @@ configure_sitebot_plugin_connections() {
         set_yaml_array_line "sitebot/plugins/admincommander/config.yml" '^insecure_skip_verify:' "insecure_skip_verify: ${ftp_insecure}"
     fi
 
+    if [ -f "sitebot/plugins/selfip/config.yml" ]; then
+        set_yaml_array_line "sitebot/plugins/selfip/config.yml" '^host:' "host: \"${ftp_host}\""
+        set_yaml_array_line "sitebot/plugins/selfip/config.yml" '^port:' "port: ${ftp_port}"
+        set_yaml_array_line "sitebot/plugins/selfip/config.yml" '^user:' "user: \"${ftp_user}\""
+        set_yaml_array_line "sitebot/plugins/selfip/config.yml" '^password:' "password: \"${ftp_password}\""
+        set_yaml_array_line "sitebot/plugins/selfip/config.yml" '^tls:' "tls: ${ftp_tls}"
+        set_yaml_array_line "sitebot/plugins/selfip/config.yml" '^insecure_skip_verify:' "insecure_skip_verify: ${ftp_insecure}"
+    fi
+
     if [ -f "sitebot/plugins/bnc/config.yml" ]; then
         set_yaml_array_line "sitebot/plugins/bnc/config.yml" '^user:' "user: \"${ftp_user}\""
         set_yaml_array_line "sitebot/plugins/bnc/config.yml" '^password:' "password: \"${ftp_password}\""
         set_yaml_array_line "sitebot/plugins/bnc/config.yml" '^tls:' "tls: ${ftp_tls}"
         set_yaml_array_line "sitebot/plugins/bnc/config.yml" '^insecure_skip_verify:' "insecure_skip_verify: ${ftp_insecure}"
-        awk -v target_host="${bnc_target_host}" -v target_port="${bnc_target_port}" '
+        awk -v target_host="${bnc_target_host}" -v target_port="${bnc_target_port}" -v target_name="${bnc_target_name}" '
             BEGIN { in_targets = 0; emitted = 0 }
             /^targets:$/ {
                 print
-                print "  - name: \"sitename\""
+                print "  - name: \"" target_name "\""
                 print "    host: \"" target_host "\""
                 print "    port: " target_port
                 in_targets = 1
@@ -776,7 +817,7 @@ configure_daemon() {
     say "Configuring daemon..."
     copy_if_missing "etc/config-example.yml" "${daemon_config}"
 
-    local daemon_mode long_name short_name site_version cert_name enabled_bool
+    local daemon_mode long_name short_name site_version cert_name enabled_bool timezone system_timezone
     local listen_port public_ip passthrough_mode master_listen_host master_control_port
     local slave_name slave_master_host slave_master_port slave_roots slave_bind_ip fifo_path
     daemon_mode="${SETUP_DAEMON_MODE:-master}"
@@ -785,12 +826,15 @@ configure_daemon() {
         long_name="$(prompt_default 'Daemon site name' "${SETUP_SITE_NAME:-GoFTPd}")"
         short_name="$(prompt_default 'Daemon short site tag' "${SETUP_SITE_SHORT:-${long_name}}")"
         site_version="$(prompt_default 'Daemon version' "${SETUP_SITE_VERSION:-1.0.4b}")"
+        system_timezone="$(detect_system_timezone)"
+        timezone="$(prompt_default 'Daemon timezone (IANA name, use Local to follow the OS)' "${SETUP_TIMEZONE:-${system_timezone}}")"
         cert_name="$(prompt_default 'TLS certificate display name' "${SETUP_CERT_NAME:-${long_name}}")"
 
         SETUP_DAEMON_MODE="${daemon_mode}"
         SETUP_SITE_NAME="${long_name}"
         SETUP_SITE_SHORT="${short_name}"
         SETUP_SITE_VERSION="${site_version}"
+        SETUP_TIMEZONE="${timezone}"
         SETUP_CERT_NAME="${cert_name}"
         fifo_path="${SETUP_FIFO_PATH:-${FIFO_PATH_DEFAULT}}"
         SETUP_FIFO_PATH="${fifo_path}"
@@ -799,6 +843,7 @@ configure_daemon() {
         replace_matching_line "${daemon_config}" '^sitename_long:' "sitename_long:  \"${long_name}\""
         replace_matching_line "${daemon_config}" '^sitename_short:' "sitename_short: \"${short_name}\""
         replace_matching_line "${daemon_config}" '^version:' "version:        \"${site_version}\""
+        replace_matching_line "${daemon_config}" '^timezone:' "timezone:       \"${timezone}\""
         replace_matching_line "${daemon_config}" '^event_fifo:' "event_fifo:     \"${fifo_path}\""
         replace_matching_line "${daemon_config}" '^sitebot_config:' "sitebot_config: \"${SETUP_SITEBOT_CONFIG_PATH:-${SITEBOT_CONFIG_DEFAULT}}\""
     else
@@ -932,9 +977,9 @@ configure_sitebot() {
     copy_if_missing "sitebot/etc/config.yml.example" "${sitebot_config}"
 
     local irc_host irc_port irc_nick irc_user irc_realname irc_password irc_ssl sitebot_version
-    local ftp_host ftp_port ftp_user ftp_password ftp_tls ftp_insecure bnc_target_host bnc_target_port rules_file
+    local ftp_host ftp_port ftp_user ftp_password ftp_tls ftp_insecure bnc_target_host bnc_target_port bnc_target_name rules_file
     local main_channel chat_channel spam_channel staff_channel foreign_channel archive_channel nuke_channel enabled_bool
-    local main_key chat_key spam_key staff_key foreign_key archive_key nuke_key
+    local main_key chat_key spam_key staff_key foreign_key archive_key nuke_key private_key
     local fifo_path
     if [ "${sitebot_config_exists}" = "false" ]; then
         irc_host="$(prompt_default 'IRC host' "${SETUP_IRC_HOST:-irc.example.net}")"
@@ -965,6 +1010,7 @@ configure_sitebot() {
         fi
         bnc_target_host="$(prompt_default 'BNC target host' "${SETUP_BNC_TARGET_HOST:-${ftp_host}}")"
         bnc_target_port="$(prompt_default 'BNC target port' "${SETUP_BNC_TARGET_PORT:-${ftp_port}}")"
+        bnc_target_name="$(prompt_default 'BNC target label' "${SETUP_BNC_TARGET_NAME:-${SETUP_SITE_NAME:-GoFTPd}}")"
         rules_file="$(prompt_default 'Rules file for !rules (empty = use SITE RULES)' "${SETUP_RULES_FILE:-}")"
         main_channel="$(prompt_default 'Main race IRC channel' "${SETUP_MAIN_CHANNEL:-#goftpd}")"
         chat_channel="$(prompt_default 'Chat/command IRC channel' "${SETUP_CHAT_CHANNEL:-#goftpd-chat}")"
@@ -973,13 +1019,15 @@ configure_sitebot() {
         foreign_channel="$(prompt_default 'Foreign IRC channel' "${SETUP_FOREIGN_CHANNEL:-#goftpd-foreign}")"
         archive_channel="$(prompt_default 'Archive IRC channel' "${SETUP_ARCHIVE_CHANNEL:-#goftpd-archive}")"
         nuke_channel="$(prompt_default 'Nuke IRC channel' "${SETUP_NUKE_CHANNEL:-#goftpd-nuke}")"
-        main_key="$(prompt_default 'Blowfish key for main channel' "${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}")"
-        chat_key="$(prompt_default 'Blowfish key for chat channel' "${SETUP_BLOWFISH_KEY_CHAT:-${main_key}}")"
-        spam_key="$(prompt_default 'Blowfish key for spam channel' "${SETUP_BLOWFISH_KEY_SPAM:-${main_key}}")"
-        staff_key="$(prompt_default 'Blowfish key for staff channel' "${SETUP_BLOWFISH_KEY_STAFF:-${main_key}}")"
-        foreign_key="$(prompt_default 'Blowfish key for foreign channel' "${SETUP_BLOWFISH_KEY_FOREIGN:-${main_key}}")"
-        archive_key="$(prompt_default 'Blowfish key for archive channel' "${SETUP_BLOWFISH_KEY_ARCHIVE:-${main_key}}")"
-        nuke_key="$(prompt_default 'Blowfish key for nuke channel' "${SETUP_BLOWFISH_KEY_NUKE:-${main_key}}")"
+        say "Enter raw Blowfish/FiSH keys only here. setup.sh writes the cbc: prefix into the config for you."
+        main_key="$(prompt_default 'Blowfish key for main channel (raw key, no cbc: prefix)' "${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}")"
+        chat_key="$(prompt_default 'Blowfish key for chat channel (raw key, no cbc: prefix)' "${SETUP_BLOWFISH_KEY_CHAT:-${main_key}}")"
+        spam_key="$(prompt_default 'Blowfish key for spam channel (raw key, no cbc: prefix)' "${SETUP_BLOWFISH_KEY_SPAM:-${main_key}}")"
+        staff_key="$(prompt_default 'Blowfish key for staff channel (raw key, no cbc: prefix)' "${SETUP_BLOWFISH_KEY_STAFF:-${main_key}}")"
+        foreign_key="$(prompt_default 'Blowfish key for foreign channel (raw key, no cbc: prefix)' "${SETUP_BLOWFISH_KEY_FOREIGN:-${main_key}}")"
+        archive_key="$(prompt_default 'Blowfish key for archive channel (raw key, no cbc: prefix)' "${SETUP_BLOWFISH_KEY_ARCHIVE:-${main_key}}")"
+        nuke_key="$(prompt_default 'Blowfish key for nuke channel (raw key, no cbc: prefix)' "${SETUP_BLOWFISH_KEY_NUKE:-${main_key}}")"
+        private_key="$(prompt_default 'Blowfish key for PM replies (raw key, no cbc: prefix)' "${SETUP_BLOWFISH_KEY_PRIVATE:-${chat_key}}")"
     else
         say "Sitebot config already exists at ${sitebot_config}; keeping current sitebot settings."
         sitebot_version="${SETUP_SITEBOT_VERSION:-${SETUP_SITE_VERSION:-1.0.4b}}"
@@ -998,6 +1046,7 @@ configure_sitebot() {
         ftp_insecure="${SETUP_PLUGIN_FTP_INSECURE:-true}"
         bnc_target_host="${SETUP_BNC_TARGET_HOST:-${ftp_host}}"
         bnc_target_port="${SETUP_BNC_TARGET_PORT:-${ftp_port}}"
+        bnc_target_name="${SETUP_BNC_TARGET_NAME:-${SETUP_SITE_NAME:-GoFTPd}}"
         rules_file="${SETUP_RULES_FILE:-}"
         main_channel="${SETUP_MAIN_CHANNEL:-#goftpd}"
         chat_channel="${SETUP_CHAT_CHANNEL:-#goftpd-chat}"
@@ -1013,6 +1062,7 @@ configure_sitebot() {
         foreign_key="${SETUP_BLOWFISH_KEY_FOREIGN:-${main_key}}"
         archive_key="${SETUP_BLOWFISH_KEY_ARCHIVE:-${main_key}}"
         nuke_key="${SETUP_BLOWFISH_KEY_NUKE:-${main_key}}"
+        private_key="${SETUP_BLOWFISH_KEY_PRIVATE:-${chat_key}}"
     fi
 
     SETUP_IRC_HOST="${irc_host}"
@@ -1031,6 +1081,7 @@ configure_sitebot() {
     SETUP_PLUGIN_FTP_INSECURE="${ftp_insecure}"
     SETUP_BNC_TARGET_HOST="${bnc_target_host}"
     SETUP_BNC_TARGET_PORT="${bnc_target_port}"
+    SETUP_BNC_TARGET_NAME="${bnc_target_name}"
     SETUP_RULES_FILE="${rules_file}"
     SETUP_MAIN_CHANNEL="${main_channel}"
     SETUP_CHAT_CHANNEL="${chat_channel}"
@@ -1046,6 +1097,7 @@ configure_sitebot() {
     SETUP_BLOWFISH_KEY_FOREIGN="${foreign_key}"
     SETUP_BLOWFISH_KEY_ARCHIVE="${archive_key}"
     SETUP_BLOWFISH_KEY_NUKE="${nuke_key}"
+    SETUP_BLOWFISH_KEY_PRIVATE="${private_key}"
     fifo_path="${SETUP_FIFO_PATH:-${FIFO_PATH_DEFAULT}}"
     SETUP_FIFO_PATH="${fifo_path}"
     SETUP_SITEBOT_CONFIG_PATH="${ROOT_DIR}/sitebot/etc/config.yml"
@@ -1070,10 +1122,10 @@ configure_sitebot() {
         set_sitebot_channel_anchor "${sitebot_config}" "nuke" "chan_nuke" "${nuke_channel}"
         rewrite_sitebot_irc_channels "${sitebot_config}" "${main_channel}" "${chat_channel}" "${spam_channel}" "${staff_channel}"
         rewrite_sitebot_invite_channel "${sitebot_config}" "${staff_channel}"
-        rewrite_sitebot_encryption_keys "${sitebot_config}" "${main_channel}" "${chat_channel}" "${spam_channel}" "${staff_channel}" "${foreign_channel}" "${archive_channel}" "${nuke_channel}" "${main_key}" "${chat_key}" "${spam_key}" "${staff_key}" "${foreign_key}" "${archive_key}" "${nuke_key}"
+        rewrite_sitebot_encryption_keys "${sitebot_config}" "${main_channel}" "${chat_channel}" "${spam_channel}" "${staff_channel}" "${foreign_channel}" "${archive_channel}" "${nuke_channel}" "${main_key}" "${chat_key}" "${spam_key}" "${staff_key}" "${foreign_key}" "${archive_key}" "${nuke_key}" "${private_key}"
     fi
 
-    local sitebot_plugins=(Announce TVMaze IMDB News Free Affils Request BNC Control Banned Top BW Rules Topic AdminCommander)
+    local sitebot_plugins=(Announce TVMaze IMDB News Free Affils Request BNC Control Banned SelfIP Top BW Rules Topic AdminCommander)
     local plugin_name
     local sitebot_enable_queue=()
     local sitebot_created=()
@@ -1090,7 +1142,7 @@ configure_sitebot() {
 
     if [ "${sitebot_config_exists}" = "false" ] || [ "${#sitebot_enable_queue[@]}" -gt 0 ]; then
         configure_sitebot_plugin_channels "${main_channel}" "${chat_channel}" "${staff_channel}" "${nuke_channel}"
-        configure_sitebot_plugin_connections "${ftp_host}" "${ftp_port}" "${ftp_user}" "${ftp_password}" "${ftp_tls}" "${ftp_insecure}" "${bnc_target_host}" "${bnc_target_port}"
+        configure_sitebot_plugin_connections "${ftp_host}" "${ftp_port}" "${ftp_user}" "${ftp_password}" "${ftp_tls}" "${ftp_insecure}" "${bnc_target_host}" "${bnc_target_port}" "${bnc_target_name}"
         if [ -f "sitebot/plugins/rules/config.yml" ]; then
             set_yaml_array_line "sitebot/plugins/rules/config.yml" '^rules_file:' "rules_file: \"${rules_file}\""
         fi
@@ -1184,6 +1236,7 @@ save_state_file() {
     write_state_var SETUP_SITE_NAME "${SETUP_SITE_NAME:-GoFTPd}"
     write_state_var SETUP_SITE_SHORT "${SETUP_SITE_SHORT:-GoFTPd}"
     write_state_var SETUP_SITE_VERSION "${SETUP_SITE_VERSION:-1.0.4b}"
+    write_state_var SETUP_TIMEZONE "${SETUP_TIMEZONE:-Europe/Amsterdam}"
     write_state_var SETUP_CERT_NAME "${SETUP_CERT_NAME:-GoFTPd}"
     write_state_var SETUP_GENERATE_CERTS "${SETUP_GENERATE_CERTS:-true}"
     write_state_var SETUP_FIFO_PATH "${SETUP_FIFO_PATH:-${FIFO_PATH_DEFAULT}}"
@@ -1215,6 +1268,7 @@ save_state_file() {
     write_state_var SETUP_PLUGIN_FTP_INSECURE "${SETUP_PLUGIN_FTP_INSECURE:-true}"
     write_state_var SETUP_BNC_TARGET_HOST "${SETUP_BNC_TARGET_HOST:-127.0.0.1}"
     write_state_var SETUP_BNC_TARGET_PORT "${SETUP_BNC_TARGET_PORT:-21212}"
+    write_state_var SETUP_BNC_TARGET_NAME "${SETUP_BNC_TARGET_NAME:-${SETUP_SITE_NAME:-GoFTPd}}"
     write_state_var SETUP_RULES_FILE "${SETUP_RULES_FILE:-}"
     write_state_var SETUP_MAIN_CHANNEL "${SETUP_MAIN_CHANNEL:-#goftpd}"
     write_state_var SETUP_CHAT_CHANNEL "${SETUP_CHAT_CHANNEL:-#goftpd-chat}"
@@ -1230,6 +1284,7 @@ save_state_file() {
     write_state_var SETUP_BLOWFISH_KEY_FOREIGN "${SETUP_BLOWFISH_KEY_FOREIGN:-${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}}"
     write_state_var SETUP_BLOWFISH_KEY_ARCHIVE "${SETUP_BLOWFISH_KEY_ARCHIVE:-${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}}"
     write_state_var SETUP_BLOWFISH_KEY_NUKE "${SETUP_BLOWFISH_KEY_NUKE:-${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}}"
+    write_state_var SETUP_BLOWFISH_KEY_PRIVATE "${SETUP_BLOWFISH_KEY_PRIVATE:-${SETUP_BLOWFISH_KEY_CHAT:-${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}}}"
     write_state_var SETUP_DAEMON_PLUGIN_DATEDDIRS "${SETUP_DAEMON_PLUGIN_DATEDDIRS:-true}"
     write_state_var SETUP_DAEMON_PLUGIN_AUTONUKE "${SETUP_DAEMON_PLUGIN_AUTONUKE:-false}"
     write_state_var SETUP_DAEMON_PLUGIN_TVMAZE "${SETUP_DAEMON_PLUGIN_TVMAZE:-true}"
@@ -1250,6 +1305,7 @@ save_state_file() {
     write_state_var SETUP_SITEBOT_PLUGIN_BNC "${SETUP_SITEBOT_PLUGIN_BNC:-true}"
     write_state_var SETUP_SITEBOT_PLUGIN_CONTROL "${SETUP_SITEBOT_PLUGIN_CONTROL:-true}"
     write_state_var SETUP_SITEBOT_PLUGIN_BANNED "${SETUP_SITEBOT_PLUGIN_BANNED:-true}"
+    write_state_var SETUP_SITEBOT_PLUGIN_SELFIP "${SETUP_SITEBOT_PLUGIN_SELFIP:-true}"
     write_state_var SETUP_SITEBOT_PLUGIN_TOP "${SETUP_SITEBOT_PLUGIN_TOP:-true}"
     write_state_var SETUP_SITEBOT_PLUGIN_BW "${SETUP_SITEBOT_PLUGIN_BW:-true}"
     write_state_var SETUP_SITEBOT_PLUGIN_RULES "${SETUP_SITEBOT_PLUGIN_RULES:-true}"

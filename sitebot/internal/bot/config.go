@@ -53,8 +53,9 @@ type IRCConfig struct {
 }
 
 type EncConfig struct {
-	Enabled bool              `yaml:"enabled"`
-	Keys    map[string]string `yaml:"keys"`
+	Enabled    bool              `yaml:"enabled"`
+	PrivateKey string            `yaml:"private_key"`
+	Keys       map[string]string `yaml:"keys"`
 }
 
 type AnnounceConfig struct {

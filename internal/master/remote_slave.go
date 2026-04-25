@@ -23,9 +23,10 @@ type RemoteSlave struct {
 	writeMu sync.Mutex // protects stream writes
 
 	// Async index pool ( / _indexWithCommands)
-	indexPool     chan string
-	pendingCmds   sync.Map // index (string) -> chan interface{}
-	commandNotify chan struct{}
+	indexPool      chan string
+	pendingCmds    sync.Map // index (string) -> chan interface{}
+	earlyResponses sync.Map // index (string) -> interface{}
+	commandNotify  chan struct{}
 
 	// State
 	online     atomic.Bool
@@ -187,6 +188,12 @@ func (rs *RemoteSlave) FetchResponse(index string, timeout time.Duration) (inter
 	// Create a channel for this index
 	ch := make(chan interface{}, 1)
 	rs.pendingCmds.Store(index, ch)
+	if resp, ok := rs.earlyResponses.LoadAndDelete(index); ok {
+		select {
+		case ch <- resp:
+		default:
+		}
+	}
 	defer func() {
 		rs.pendingCmds.Delete(index)
 		// Return index to pool
@@ -341,7 +348,9 @@ func (rs *RemoteSlave) routeResponse(index string, obj interface{}) {
 		case ch <- obj:
 		default:
 		}
+		return
 	}
+	rs.earlyResponses.Store(index, obj)
 }
 
 func (rs *RemoteSlave) SetOffline(reason string) {

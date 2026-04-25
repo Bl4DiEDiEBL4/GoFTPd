@@ -1,3 +1,3 @@
 # reply_target supports "channel", "notice", or a fixed "#channel".
-reply_target: "#goftpd-chat"
+reply_target: "channel"
 stale_after_seconds: 600

@@ -50,6 +50,11 @@ invite_channels:
 
 encryption:
   enabled: true
+  # Enter keys in "cbc:<key>" format in the final config file.
+  # setup.sh asks for raw keys and writes the cbc: prefix for you.
+  # private_key is used for PM/NOTICE replies to users and for decrypting
+  # incoming encrypted PM commands sent directly to the bot nick.
+  private_key: "cbc:YourBlowfishKeyHere123456"
   keys:
     "#goftpd": "cbc:YourBlowfishKeyHere123456"
     "#goftpd-chat": "cbc:YourBlowfishKeyHere123456"
