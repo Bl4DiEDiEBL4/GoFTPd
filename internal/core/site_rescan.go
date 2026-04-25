@@ -5,6 +5,8 @@ import (
 	"path"
 	"sort"
 	"strings"
+
+	"goftpd/internal/zipscript"
 )
 
 type rescanReleaseResult struct {
@@ -111,6 +113,21 @@ func (s *Session) rescanRelease(bridge MasterBridge, releasePath string) rescanR
 			_ = bridge.DeleteFile(missingPath)
 		}
 	}
+
+	if shouldRefreshRescanMediaInfo(s.Config, releasePath) {
+		if candidate, ok := findAudioRescanCandidate(bridge, releasePath); ok {
+			binary, timeoutSeconds := zipscriptMediaInfoSettings(s.Config)
+			fields, err := bridge.ProbeMediaInfo(candidate, binary, timeoutSeconds)
+			if err != nil {
+				if s.Config != nil && s.Config.Debug {
+					result.Errors = append(result.Errors, fmt.Sprintf("mediainfo refresh skipped: %v", err))
+				}
+			} else if len(fields) > 0 {
+				bridge.CacheMediaInfo(releasePath, fields)
+			}
+		}
+	}
+
 	return result
 }
 
@@ -173,4 +190,44 @@ func findSFV(bridge MasterBridge, dirPath string) (string, bool) {
 		return "", false
 	}
 	return sfvs[0], true
+}
+
+func shouldRefreshRescanMediaInfo(cfg *Config, dirPath string) bool {
+	if cfg == nil {
+		return false
+	}
+	cfg.Zipscript.ApplyDefaults()
+	if !cfg.Zipscript.Race.MusicCompleteGenre {
+		return false
+	}
+	section, _ := zipscript.SectionInfoFromPath(dirPath)
+	switch strings.ToUpper(strings.TrimSpace(section)) {
+	case "MP3", "FLAC":
+		return true
+	default:
+		return false
+	}
+}
+
+func findAudioRescanCandidate(bridge MasterBridge, dirPath string) (string, bool) {
+	entries := bridge.ListDir(dirPath)
+	audioFiles := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir {
+			continue
+		}
+		lower := strings.ToLower(strings.TrimSpace(entry.Name))
+		switch {
+		case strings.HasSuffix(lower, ".mp3"),
+			strings.HasSuffix(lower, ".flac"),
+			strings.HasSuffix(lower, ".m4a"),
+			strings.HasSuffix(lower, ".wav"):
+			audioFiles = append(audioFiles, entry.Name)
+		}
+	}
+	sort.Strings(audioFiles)
+	if len(audioFiles) == 0 {
+		return "", false
+	}
+	return path.Join(dirPath, audioFiles[0]), true
 }
