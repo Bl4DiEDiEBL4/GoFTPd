@@ -156,6 +156,15 @@ For an archive server, point a slave root at the existing archive tree and set
 `readonly: true`. Use `sections` or `paths` only if you want to limit which
 paths that archive slave serves.
 
+The master control socket can also be hardened with:
+
+- `master.slave_allowlist` - optional exact IP / CIDR allowlist for slave connections
+- `master.slave_auth_fail_limit`
+- `master.slave_auth_fail_window_seconds`
+- `master.slave_auth_ban_seconds`
+
+Those guard only the slave control port, not normal FTP client sessions.
+
 ## ACL Rules
 
 ACLs live in `etc/permissions.yml`. Rules are checked top to bottom inside each
@@ -163,26 +172,50 @@ rule type. The first matching rule decides access. If no action rule matches,
 matching `privpath` rules are checked. If nothing matches, flag `1` users are
 allowed by default.
 
-Supported rule subjects:
+The example config now uses the structured ACL format with reusable `roles:`
+and grouped rule blocks such as `sitecmd:`, `list:`, and `nuke:`.
 
-| Syntax | Meaning |
-|--------|---------|
-| `*` | everyone |
-| `!*` | nobody |
-| `1`, `A` | required user flag |
-| `!4` | user must not have flag `4` |
-| `=Admin` | member of group `Admin` |
-| `!=Trial` | not a member of group `Trial` |
-| `@Nick` | FTP username `Nick` |
-| `!@Nick` | not FTP username `Nick` |
-| `1 =NUKERS` | flag `1` and member of `NUKERS` |
-| `=GRP =SiteOP` | member of `GRP` or `SiteOP` |
+`required:` supports readable fields such as:
+
+| Key | Meaning |
+|-----|---------|
+| `anyone: true` | everyone |
+| `nobody: true` | nobody |
+| `users: ["goftpd"]` | exact FTP user match |
+| `all_flags: ["1"]` | user must have all listed flags |
+| `any_flags: ["1", "A"]` | user must have at least one listed flag |
+| `all_groups: ["NUKERS"]` | user must be in all listed groups |
+| `any_groups: ["STAFF", "SiteOP"]` | user must be in at least one listed group |
+| `not_users`, `not_flags`, `not_groups` | explicit deny filters |
+| `any_of:` | OR across nested requirement blocks |
+
+Example:
+
+```yml
+roles:
+  siteop:
+    any_of:
+      - all_groups: ["SiteOP"]
+      - all_flags: ["1"]
+
+rules:
+  sitecmd:
+    - allow: [HELP, RULES, AFFILS]
+      required:
+        anyone: true
+
+    - allow: [REHASH, ADDUSER]
+      required: $siteop
+```
+
+The legacy flat syntax is still supported for compatibility, so older entries
+such as `required: "1 =NUKERS"` continue to load.
 
 Rule types currently used by the example config:
 
-`sitecmd`, `privpath`, `upload`, `resume`, `download`, `makedir`, `dirlog`,
-`rename`, `renameown`, `nuke`, `unnuke`, `delete`, `deleteown`, `filemove`,
-and `nodupecheck`.
+`sitecmd`, `privpath`, `upload`, `resume`, `download`, `makedir`, `list`,
+`dirlog`, `rename`, `renameown`, `nuke`, `unnuke`, `delete`, `deleteown`,
+`filemove`, and `nodupecheck`.
 
 Owner-only rules are handled by `renameown` and `deleteown`; the ACL grants the
 policy and the daemon checks ownership before allowing the action.
@@ -258,9 +291,10 @@ nick through using `-by:<nick>` only when the FTP login is listed in
 
 ### PRE And Affils
 
-The PRE plugin reads `etc/affils.yml` and can manage affil entries through SITE
-commands. It can update `etc/permissions.yml` and group data when adding or
-removing affils.
+The PRE plugin uses `etc/affils.yml` as the source of truth for affil groups
+and predirs. It can manage affil entries through SITE commands and sync the
+derived PRE visibility rules into `etc/permissions.yml` when affils are added
+or removed.
 
 SITE commands:
 
@@ -277,7 +311,7 @@ Implemented daemon SITE commands include:
 
 | Area | Commands |
 |------|----------|
-| Info | `HELP`, `RULES`, `WHO`, `SWHO`, `USERS`, `USER`, `SEEN`, `LASTLOGIN`, `GROUPS`, `GROUP`, `GINFO`, `GRPNFO`, `TRAFFIC` |
+| Info | `HELP`, `RULES`, `WHO`, `SWHO`, `BW`, `USERS`, `USER`, `SEEN`, `LASTLOGIN`, `GROUPS`, `GROUP`, `GINFO`, `GRPNFO`, `TRAFFIC` |
 | Users/groups | `ADDUSER`, `GADDUSER`, `DELUSER`, `READD`, `RENUSER`, `CHPASS`, `ADDIP`, `DELIP`, `SELFIP`, `FLAGS`, `CHGRP`, `CHPGRP`, `GADMIN`, `GRPADD`, `GRPDEL`, `GRP` |
 | Release/admin | `NUKE`, `UNNUKE`, `UNDUPE`, `WIPE`, `KICK`, `REHASH`, `REMERGE`, `CHMOD` |
 | Search/rescan | `SEARCH`, `RACE`, `RESCAN`, `XDUPE` |
@@ -313,6 +347,8 @@ Built-in sitebot plugins:
 | `IMDB` | movie lookup output |
 | `News` | `!news`, `!addnews`, `!delnews` |
 | `Free` | `!free`, `!df` |
+| `BNC` | `!bnc` FTP login checks across configured targets |
+| `BW` | `!bw` bandwidth summary |
 | `Affils` | `!affils` |
 | `Request` | `!request`, `!requests`, `!reqfill`, `!reqdel`, staff `!reqwipe` |
 | `Banned` | `!banned`, `!banned <filter>`, `!banned allow [filter]` |
@@ -385,6 +421,10 @@ Event output routes in this order:
 
 Command plugins can reply directly to the channel, by notice, or to a fixed
 channel depending on their `reply_target`.
+
+Staff/security notices such as failed logins, self-service IP changes, and bad
+slave-control handshakes can be routed to `#goftpd-staff` through
+`announce.type_routes`.
 
 ## Runtime Reload
 
