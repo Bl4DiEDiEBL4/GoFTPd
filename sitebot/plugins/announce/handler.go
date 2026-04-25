@@ -271,6 +271,10 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 		if skipReleaseAnnounce {
 			return nil, nil
 		}
+		if !st.Created && shouldEmitSyntheticNew(evt, section) {
+			st.Created = true
+			outs = append(outs, plugin.Output{Type: "NEW", Text: p.render("NEWDIR", vars, fmt.Sprintf("NEW : [%s] %s%s by %s", section, vars["subdir_prefix"], rel, evt.User))})
+		}
 		switch fileType {
 		case "nfo", "sample":
 			return nil, nil
@@ -516,6 +520,22 @@ func isReleaseDir(eventPath, section string) bool {
 		return false
 	}
 	return strings.EqualFold(path.Base(path.Dir(parent)), sectionName)
+}
+
+func shouldEmitSyntheticNew(evt *event.Event, section string) bool {
+	if evt == nil || evt.Type != event.EventUpload {
+		return false
+	}
+	if strings.TrimSpace(evt.Data["release_subdir"]) != "" {
+		return false
+	}
+	fileType := classifyFile(strings.ToLower(strings.TrimSpace(evt.Path)))
+	switch fileType {
+	case "sfv", "rar", "audio", "zip":
+	default:
+		return false
+	}
+	return isReleaseDir(path.Dir(path.Clean(evt.Path)), section)
 }
 
 func isDateDir(name string) bool {
