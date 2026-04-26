@@ -234,6 +234,8 @@ func (s *Slave) handleCommand(ac *protocol.AsyncCommand) interface{} {
 
 	case "rename":
 		return s.handleRename(ac)
+	case "relocate":
+		return s.handleRelocate(ac)
 
 	case "chmod":
 		return s.handleChmod(ac)
@@ -364,6 +366,61 @@ func (s *Slave) handleRename(ac *protocol.AsyncCommand) interface{} {
 		}
 	}
 
+	return &protocol.AsyncResponse{Index: ac.Index}
+}
+
+func (s *Slave) handleRelocate(ac *protocol.AsyncCommand) interface{} {
+	if len(ac.Args) < 3 {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "relocate: need from, toDir, toName"}
+	}
+	from := ac.Args[0]
+	toDir := ac.Args[1]
+	toName := ac.Args[2]
+
+	sourcePath, sourceRoot, err := s.getFileFromRootsWithRoot(from)
+	if err != nil {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("relocate: source not found: %v", err)}
+	}
+	if s.hasActiveTransferUnder(from) {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "relocate: source is busy with an active transfer"}
+	}
+
+	destRoot, err := s.selectRootForRelocate(sourceRoot)
+	if err != nil {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("relocate: %v", err)}
+	}
+	destVirtualPath := filepath.ToSlash(path.Join(toDir, toName))
+	if s.hasActiveTransferUnder(destVirtualPath) {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "relocate: destination is busy with an active transfer"}
+	}
+
+	toDirPath := filepath.Join(destRoot, toDir)
+	toPath := filepath.Join(toDirPath, toName)
+	if err := os.MkdirAll(toDirPath, 0755); err != nil {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("relocate mkdir failed: %v", err)}
+	}
+	if _, err := os.Stat(toPath); err == nil {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "relocate failed: destination already exists"}
+	}
+
+	if destRoot == sourceRoot {
+		if err := os.Rename(sourcePath, toPath); err != nil {
+			return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("relocate rename failed: %v", err)}
+		}
+	} else {
+		if err := copyPath(sourcePath, toPath); err != nil {
+			_ = os.RemoveAll(toPath)
+			return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("relocate copy failed: %v", err)}
+		}
+		if err := os.RemoveAll(sourcePath); err != nil {
+			_ = os.RemoveAll(toPath)
+			return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("relocate cleanup failed: %v", err)}
+		}
+	}
+
+	s.cleanEmptyParents(sourcePath, sourceRoot)
+	ds := s.getDiskStatus()
+	s.writeObject(&protocol.AsyncResponseDiskStatus{Status: ds})
 	return &protocol.AsyncResponse{Index: ac.Index}
 }
 
@@ -1297,6 +1354,16 @@ func (s *Slave) getFileFromRoots(relPath string) (string, error) {
 	return "", fmt.Errorf("file not found: %s", relPath)
 }
 
+func (s *Slave) getFileFromRootsWithRoot(relPath string) (string, string, error) {
+	for _, root := range s.roots {
+		fullPath := filepath.Join(root, relPath)
+		if _, err := os.Stat(fullPath); err == nil {
+			return fullPath, root, nil
+		}
+	}
+	return "", "", fmt.Errorf("file not found: %s", relPath)
+}
+
 // getDirForUpload selects a root for a new upload (picks root with most free space).
 func (s *Slave) getDirForUpload(relPath string) (string, error) {
 	var bestRoot string
@@ -1319,6 +1386,67 @@ func (s *Slave) getDirForUpload(relPath string) (string, error) {
 	os.MkdirAll(fullDir, 0755)
 
 	return filepath.Join(bestRoot, relPath), nil
+}
+
+func (s *Slave) selectRootForRelocate(sourceRoot string) (string, error) {
+	if len(s.roots) == 0 {
+		return "", fmt.Errorf("no roots available")
+	}
+	var bestOther string
+	var bestOtherAvail int64 = -1
+	for _, root := range s.roots {
+		avail, _ := getDiskSpace(root)
+		if root == sourceRoot {
+			continue
+		}
+		if avail > bestOtherAvail {
+			bestOtherAvail = avail
+			bestOther = root
+		}
+	}
+	if bestOther != "" {
+		return bestOther, nil
+	}
+	return "", fmt.Errorf("no alternate destination root available")
+}
+
+func copyPath(src, dst string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		if err := os.MkdirAll(dst, info.Mode()); err != nil {
+			return err
+		}
+		entries, err := os.ReadDir(src)
+		if err != nil {
+			return err
+		}
+		for _, entry := range entries {
+			if err := copyPath(filepath.Join(src, entry.Name()), filepath.Join(dst, entry.Name())); err != nil {
+				return err
+			}
+		}
+		return os.Chtimes(dst, info.ModTime(), info.ModTime())
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, info.Mode())
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return err
+	}
+	return os.Chtimes(dst, info.ModTime(), info.ModTime())
 }
 
 func (s *Slave) listenOnPortRange() (net.Listener, error) {
@@ -1353,6 +1481,36 @@ func (s *Slave) cleanEmptyParents(path string, root string) {
 		os.Remove(dir)
 		dir = filepath.Dir(dir)
 	}
+}
+
+func (s *Slave) hasActiveTransferUnder(relPath string) bool {
+	relPath = filepath.ToSlash(filepath.Clean(strings.TrimSpace(relPath)))
+	if relPath == "." {
+		relPath = "/"
+	}
+	if !strings.HasPrefix(relPath, "/") {
+		relPath = "/" + relPath
+	}
+	busy := false
+	s.transfers.Range(func(_, value interface{}) bool {
+		t, ok := value.(*Transfer)
+		if !ok || t == nil {
+			return true
+		}
+		transferPath := filepath.ToSlash(filepath.Clean(strings.TrimSpace(t.Path())))
+		if transferPath == "." || transferPath == "" {
+			return true
+		}
+		if !strings.HasPrefix(transferPath, "/") {
+			transferPath = "/" + transferPath
+		}
+		if transferPath == relPath || strings.HasPrefix(transferPath, relPath+"/") || strings.HasPrefix(relPath, transferPath+"/") {
+			busy = true
+			return false
+		}
+		return true
+	})
+	return busy
 }
 
 func (s *Slave) shutdown() {

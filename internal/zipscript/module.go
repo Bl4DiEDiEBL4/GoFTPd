@@ -496,7 +496,7 @@ func AudioSortLinks(cfg Config, releasePath string, fields map[string]string) []
 	}
 	var out []AudioSortLink
 	add := func(enabled bool, basePath, bucket string) {
-		basePath = normalizePath(basePath)
+		basePath = audioSortBasePath(cfg, releasePath, basePath)
 		bucket = sanitizeSortBucket(bucket)
 		if !enabled || basePath == "/" || bucket == "" {
 			return
@@ -514,6 +514,19 @@ func AudioSortLinks(cfg Config, releasePath string, fields map[string]string) []
 	add(cfg.Audio.Sort.Year, cfg.Audio.YearPath, normalizeYearForBanner(firstNonEmpty(fields, "year", "g_recordeddate", "g_recorded_date")))
 	add(cfg.Audio.Sort.Group, cfg.Audio.GroupPath, releaseGroupName(relName))
 	return out
+}
+
+func audioSortBasePath(cfg Config, releasePath, basePath string) string {
+	basePath = normalizePath(basePath)
+	if basePath == "/" {
+		return basePath
+	}
+	if cfg.Audio.Sort.SeparateBySection == nil || *cfg.Audio.Sort.SeparateBySection {
+		if section, _ := SectionInfoFromPath(releasePath); strings.TrimSpace(section) != "" {
+			basePath = path.Join(basePath, strings.ToUpper(strings.TrimSpace(section)))
+		}
+	}
+	return basePath
 }
 
 func isMediaInfoFile(fileName string) bool {

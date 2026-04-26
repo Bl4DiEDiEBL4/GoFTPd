@@ -79,10 +79,11 @@ type AudioConfig struct {
 }
 
 type AudioSortConfig struct {
-	Genre  bool `yaml:"genre"`
-	Artist bool `yaml:"artist"`
-	Year   bool `yaml:"year"`
-	Group  bool `yaml:"group"`
+	Genre             bool  `yaml:"genre"`
+	Artist            bool  `yaml:"artist"`
+	Year              bool  `yaml:"year"`
+	Group             bool  `yaml:"group"`
+	SeparateBySection *bool `yaml:"separate_by_section"`
 }
 
 type HooksConfig struct {
@@ -159,5 +160,11 @@ func (c *Config) ApplyDefaults() {
 		if !c.Race.MusicCompleteGenre {
 			c.Race.MusicCompleteGenre = true
 		}
+	}
+
+	// Keep music sort trees MP3/FLAC-aware by default unless explicitly disabled.
+	if c.Audio.Sort.SeparateBySection == nil {
+		enabled := true
+		c.Audio.Sort.SeparateBySection = &enabled
 	}
 }

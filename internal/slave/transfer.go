@@ -57,6 +57,12 @@ func (t *Transfer) SetPath(path string) {
 	t.mu.Unlock()
 }
 
+func (t *Transfer) Path() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.path
+}
+
 func (t *Transfer) SnapshotLiveStat() protocol.TransferLiveStat {
 	t.mu.Lock()
 	defer t.mu.Unlock()

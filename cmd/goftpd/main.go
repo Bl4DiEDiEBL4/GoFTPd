@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -29,6 +30,7 @@ import (
 	"goftpd/plugins/releaseguard"
 	"goftpd/plugins/request"
 	"goftpd/plugins/slowupkick"
+	"goftpd/plugins/spacekeeper"
 	"goftpd/plugins/speedtest"
 	"goftpd/plugins/tvmaze"
 	"gopkg.in/yaml.v3"
@@ -65,9 +67,13 @@ func main() {
 	// 2. Load ACL Engine (Permissions)
 	aclEngine, err := acl.LoadEngine("etc/permissions.yml")
 	if err != nil {
-		log.Printf("Warning: etc/permissions.yml not found, using empty rules: %v", err)
-		aclEngine = &acl.Engine{
-			RulesByType: make(map[string][]acl.Rule),
+		if errors.Is(err, os.ErrNotExist) {
+			log.Printf("Warning: etc/permissions.yml not found, using empty rules: %v", err)
+			aclEngine = &acl.Engine{
+				RulesByType: make(map[string][]acl.Rule),
+			}
+		} else {
+			log.Fatalf("Failed to load etc/permissions.yml: %v", err)
 		}
 	}
 
@@ -242,8 +248,30 @@ func main() {
 		bridgeForPlugins = masterBridge
 	}
 	cfg.PluginManager.SetServices(&plugin.Services{
-		Bridge:             bridgeForPlugins,
-		Debug:              cfg.Debug,
+		Bridge: bridgeForPlugins,
+		Debug:  cfg.Debug,
+		ListSlaveStates: func() []plugin.SlaveState {
+			if sm == nil {
+				return nil
+			}
+			slaves := sm.GetAvailableSlaves()
+			out := make([]plugin.SlaveState, 0, len(slaves))
+			for _, rs := range slaves {
+				if rs == nil {
+					continue
+				}
+				ds := rs.GetDiskStatus()
+				out = append(out, plugin.SlaveState{
+					Name:            rs.Name(),
+					Available:       rs.IsAvailable(),
+					ReadOnly:        sm.IsSlaveReadOnly(rs.Name()),
+					ActiveTransfers: rs.ActiveTransfers(),
+					FreeBytes:       ds.SpaceAvailable,
+					TotalBytes:      ds.SpaceCapacity,
+				})
+			}
+			return out
+		},
 		ListActiveSessions: core.ListActiveSessionsForPlugins,
 		DisconnectSession:  core.DisconnectActiveSession,
 		GetLiveTransferStats: func() []plugin.LiveTransferStat {
@@ -345,6 +373,8 @@ func main() {
 			p = speedtest.New()
 		case "slowupkick":
 			p = slowupkick.New()
+		case "spacekeeper":
+			p = spacekeeper.New()
 		default:
 			log.Printf("[PLUGINS] Unknown plugin: %s (add a case in cmd/goftpd/main.go)", pluginName)
 			continue

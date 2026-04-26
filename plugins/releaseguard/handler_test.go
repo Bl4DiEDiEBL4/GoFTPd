@@ -14,22 +14,25 @@ type testBridge struct {
 func (b *testBridge) PluginListDir(dir string) []plugin.FileEntry {
 	return append([]plugin.FileEntry(nil), b.entries[dir]...)
 }
-func (b *testBridge) MakeDir(path, owner, group string) {}
+func (b *testBridge) MakeDir(path, owner, group string)         {}
 func (b *testBridge) Symlink(linkPath, targetPath string) error { return nil }
-func (b *testBridge) Chmod(path string, mode uint32) error { return nil }
+func (b *testBridge) Chmod(path string, mode uint32) error      { return nil }
 func (b *testBridge) CreateSparseFile(path string, size int64, owner, group string) error {
 	return nil
 }
-func (b *testBridge) DeleteFile(path string) error { return nil }
-func (b *testBridge) RenameFile(from, toDir, toName string) {}
-func (b *testBridge) WriteFile(path string, content []byte) error { return nil }
-func (b *testBridge) ReadFile(path string) ([]byte, error) { return nil, nil }
+func (b *testBridge) DeleteFile(path string) error                                      { return nil }
+func (b *testBridge) RenameFile(from, toDir, toName string)                             {}
+func (b *testBridge) RelocatePath(from, toDir, toName string) error                     { return nil }
+func (b *testBridge) RelocatePathToSlave(from, toDir, toName, targetSlave string) error { return nil }
+func (b *testBridge) WriteFile(path string, content []byte) error                       { return nil }
+func (b *testBridge) ReadFile(path string) ([]byte, error)                              { return nil, nil }
 func (b *testBridge) ProbeMediaInfo(path, binary string, timeoutSeconds int) (map[string]string, error) {
 	return nil, nil
 }
 func (b *testBridge) CacheMediaInfo(path string, fields map[string]string) {}
-func (b *testBridge) FileExists(path string) bool { return false }
-func (b *testBridge) GetFileSize(path string) int64 { return -1 }
+func (b *testBridge) FileExists(path string) bool                          { return false }
+func (b *testBridge) GetFileSize(path string) int64                        { return -1 }
+func (b *testBridge) GetSFVData(dirPath string) map[string]uint32          { return nil }
 func (b *testBridge) PluginGetVFSRaceStats(dirPath string) (users []plugin.RaceUser, groups []plugin.RaceGroup, totalBytes int64, present int, total int) {
 	return nil, nil, 0, 0, 0
 }

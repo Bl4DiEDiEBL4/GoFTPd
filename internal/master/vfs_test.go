@@ -194,3 +194,27 @@ func TestParentDirModTimeBubblesOnChanges(t *testing.T) {
 		t.Fatalf("expected delete to bump release modtime, got %d <= %d", deleteAfter, deleteBefore)
 	}
 }
+
+func TestVFSRelocateFileMovesOwnership(t *testing.T) {
+	vfs := NewVirtualFileSystem()
+	vfs.AddFile("/0DAY/2026-04-26/release", VFSFile{IsDir: true, Seen: true, SlaveName: "SLAVE1"})
+	vfs.AddFile("/0DAY/2026-04-26/release/file1.zip", VFSFile{Seen: true, SlaveName: "SLAVE1", Size: 100})
+	vfs.SetSFVData("/0DAY/2026-04-26/release", "release.sfv", map[string]uint32{"file1.zip": 1})
+
+	vfs.RelocateFile("/0DAY/2026-04-26/release", "/ARCHiVE/0DAY/release", "SLAVE2")
+
+	if vfs.GetFile("/0DAY/2026-04-26/release") != nil {
+		t.Fatalf("expected source path to be gone after relocate")
+	}
+	dst := vfs.GetFile("/ARCHiVE/0DAY/release")
+	if dst == nil || dst.SlaveName != "SLAVE2" {
+		t.Fatalf("expected relocated dir on SLAVE2, got %+v", dst)
+	}
+	child := vfs.GetFile("/ARCHiVE/0DAY/release/file1.zip")
+	if child == nil || child.SlaveName != "SLAVE2" {
+		t.Fatalf("expected relocated child on SLAVE2, got %+v", child)
+	}
+	if meta := vfs.GetSFVData("/ARCHiVE/0DAY/release"); meta == nil || meta.SFVEntries["file1.zip"] != 1 {
+		t.Fatalf("expected sfv metadata to move with relocate")
+	}
+}
