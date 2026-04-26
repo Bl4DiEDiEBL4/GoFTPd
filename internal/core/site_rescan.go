@@ -10,15 +10,15 @@ import (
 )
 
 type rescanReleaseResult struct {
-	Path    string
-	SFV     string
-	Total   int
-	OK      int
-	Missing int
-	Bad     int
+	Path         string
+	SFV          string
+	Total        int
+	OK           int
+	Missing      int
+	Bad          int
 	MissingFiles []string
 	BadFiles     []string
-	Errors  []string
+	Errors       []string
 }
 
 func (s *Session) HandleSiteRescan(args []string) bool {
@@ -123,7 +123,13 @@ func (s *Session) rescanRelease(bridge MasterBridge, releasePath string) rescanR
 					result.Errors = append(result.Errors, fmt.Sprintf("mediainfo refresh skipped: %v", err))
 				}
 			} else if len(fields) > 0 {
+				previousFields := cloneStringMap(bridge.GetDirMediaInfo(releasePath))
 				bridge.CacheMediaInfo(releasePath, fields)
+				if err := refreshAudioSortLinks(bridge, s.Config.Zipscript, releasePath, previousFields, fields); err != nil {
+					if s.Config != nil && s.Config.Debug {
+						result.Errors = append(result.Errors, fmt.Sprintf("audio sort refresh skipped: %v", err))
+					}
+				}
 			}
 		}
 	}
@@ -230,4 +236,34 @@ func findAudioRescanCandidate(bridge MasterBridge, dirPath string) (string, bool
 		return "", false
 	}
 	return path.Join(dirPath, audioFiles[0]), true
+}
+
+func cloneStringMap(in map[string]string) map[string]string {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func refreshAudioSortLinks(bridge MasterBridge, cfg zipscript.Config, releasePath string, previousFields, currentFields map[string]string) error {
+	currentLinks := zipscript.AudioSortLinks(cfg, releasePath, currentFields)
+	currentSet := make(map[string]struct{}, len(currentLinks))
+	for _, link := range currentLinks {
+		currentSet[link.LinkPath] = struct{}{}
+	}
+	for _, oldLink := range zipscript.AudioSortLinks(cfg, releasePath, previousFields) {
+		if _, keep := currentSet[oldLink.LinkPath]; keep {
+			continue
+		}
+		if bridge.GetFileSize(oldLink.LinkPath) >= 0 {
+			if err := bridge.DeleteFile(oldLink.LinkPath); err != nil {
+				return err
+			}
+		}
+	}
+	return ensureAudioSortLinks(bridge, currentLinks)
 }

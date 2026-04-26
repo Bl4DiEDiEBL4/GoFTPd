@@ -75,6 +75,7 @@ type Services struct {
 	Debug                bool         // Global debug flag
 	Logger               *log.Logger  // Optional logger (may be nil — fall back to log.Printf)
 	EmitEvent            func(eventType, path, filename, section string, size int64, speed float64, data map[string]string)
+	ListSlaveStates      func() []SlaveState
 	ListActiveSessions   func() []ActiveSession
 	GetLiveTransferStats func() []LiveTransferStat
 	DisconnectSession    func(id uint64) bool
@@ -107,6 +108,15 @@ type LiveTransferStat struct {
 	StartedAt     time.Time
 	Transferred   int64
 	SpeedBytes    float64
+}
+
+type SlaveState struct {
+	Name            string
+	Available       bool
+	ReadOnly        bool
+	ActiveTransfers int32
+	FreeBytes       int64
+	TotalBytes      int64
 }
 
 type SiteContext interface {
@@ -170,6 +180,8 @@ type MasterBridge interface {
 	CreateSparseFile(path string, size int64, owner, group string) error
 	DeleteFile(path string) error
 	RenameFile(from, toDir, toName string)
+	RelocatePath(from, toDir, toName string) error
+	RelocatePathToSlave(from, toDir, toName, targetSlave string) error
 	WriteFile(path string, content []byte) error
 	ReadFile(path string) ([]byte, error)
 	ProbeMediaInfo(path, binary string, timeoutSeconds int) (map[string]string, error)

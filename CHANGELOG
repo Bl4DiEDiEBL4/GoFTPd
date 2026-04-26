@@ -6,6 +6,13 @@ GoFTPd Changelog
 
 - Added short post-kick tempbans to `slowupkick` so slow users cannot
   reconnect immediately and reclaim the same race slot.
+- Added the first `spacekeeper` daemon plugin as a master-side free-space
+  cleaner that deletes the oldest eligible releases from configured virtual
+  paths when a slave drops below its configured free-space threshold.
+- Extended `spacekeeper` with archive relocation rules, `archive_or_delete`
+  fallback behavior, dated-folder protection so date buckets are not selected
+  as cleanup/archive targets, and background archive jobs including real
+  cross-slave archive moves when the archive path routes to another slave.
 
 1.0.5b
 ------

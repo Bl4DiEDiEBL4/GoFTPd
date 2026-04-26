@@ -182,10 +182,15 @@ msg_path:       "etc/msgs"      # Directory with welcome/rules/goodbye message t
 
 # =============================================================================
 #  TLS — used on both master and slaves (same cert pair on all boxes).
+#  tls_enabled makes TLS available. The require_* flags below actually force
+#  secure logins and encrypted data transfers for normal FTP users.
 # =============================================================================
 tls_enabled: true
 tls_cert:    ./etc/certs/server.crt
 tls_key:     ./etc/certs/server.key
+require_tls_control: true      # Force AUTH TLS before USER/PASS login
+require_tls_data:    true      # Force PROT P for uploads/downloads
+tls_exempt_users:    []        # Optional plaintext bypass for trusted local users only
 
 
 # =============================================================================
@@ -238,6 +243,9 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 #                emits SPEEDTEST announces without applying credits
 #    slowupkick - aborts and kicks slow uploads/downloads, and can tempban
 #                 the FTP user briefly so they cannot instantly re-grab slots
+#    spacekeeper - watches slave free space and deletes the oldest eligible
+#                  releases from configured virtual paths when a slave drops
+#                  below a configured threshold
 #
 #  To add your own plugin:
 #    1. Create /plugins/<name>/handler.go implementing plugin.Plugin
@@ -445,6 +453,7 @@ zipscript:
       artist: false             # create <artist_path>/<Artist>/<Release> symlinks
       year: false               # create <year_path>/<Year>/<Release> symlinks
       group: false              # create <group_path>/<Group>/<Release> symlinks
+      separate_by_section: true # keep MP3 and FLAC in their own sort buckets, e.g. <genre_path>/MP3/<Genre>/...
 
 plugins:
   # `enabled` here controls whether the daemon loads the plugin at all.
@@ -472,6 +481,13 @@ plugins:
     # Kicks slow uploads/downloads and can tempban the FTP user briefly so
     # they cannot immediately reconnect and reclaim the slot.
     config_file: "plugins/slowupkick/config.yml"
+  spacekeeper:
+    enabled: false
+    # Combined free-space and archive policy plugin. The detailed rule file can
+    # turn the free-space cleanup side and the archive-move side on/off
+    # separately, while still using virtual FTP paths instead of devices or
+    # physical disk paths.
+    config_file: "plugins/spacekeeper/config.yml"
   request:
     enabled: true
     # TUR-style request manager:

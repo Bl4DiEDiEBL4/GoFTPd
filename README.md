@@ -267,6 +267,7 @@ Built-in daemon plugins:
 | `request` | Provides SITE REQUEST/REQUESTS/REQFILL/REQDEL/REQWIPE |
 | `speedtest` | Creates speedtest files and emits SPEEDTEST events |
 | `slowupkick` | Monitors live uploads and downloads and aborts/kicks users whose speed stays below a configured floor long enough to block slots |
+| `spacekeeper` | Watches slave free space and deletes the oldest eligible releases from configured virtual paths when a slave drops below its threshold |
 
 ### Speedtest
 
@@ -311,6 +312,29 @@ disconnects the FTP session, so partial uploads are cleaned up on the slave
 side instead of being left behind as junk. Upload and download thresholds can
 be tuned independently, and the plugin can temporarily ban the FTP user after
 a slow kick so they cannot immediately reconnect and grab the slot again.
+
+### Spacekeeper
+
+The spacekeeper plugin is a master-side free-space cleaner. It watches
+reported free space per slave and, when a configured slave falls below its
+trigger threshold, deletes the oldest eligible releases from the configured
+virtual FTP paths until the target threshold is reached or nothing else is
+safe to touch. It also supports archive-style relocation into a destination
+path and an `archive_or_delete` fallback policy for low-space cleanup. The
+two sides can be switched independently with
+`enable_freespace_actions` and `enable_archive_actions`, and both skip active
+transfers and incomplete releases by default. Dated bucket directories such as
+`0426`, `20260426`, and `2026-04-26` are skipped as cleanup/archive targets.
+Archive jobs run in the background. If the destination path routes to another
+slave, spacekeeper performs a real cross-slave copy and only removes the
+source after the destination copy completes successfully. If the destination
+stays on the same slave, it uses the slave-local relocate path instead. If you
+do not want archive behavior tied to normal upload routing, set
+`target_slaves` on the rule and spacekeeper will pick the healthiest available
+slave from that list explicitly. If no listed archive slave currently has
+enough room for the incoming release, spacekeeper will try to free room on one
+of those archive slaves by deleting the oldest archived releases already under
+that rule's destination path until the new release fits.
 
 ### PRE And Affils
 

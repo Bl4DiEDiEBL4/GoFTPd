@@ -7,7 +7,9 @@ import (
 	"log"
 	"net"
 	"os"
+	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -449,6 +451,263 @@ func (b *Bridge) RenameFile(from, toDir, toName string) {
 			log.Printf("[Bridge] Race DB rename sync failed from %s to %s: %v", from, toPath, err)
 		}
 	}
+}
+
+func (b *Bridge) RelocatePath(from, toDir, toName string) error {
+	return b.RelocatePathToSlave(from, toDir, toName, "")
+}
+
+func (b *Bridge) RelocatePathToSlave(from, toDir, toName, targetSlave string) error {
+	file := b.sm.GetVFS().GetFile(from)
+	if file == nil {
+		return fmt.Errorf("path not found: %s", from)
+	}
+	if file.SlaveName == "" {
+		return fmt.Errorf("path has no owning slave: %s", from)
+	}
+	rs := b.sm.GetSlave(file.SlaveName)
+	if rs == nil || !rs.IsAvailable() {
+		return fmt.Errorf("owning slave unavailable: %s", file.SlaveName)
+	}
+	toPath := filepath.Clean(path.Join(toDir, toName))
+	var destSlave *RemoteSlave
+	if strings.TrimSpace(targetSlave) != "" {
+		destSlave = b.sm.GetSlave(strings.TrimSpace(targetSlave))
+		if destSlave == nil || !destSlave.IsAvailable() {
+			return fmt.Errorf("requested destination slave unavailable: %s", strings.TrimSpace(targetSlave))
+		}
+		if b.sm.IsSlaveReadOnly(destSlave.Name()) {
+			return fmt.Errorf("requested destination slave is read-only: %s", destSlave.Name())
+		}
+	} else {
+		destSlave = b.sm.SelectSlaveForUpload(toPath)
+	}
+	if destSlave == nil || !destSlave.IsAvailable() {
+		return fmt.Errorf("no available destination slave for %s", toPath)
+	}
+	if destSlave.Name() != rs.Name() {
+		if err := b.relocateAcrossSlaves(file, rs, destSlave, from, toPath); err != nil {
+			return err
+		}
+		b.sm.GetVFS().RelocateFile(from, toPath, destSlave.Name())
+		if b.raceDB != nil {
+			isDir := file.IsDir
+			if err := b.raceDB.RenamePath(filepath.Clean(from), filepath.Clean(toPath), isDir); err != nil {
+				log.Printf("[Bridge] Race DB rename sync failed %s -> %s: %v", from, toPath, err)
+			}
+		}
+		return nil
+	}
+	index, err := IssueRelocate(rs, from, toDir, toName)
+	if err != nil {
+		return err
+	}
+	resp, err := rs.FetchResponse(index, 30*time.Minute)
+	if err != nil {
+		return err
+	}
+	if errResp, ok := resp.(*protocol.AsyncResponseError); ok {
+		return fmt.Errorf("%s", errResp.Message)
+	}
+	b.sm.GetVFS().RenameFile(from, toPath)
+	if b.raceDB != nil {
+		isDir := file.IsDir
+		if err := b.raceDB.RenamePath(filepath.Clean(from), filepath.Clean(toPath), isDir); err != nil {
+			log.Printf("[Bridge] Race DB rename sync failed %s -> %s: %v", from, toPath, err)
+		}
+	}
+	return nil
+}
+
+func (b *Bridge) relocateAcrossSlaves(file *VFSFile, sourceSlave, destSlave *RemoteSlave, from, toPath string) error {
+	if err := b.createDestDirsOnSlave(destSlave, file, from, toPath); err != nil {
+		return err
+	}
+
+	filesToCopy := b.collectRelocateFiles(file, from, toPath)
+	for _, item := range filesToCopy {
+		if err := b.copyFileBetweenSlaves(sourceSlave, destSlave, item.from, item.to, item.owner, item.group, item.size); err != nil {
+			_ = b.deletePathOnSlave(destSlave, toPath)
+			return err
+		}
+	}
+
+	if err := b.deletePathOnSlave(sourceSlave, from); err != nil {
+		_ = b.deletePathOnSlave(destSlave, toPath)
+		return err
+	}
+	return nil
+}
+
+type relocateFileItem struct {
+	from  string
+	to    string
+	owner string
+	group string
+	size  int64
+}
+
+func (b *Bridge) createDestDirsOnSlave(destSlave *RemoteSlave, file *VFSFile, from, toPath string) error {
+	if file == nil {
+		return fmt.Errorf("nil relocate source")
+	}
+	if file.IsDir {
+		if err := b.makeDirOnSlave(destSlave, toPath); err != nil {
+			return err
+		}
+	}
+	fromPrefix := strings.TrimRight(filepath.ToSlash(filepath.Clean(from)), "/") + "/"
+	toPrefix := strings.TrimRight(filepath.ToSlash(filepath.Clean(toPath)), "/") + "/"
+	for pathKey, vf := range b.sm.GetVFS().GetAllFiles() {
+		if vf == nil || !vf.IsDir {
+			continue
+		}
+		cleanPath := filepath.ToSlash(filepath.Clean(pathKey))
+		if !strings.HasPrefix(cleanPath, fromPrefix) {
+			continue
+		}
+		rel := strings.TrimPrefix(cleanPath, fromPrefix)
+		destDir := filepath.ToSlash(filepath.Clean(toPrefix + rel))
+		if err := b.makeDirOnSlave(destSlave, destDir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *Bridge) collectRelocateFiles(file *VFSFile, from, toPath string) []relocateFileItem {
+	items := []relocateFileItem{}
+	addItem := func(src, dst string, vf *VFSFile) {
+		if vf == nil || vf.IsDir {
+			return
+		}
+		items = append(items, relocateFileItem{
+			from:  filepath.ToSlash(filepath.Clean(src)),
+			to:    filepath.ToSlash(filepath.Clean(dst)),
+			owner: vf.Owner,
+			group: vf.Group,
+			size:  vf.Size,
+		})
+	}
+	if file != nil && !file.IsDir {
+		addItem(from, toPath, file)
+		sort.Slice(items, func(i, j int) bool { return items[i].from < items[j].from })
+		return items
+	}
+
+	fromPrefix := strings.TrimRight(filepath.ToSlash(filepath.Clean(from)), "/") + "/"
+	toPrefix := strings.TrimRight(filepath.ToSlash(filepath.Clean(toPath)), "/") + "/"
+	for pathKey, vf := range b.sm.GetVFS().GetAllFiles() {
+		if vf == nil || vf.IsDir {
+			continue
+		}
+		cleanPath := filepath.ToSlash(filepath.Clean(pathKey))
+		if !strings.HasPrefix(cleanPath, fromPrefix) {
+			continue
+		}
+		rel := strings.TrimPrefix(cleanPath, fromPrefix)
+		addItem(cleanPath, toPrefix+rel, vf)
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].from < items[j].from })
+	return items
+}
+
+func (b *Bridge) makeDirOnSlave(slave *RemoteSlave, dirPath string) error {
+	index, err := IssueMakeDir(slave, dirPath)
+	if err != nil {
+		return fmt.Errorf("mkdir on %s failed: %w", slave.Name(), err)
+	}
+	if _, err := slave.FetchResponse(index, 30*time.Second); err != nil {
+		return fmt.Errorf("mkdir on %s failed: %w", slave.Name(), err)
+	}
+	return nil
+}
+
+func (b *Bridge) deletePathOnSlave(slave *RemoteSlave, filePath string) error {
+	index, err := IssueDelete(slave, filePath)
+	if err != nil {
+		return fmt.Errorf("delete on %s failed: %w", slave.Name(), err)
+	}
+	if _, err := slave.FetchResponse(index, 5*time.Minute); err != nil {
+		return fmt.Errorf("delete on %s failed: %w", slave.Name(), err)
+	}
+	return nil
+}
+
+func (b *Bridge) copyFileBetweenSlaves(sourceSlave, destSlave *RemoteSlave, fromPath, toPath, owner, group string, size int64) error {
+	listenIdx, err := IssueListen(sourceSlave, false, false)
+	if err != nil {
+		return fmt.Errorf("source listen failed for %s: %w", fromPath, err)
+	}
+	listenResp, err := sourceSlave.FetchResponse(listenIdx, 60*time.Second)
+	if err != nil {
+		return fmt.Errorf("source listen failed for %s: %w", fromPath, err)
+	}
+	transferResp, ok := listenResp.(*protocol.AsyncResponseTransfer)
+	if !ok {
+		return fmt.Errorf("unexpected source listen response for %s: %T", fromPath, listenResp)
+	}
+
+	remoteAddr := fmt.Sprintf("%s:%d", sourceSlave.GetPASVIP(), transferResp.Info.Port)
+	connectIdx, err := IssueConnect(destSlave, sourceSlave.GetPASVIP(), transferResp.Info.Port, false, false)
+	if err != nil {
+		IssueAbort(sourceSlave, transferResp.Info.TransferIndex, "archive connect failed")
+		return fmt.Errorf("destination connect failed for %s: %w", toPath, err)
+	}
+	connectResp, err := destSlave.FetchResponse(connectIdx, 60*time.Second)
+	if err != nil {
+		IssueAbort(sourceSlave, transferResp.Info.TransferIndex, "archive connect failed")
+		return fmt.Errorf("destination connect failed for %s: %w", toPath, err)
+	}
+	destTransferResp, ok := connectResp.(*protocol.AsyncResponseTransfer)
+	if !ok {
+		IssueAbort(sourceSlave, transferResp.Info.TransferIndex, "archive connect failed")
+		return fmt.Errorf("unexpected destination connect response for %s: %T", toPath, connectResp)
+	}
+
+	sendIdx, err := IssueSend(sourceSlave, fromPath, 'I', 0, remoteAddr, transferResp.Info.TransferIndex, 0, 0)
+	if err != nil {
+		IssueAbort(sourceSlave, transferResp.Info.TransferIndex, "archive send setup failed")
+		IssueAbort(destSlave, destTransferResp.Info.TransferIndex, "archive send setup failed")
+		return fmt.Errorf("source send failed for %s: %w", fromPath, err)
+	}
+	recvIdx, err := IssueReceive(destSlave, toPath, 'I', 0, remoteAddr, destTransferResp.Info.TransferIndex, 0, 0)
+	if err != nil {
+		IssueAbort(sourceSlave, transferResp.Info.TransferIndex, "archive receive setup failed")
+		IssueAbort(destSlave, destTransferResp.Info.TransferIndex, "archive receive setup failed")
+		return fmt.Errorf("destination receive failed for %s: %w", toPath, err)
+	}
+	if _, err := sourceSlave.FetchResponse(sendIdx, 60*time.Second); err != nil {
+		IssueAbort(sourceSlave, transferResp.Info.TransferIndex, "archive send ack failed")
+		IssueAbort(destSlave, destTransferResp.Info.TransferIndex, "archive send ack failed")
+		return fmt.Errorf("source send ack failed for %s: %w", fromPath, err)
+	}
+	if _, err := destSlave.FetchResponse(recvIdx, 60*time.Second); err != nil {
+		IssueAbort(sourceSlave, transferResp.Info.TransferIndex, "archive receive ack failed")
+		IssueAbort(destSlave, destTransferResp.Info.TransferIndex, "archive receive ack failed")
+		return fmt.Errorf("destination receive ack failed for %s: %w", toPath, err)
+	}
+
+	sourceStatus, sourceErr := sourceSlave.WaitTransferStatus(transferResp.Info.TransferIndex, 2*time.Hour)
+	destStatus, destErr := destSlave.WaitTransferStatus(destTransferResp.Info.TransferIndex, 2*time.Hour)
+	if sourceErr != nil {
+		IssueAbort(destSlave, destTransferResp.Info.TransferIndex, "archive source transfer failed")
+		return fmt.Errorf("source transfer failed for %s: %w", fromPath, sourceErr)
+	}
+	if destErr != nil {
+		IssueAbort(sourceSlave, transferResp.Info.TransferIndex, "archive destination transfer failed")
+		return fmt.Errorf("destination transfer failed for %s: %w", toPath, destErr)
+	}
+	if sourceStatus.Error != "" {
+		return fmt.Errorf("source transfer error for %s: %s", fromPath, sourceStatus.Error)
+	}
+	if destStatus.Error != "" {
+		return fmt.Errorf("destination transfer error for %s: %s", toPath, destStatus.Error)
+	}
+	if size > 0 && destStatus.Transferred != size {
+		return fmt.Errorf("archive copy size mismatch for %s: expected %d got %d", toPath, size, destStatus.Transferred)
+	}
+	return nil
 }
 
 // MakeDir creates a directory in the VFS and physically on the slave.

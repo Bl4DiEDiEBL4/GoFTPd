@@ -238,10 +238,12 @@ func LoadEngine(path string) (*Engine, error) {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return e, nil
+		return e, err
 	}
-	if loadYAMLRules(e, data) {
+	if loaded, err := loadYAMLRules(e, data); loaded {
 		return e, nil
+	} else if err != nil && looksLikeYAMLACL(data) {
+		return e, fmt.Errorf("invalid ACL YAML in %s: %w", path, err)
 	}
 
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
@@ -275,36 +277,37 @@ func LoadEngine(path string) (*Engine, error) {
 	return e, scanner.Err()
 }
 
-func loadYAMLRules(e *Engine, data []byte) bool {
+func loadYAMLRules(e *Engine, data []byte) (bool, error) {
 	var file yamlRulesFile
 	if err := yaml.Unmarshal(data, &file); err != nil {
 		var structured yamlStructuredRulesFile
 		if err2 := yaml.Unmarshal(data, &structured); err2 != nil {
-			return false
+			return false, err2
 		}
 		rules, ok := compileStructuredRules(structured)
 		if !ok {
-			return false
+			return false, fmt.Errorf("structured ACL file did not compile any valid rules")
 		}
 		for _, rule := range rules {
 			e.RulesByType[rule.Type] = append(e.RulesByType[rule.Type], rule)
 		}
-		return true
+		return true, nil
 	}
 	if len(file.Rules) == 0 {
 		var structured yamlStructuredRulesFile
 		if err := yaml.Unmarshal(data, &structured); err != nil {
-			return false
+			return false, err
 		}
 		rules, ok := compileStructuredRules(structured)
 		if !ok {
-			return false
+			return false, fmt.Errorf("structured ACL file did not compile any valid rules")
 		}
 		for _, rule := range rules {
 			e.RulesByType[rule.Type] = append(e.RulesByType[rule.Type], rule)
 		}
-		return true
+		return true, nil
 	}
+	added := 0
 	for _, rule := range file.Rules {
 		rule.Type = strings.ToLower(strings.TrimSpace(rule.Type))
 		rule.Path = strings.TrimSpace(rule.Path)
@@ -320,8 +323,33 @@ func loadYAMLRules(e *Engine, data []byte) bool {
 			_ = parseRequirementScalar(rule.Requirement, rule.Required)
 		}
 		e.RulesByType[rule.Type] = append(e.RulesByType[rule.Type], rule)
+		added++
 	}
-	return true
+	if added == 0 {
+		return false, fmt.Errorf("ACL YAML did not contain any valid rules")
+	}
+	return true, nil
+}
+
+func looksLikeYAMLACL(data []byte) bool {
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	for scanner.Scan() {
+		raw := scanner.Text()
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasPrefix(raw, " ") || strings.HasPrefix(raw, "\t") {
+			return true
+		}
+		if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "-\t") {
+			return true
+		}
+		if strings.HasSuffix(trimmed, ":") || strings.Contains(trimmed, ": ") {
+			return true
+		}
+	}
+	return false
 }
 
 func compileStructuredRules(file yamlStructuredRulesFile) ([]Rule, bool) {

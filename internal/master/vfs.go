@@ -345,6 +345,61 @@ func (vfs *VirtualFileSystem) RenameFile(from, to string) {
 	vfs.rebuildAllRaceStatesLocked()
 }
 
+func (vfs *VirtualFileSystem) RelocateFile(from, to, newSlaveName string) {
+	vfs.mu.Lock()
+	defer vfs.mu.Unlock()
+
+	from = cleanVFSPath(from)
+	to = cleanVFSPath(to)
+	fromParent := cleanVFSPath(filepath.Dir(from))
+	toParent := cleanVFSPath(filepath.Dir(to))
+
+	file := vfs.files[from]
+	if file == nil {
+		return
+	}
+
+	delete(vfs.files, from)
+	file.Path = to
+	file.SlaveName = newSlaveName
+	vfs.files[to] = file
+
+	prefix := from + "/"
+	var toMove []struct{ old, new string }
+	for k := range vfs.files {
+		if strings.HasPrefix(k, prefix) {
+			newPath := to + "/" + k[len(prefix):]
+			toMove = append(toMove, struct{ old, new string }{k, newPath})
+		}
+	}
+	for _, mv := range toMove {
+		f := vfs.files[mv.old]
+		delete(vfs.files, mv.old)
+		f.Path = mv.new
+		f.SlaveName = newSlaveName
+		vfs.files[mv.new] = f
+	}
+
+	metaPrefix := from + "/"
+	var metaMove []struct{ old, new string }
+	for k := range vfs.dirMeta {
+		if k == from || strings.HasPrefix(k, metaPrefix) {
+			metaMove = append(metaMove, struct{ old, new string }{k, to + k[len(from):]})
+		}
+	}
+	for _, mv := range metaMove {
+		meta := vfs.dirMeta[mv.old]
+		delete(vfs.dirMeta, mv.old)
+		vfs.dirMeta[mv.new] = meta
+	}
+
+	vfs.rebuildChildrenLocked()
+	now := time.Now().Unix()
+	vfs.touchAncestorsLocked(fromParent, now)
+	vfs.touchAncestorsLocked(toParent, now)
+	vfs.rebuildAllRaceStatesLocked()
+}
+
 // ClearSlave removes all files belonging to a slave (called when slave goes offline)
 func (vfs *VirtualFileSystem) ClearSlave(slaveName string) {
 	vfs.mu.Lock()

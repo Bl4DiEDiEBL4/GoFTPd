@@ -1,6 +1,8 @@
 package acl
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"goftpd/internal/user"
@@ -35,8 +37,8 @@ rules:
 `)
 
 	e := &Engine{RulesByType: map[string][]Rule{}}
-	if !loadYAMLRules(e, data) {
-		t.Fatal("loadYAMLRules() = false, want true")
+	if loaded, err := loadYAMLRules(e, data); err != nil || !loaded {
+		t.Fatalf("loadYAMLRules() = (%v, %v), want (true, nil)", loaded, err)
 	}
 
 	if got := len(e.RulesByType["sitecmd"]); got != 7 {
@@ -147,8 +149,8 @@ rules:
 `)
 
 	e := &Engine{RulesByType: map[string][]Rule{}}
-	if !loadYAMLRules(e, data) {
-		t.Fatal("loadYAMLRules() = false, want true")
+	if loaded, err := loadYAMLRules(e, data); err != nil || !loaded {
+		t.Fatalf("loadYAMLRules() = (%v, %v), want (true, nil)", loaded, err)
 	}
 
 	flagUser := &user.User{Name: "flag-user", Flags: "1"}
@@ -234,5 +236,19 @@ func TestCanPerformCoversExactPathDescendants(t *testing.T) {
 				t.Fatalf("CanPerform(DIRLOG, %q) = %v, want %v", tt.path, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestLoadEngineRejectsInvalidYAMLPermissionsFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "permissions.yml")
+	data := []byte("roles:\n\tanyone:\n\t  anyone: true\n\nrules:\n\tsitecmd:\n\t  - allow: [HELP]\n\t    required: $anyone\n")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	_, err := LoadEngine(path)
+	if err == nil {
+		t.Fatal("LoadEngine() error = nil, want invalid YAML error")
 	}
 }

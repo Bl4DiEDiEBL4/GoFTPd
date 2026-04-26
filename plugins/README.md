@@ -10,6 +10,7 @@ release nuked, etc.) and doing work with the master's VFS bridge.
 - **imdb** - async movie lookup on MKD (via imdbapi.dev), writes `.imdb`
 - **speedtest** - creates fixed-size test files and emits SPEEDTEST events
 - **slowupkick** - monitors live uploads and downloads, aborts/kicks slow transfers, and can briefly tempban the FTP user after a kick
+- **spacekeeper** - combines free-space cleanup and archive-style moves using virtual FTP path rules, with separate switches for each side
 - **releaseguard** - blocks bad release dir names before MKD creates them
 
 TVMaze and IMDb metadata files are shown on `CWD` via the daemon's

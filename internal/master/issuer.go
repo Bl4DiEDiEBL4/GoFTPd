@@ -54,6 +54,14 @@ func IssueRename(rs *RemoteSlave, from, toDir, toName string) (string, error) {
 	return index, rs.SendCommand(&protocol.AsyncCommand{Index: index, Name: "rename", Args: []string{from, toDir, toName}})
 }
 
+func IssueRelocate(rs *RemoteSlave, from, toDir, toName string) (string, error) {
+	index, err := rs.FetchIndex()
+	if err != nil {
+		return "", err
+	}
+	return index, rs.SendCommand(&protocol.AsyncCommand{Index: index, Name: "relocate", Args: []string{from, toDir, toName}})
+}
+
 func IssueMakeDir(rs *RemoteSlave, path string) (string, error) {
 	index, err := rs.FetchIndex()
 	if err != nil {

@@ -190,6 +190,11 @@ generate_tls_certs() {
     say "Update etc/config.yml:"
     say "  tls_cert: ./etc/certs/server.crt"
     say "  tls_key:  ./etc/certs/server.key"
+    say "  require_tls_control: true"
+    say "  require_tls_data:    true"
+    say ""
+    say "Note: tls_enabled only makes TLS available."
+    say "      require_tls_control/data actually force secure FTP logins/transfers."
 }
 
 bool_to_prompt_default() {
@@ -347,7 +352,7 @@ ensure_enabled_plugin_configs() {
     local repaired_any="false"
     local missing_any="false"
 
-    local daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre slowupkick)
+    local daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre slowupkick spacekeeper)
     if [ -f "${daemon_config}" ]; then
         for plugin_name in "${daemon_plugins[@]}"; do
             enabled_value="$(daemon_plugin_enabled_in_config "${daemon_config}" "${plugin_name}")"
@@ -953,7 +958,7 @@ configure_daemon() {
     local daemon_enabled=()
     local daemon_disabled=()
     if [ "${daemon_mode}" = "master" ]; then
-        daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre slowupkick)
+        daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre slowupkick spacekeeper)
     fi
 
     local plugin_name

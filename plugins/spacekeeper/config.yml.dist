@@ -1,0 +1,107 @@
+# This file holds spacekeeper settings only.
+# Enable/disable the daemon plugin from etc/config.yml -> plugins.spacekeeper.
+
+# Spacekeeper watches reported free space on specific slaves and deletes the
+# oldest matching releases when a slave drops under the configured threshold.
+#
+# Supported actions:
+# - delete_oldest
+#     Real free-space relief. Deletes the oldest eligible release until the
+#     target free-space threshold is reached.
+# - archive_oldest
+#     Low-space archive relocation. When the watched source slave drops below
+#     trigger_free_*, moves the oldest eligible release into the configured
+#     destination path until the source slave is estimated back above
+#     target_free_*. If that destination path routes to another slave,
+#     spacekeeper will copy it there in the background and then remove the
+#     source when the copy finishes cleanly. You can also force one or more
+#     specific archive slaves with target_slaves.
+# - archive_or_delete
+#     Tries archive relocation first. If that fails, deletes the release so
+#     space pressure can still be relieved.
+#
+# Rules are written in virtual FTP paths, not disk paths or devices.
+# Active transfers, incomplete races, and dated bucket dirs can be skipped
+# safely by the built-in candidate checks.
+# If target_slaves is set and none of them currently has enough free space,
+# spacekeeper deletes the oldest archived release(s) under destination on one
+# of those archive slaves until the incoming release fits there.
+#
+# Archive jobs run in the background so normal plugin evaluation does not block
+# behind a large move.
+
+# How often to evaluate all rules.
+interval_seconds: 60
+
+# Global switches for the two sides of the plugin.
+enable_freespace_actions: true
+enable_archive_actions: true
+
+rules:
+  # When SLAVE1 drops below 50 GiB free, delete the oldest eligible release
+  # from the listed paths until we estimate the slave is back above 80 GiB.
+  - name: "0day-space"
+    slave: "SLAVE1"
+    action: "delete_oldest"
+
+    # Candidate release directories. These are virtual paths, not disk paths.
+    paths:
+      - "/0DAY/*/*"
+      - "/MP3/*/*"
+
+    # The cleanup starts below trigger_free_* and stops once target_free_*
+    # has been reached or there is nothing left that matches.
+    trigger_free_gb: 50
+    target_free_gb: 80
+
+    # Do not touch releases newer than this.
+    min_age_seconds: 600
+
+    # Skip releases that still look incomplete according to cached race data.
+    skip_incomplete: true
+
+    # Skip releases with active uploads/downloads inside them.
+    skip_active_races: true
+
+    # Safety limit for one cycle of this rule.
+    max_actions_per_cycle: 10
+
+  # When SLAVE1 gets low on free space, archive the oldest completed 0DAY
+  # release(s) into /ARCHiVE/0DAY until we estimate the slave is back above
+  # the target threshold. If your slave routing sends /ARCHiVE/* to another
+  # slave, this becomes a real cross-slave archive move.
+  - name: "0day-archive"
+    slave: "SLAVE1"
+    action: "archive_oldest"
+    destination: "/ARCHiVE/0DAY"
+    # Optional explicit archive pool. If omitted, normal upload routing for
+    # destination decides where the archive lands.
+    target_slaves: ["SLAVE2", "SLAVE3"]
+    paths:
+      - "/0DAY/*/*"
+    trigger_free_gb: 40
+    target_free_gb: 60
+    min_age_seconds: 86400
+    skip_incomplete: true
+    skip_active_races: true
+    max_actions_per_cycle: 3
+
+  # When space is low, try to archive first. If that fails, delete instead.
+  - name: "0day-archive-or-delete"
+    slave: "SLAVE1"
+    action: "archive_or_delete"
+    destination: "/ARCHiVE/0DAY"
+    # If neither archive slave has enough room, spacekeeper will delete the
+    # oldest archived release(s) already living under destination on one of
+    # these slaves until the incoming release fits.
+    target_slaves: ["SLAVE2", "SLAVE3"]
+    paths:
+      - "/0DAY/*/*"
+    trigger_free_gb: 30
+    target_free_gb: 50
+    min_age_seconds: 1800
+    skip_incomplete: true
+    skip_active_races: true
+    max_actions_per_cycle: 5
+
+debug: false
