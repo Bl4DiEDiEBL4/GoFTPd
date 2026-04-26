@@ -16,8 +16,6 @@
 #     spacekeeper will copy it there in the background and then remove the
 #     source when the copy finishes cleanly. You can also force one or more
 #     specific archive slaves with target_slaves.
-#     Set delete_fallback: true on an archive rule if you want it to delete
-#     the source release when archiving fails.
 #
 # Rules are written in virtual FTP paths, not disk paths or devices.
 # Active transfers, incomplete races, and dated bucket dirs can be skipped
@@ -76,7 +74,6 @@ rules:
     # Archive rules use destination because they move releases instead of
     # deleting them directly.
     destination: "/ARCHiVE/0DAY"
-    delete_fallback: false
     # Optional explicit archive pool. If omitted, normal upload routing for
     # destination decides where the archive lands.
     target_slaves: ["SLAVE2", "SLAVE3"]
@@ -88,25 +85,5 @@ rules:
     skip_incomplete: true
     skip_active_races: true
     max_actions_per_cycle: 3
-
-  # Same archive rule, but with explicit delete fallback if archiving fails.
-  - name: "0day-archive-with-delete-fallback"
-    slave: "SLAVE1"
-    action: "archive_oldest"
-    # Same archive action, but explicit delete fallback on archive failure.
-    destination: "/ARCHiVE/0DAY"
-    delete_fallback: true
-    # If neither archive slave has enough room, spacekeeper will delete the
-    # oldest archived release(s) already living under destination on one of
-    # these slaves until the incoming release fits.
-    target_slaves: ["SLAVE2", "SLAVE3"]
-    paths:
-      - "/0DAY/*/*"
-    trigger_free_gb: 30
-    target_free_gb: 50
-    min_age_seconds: 1800
-    skip_incomplete: true
-    skip_active_races: true
-    max_actions_per_cycle: 5
 
 debug: false

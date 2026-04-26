@@ -208,24 +208,3 @@ func TestArchiveOldestWaitsForLowSpaceThreshold(t *testing.T) {
 		t.Fatalf("expected no archive work when free space is above trigger, got %v", bridge.deleted)
 	}
 }
-
-func TestParseRulesAcceptsArchiveDeleteFallbackFlag(t *testing.T) {
-	rules := parseRules([]interface{}{
-		map[string]interface{}{
-			"name":            "0day-archive-fallback",
-			"slave":           "SLAVE1",
-			"action":          "archive_oldest",
-			"destination":     "/ARCHiVE/0DAY",
-			"delete_fallback": true,
-			"paths":           []interface{}{"/0DAY/*/*"},
-			"trigger_free_gb": float64(30),
-			"target_free_gb":  float64(50),
-		},
-	})
-	if len(rules) != 1 {
-		t.Fatalf("expected 1 rule, got %d", len(rules))
-	}
-	if !rules[0].DeleteFallback {
-		t.Fatal("expected delete_fallback to be enabled on archive rule")
-	}
-}

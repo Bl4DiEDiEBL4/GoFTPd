@@ -16,7 +16,6 @@ type rule struct {
 	Name             string
 	Slave            string
 	Action           string
-	DeleteFallback   bool
 	Paths            []string
 	Destination      string
 	TargetSlaves     []string
@@ -259,15 +258,7 @@ func (h *Handler) startArchiveJob(rule rule, state plugin.SlaveState, cand candi
 			}
 			return
 		}
-		if !rule.DeleteFallback || !h.enableFreeSpace {
-			h.logf("rule %q failed moving %s -> %s/%s: %v", rule.Name, cand.Path, destDir, destName, err)
-			return
-		}
-		if delErr := h.svc.Bridge.DeleteFile(cand.Path); delErr != nil {
-			h.logf("rule %q archive failed for %s (%v) and delete fallback also failed: %v", rule.Name, cand.Path, err, delErr)
-			return
-		}
-		h.logf("rule %q archive failed for %s, deleted instead and reclaimed %.2f GiB", rule.Name, cand.Path, float64(cand.Bytes)/(1024.0*1024.0*1024.0))
+		h.logf("rule %q failed moving %s -> %s/%s: %v", rule.Name, cand.Path, destDir, destName, err)
 	}()
 }
 
@@ -629,7 +620,6 @@ func parseRules(raw interface{}) []rule {
 			Name:             stringValue(cfg, "name", fmt.Sprintf("rule-%d", idx+1)),
 			Slave:            strings.TrimSpace(stringValue(cfg, "slave", "")),
 			Action:           strings.ToLower(strings.TrimSpace(stringValue(cfg, "action", "delete_oldest"))),
-			DeleteFallback:   boolValue(cfg, "delete_fallback", false),
 			Paths:            paths,
 			Destination:      cleanAbs(stringValue(cfg, "destination", "")),
 			TargetSlaves:     stringSliceConfig(cfg["target_slaves"]),
