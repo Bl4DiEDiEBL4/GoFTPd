@@ -89,7 +89,12 @@ func (b *Bot) registerPlugin(name string, h plugin.Handler) error {
 func (b *Bot) initializePlugins() error {
 	if enabled, ok := b.Config.Plugins.Enabled["Announce"]; !ok || enabled {
 		announce := announceplugin.New()
-		cfg := map[string]interface{}{"debug": b.Debug, "theme_file": b.Config.Announce.ThemeFile}
+		cfg := map[string]interface{}{
+			"debug":           b.Debug,
+			"theme_file":      b.Config.Announce.ThemeFile,
+			"default_channel": b.Config.Announce.DefaultChannel,
+			"type_routes":     b.Config.Announce.TypeRoutes,
+		}
 		for k, v := range b.Config.Plugins.Config {
 			cfg[k] = v
 		}

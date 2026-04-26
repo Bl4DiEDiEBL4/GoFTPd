@@ -1,4 +1,4 @@
 # Sections where the daemon-side IMDb helper should run.
-sections: ["X264-HD-1080P", "X264-HD-720P", "X264-SD", "X265", "BLURAY", "DVDR"]
+sections: ["BLURAY", "BLURAY-UHD", "DVDR", "MBLURAY", "MDVDR", "X264-HD-720P", "X264-HD-1080P", "X264-SD", "X265", "X264-HD-FOREIGN", "X264-SD-FOREIGN", "X265-FOREIGN"]
 
 debug: false
