@@ -468,7 +468,7 @@ plugins:
     enabled: true
     config_file: "plugins/speedtest/config.yml"
   slowupkick:
-    enabled: false
+    enabled: true
     # Kicks slow uploads/downloads and can tempban the FTP user briefly so
     # they cannot immediately reconnect and reclaim the slot.
     config_file: "plugins/slowupkick/config.yml"
