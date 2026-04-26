@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -114,10 +115,10 @@ type Config struct {
 	FreeSpaceMB  int  `yaml:"free_space_mb"`
 
 	// Display
-	DisplaySize  string `yaml:"display_size_unit"`
-	DisplaySpeed string `yaml:"display_speed_unit"`
-	ColorMode    int    `yaml:"color_mode"`
-	ShowCWDBanner bool  `yaml:"show_cwd_banner"`
+	DisplaySize   string `yaml:"display_size_unit"`
+	DisplaySpeed  string `yaml:"display_speed_unit"`
+	ColorMode     int    `yaml:"color_mode"`
+	ShowCWDBanner bool   `yaml:"show_cwd_banner"`
 	// Nuke
 	NukeMaxMultiplier int              `yaml:"nuke_max_multiplier"`
 	NukeDirStyle      string           `yaml:"nukedir_style"`
@@ -200,8 +201,132 @@ func LoadConfig(filePath string) (*Config, error) {
 		cfg.LogDeleteAfterDays = cfg.LogKeepDays
 	}
 	cfg.Zipscript.ApplyDefaults()
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 	cfg.configPath = filePath
 	return cfg, nil
+}
+
+func (c *Config) Validate() error {
+	if c == nil {
+		return fmt.Errorf("config is nil")
+	}
+	var errs []string
+
+	mode := strings.ToLower(strings.TrimSpace(c.Mode))
+	switch mode {
+	case "master", "slave":
+	default:
+		errs = append(errs, "mode must be \"master\" or \"slave\"")
+	}
+
+	if strings.TrimSpace(c.StoragePath) == "" {
+		errs = append(errs, "storage_path must not be empty")
+	}
+	if strings.TrimSpace(c.ACLBasePath) == "" {
+		errs = append(errs, "acl_base_path must not be empty")
+	}
+	if mode == "master" {
+		if c.ListenPort < 1 || c.ListenPort > 65535 {
+			errs = append(errs, "listen_port must be between 1 and 65535 in master mode")
+		}
+	}
+	if (c.PasvMin > 0 || c.PasvMax > 0) && (c.PasvMin < 1 || c.PasvMax < 1 || c.PasvMin > c.PasvMax) {
+		errs = append(errs, "pasv_min/pasv_max must both be set and pasv_min must be <= pasv_max")
+	}
+	if c.TLSEnabled {
+		if strings.TrimSpace(c.TLSCert) == "" {
+			errs = append(errs, "tls_cert must not be empty when tls_enabled is true")
+		}
+		if strings.TrimSpace(c.TLSKey) == "" {
+			errs = append(errs, "tls_key must not be empty when tls_enabled is true")
+		}
+	}
+	if c.RequireTLSControl && !c.TLSEnabled {
+		errs = append(errs, "require_tls_control needs tls_enabled: true")
+	}
+	if c.RequireTLSData && !c.TLSEnabled {
+		errs = append(errs, "require_tls_data needs tls_enabled: true")
+	}
+
+	switch mode {
+	case "master":
+		if host, ok := mapStringValue(c.Master, "listen_host"); ok {
+			if strings.TrimSpace(host) == "" {
+				errs = append(errs, "master.listen_host must not be empty")
+			}
+		} else {
+			errs = append(errs, "master.listen_host is required in master mode")
+		}
+		if port, err := mapIntValue(c.Master, "control_port", 1099); err != nil || port < 1 || port > 65535 {
+			errs = append(errs, "master.control_port must be between 1 and 65535")
+		}
+		seen := map[string]struct{}{}
+		for _, sp := range c.Slaves {
+			name := strings.TrimSpace(sp.Name)
+			if name == "" {
+				errs = append(errs, "slaves[].name must not be empty")
+				continue
+			}
+			lower := strings.ToLower(name)
+			if _, exists := seen[lower]; exists {
+				errs = append(errs, fmt.Sprintf("duplicate slave policy name %q", name))
+			}
+			seen[lower] = struct{}{}
+		}
+	case "slave":
+		if name, ok := mapStringValue(c.Slave, "name"); !ok || strings.TrimSpace(name) == "" {
+			errs = append(errs, "slave.name is required in slave mode")
+		}
+		if host, ok := mapStringValue(c.Slave, "master_host"); !ok || strings.TrimSpace(host) == "" {
+			errs = append(errs, "slave.master_host is required in slave mode")
+		}
+		if port, err := mapIntValue(c.Slave, "master_port", 1099); err != nil || port < 1 || port > 65535 {
+			errs = append(errs, "slave.master_port must be between 1 and 65535")
+		}
+	}
+
+	if len(errs) == 0 {
+		return nil
+	}
+	sort.Strings(errs)
+	return fmt.Errorf("invalid config.yml: %s", strings.Join(errs, "; "))
+}
+
+func mapStringValue(m map[string]interface{}, key string) (string, bool) {
+	if m == nil {
+		return "", false
+	}
+	raw, ok := m[key]
+	if !ok {
+		return "", false
+	}
+	s, ok := raw.(string)
+	if !ok {
+		return "", false
+	}
+	return s, true
+}
+
+func mapIntValue(m map[string]interface{}, key string, def int) (int, error) {
+	if m == nil {
+		return def, nil
+	}
+	raw, ok := m[key]
+	if !ok {
+		return def, nil
+	}
+	switch v := raw.(type) {
+	case int:
+		return v, nil
+	case int64:
+		return int(v), nil
+	case float64:
+		return int(v), nil
+	default:
+		return 0, fmt.Errorf("%s is not an integer", key)
+	}
 }
 
 func resolvePluginConfigFiles(plugins map[string]map[string]interface{}, baseDir string) error {
@@ -287,6 +412,11 @@ func (c *Config) Rehash() (string, error) {
 	if err := timeutil.Set(fresh.Timezone); err != nil {
 		return path, fmt.Errorf("invalid timezone %q: %w", fresh.Timezone, err)
 	}
+	if c.ACLRehashHook != nil {
+		if err := c.ACLRehashHook(fresh); err != nil {
+			return path, err
+		}
+	}
 
 	c.rehashMu.Lock()
 	defer c.rehashMu.Unlock()
@@ -343,11 +473,6 @@ func (c *Config) Rehash() (string, error) {
 	// Fire post-rehash hook if set (e.g. reapply slave policies to SlaveManager).
 	if c.RehashHook != nil {
 		c.RehashHook(c)
-	}
-	if c.ACLRehashHook != nil {
-		if err := c.ACLRehashHook(c); err != nil {
-			return path, err
-		}
 	}
 
 	return path, nil
