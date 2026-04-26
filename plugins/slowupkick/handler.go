@@ -189,6 +189,10 @@ func (h *Handler) evaluate(now time.Time) {
 			continue
 		}
 		speed := currentTransferSpeedBytes(snap, liveStats)
+		if h.shouldSkipFreshTransfer(snap, speed, now) {
+			h.removeCandidate(snap.ID)
+			continue
+		}
 		if h.debug {
 			h.logf("check dir=%s user=%s group=%s path=%s speed=%.1fKB/s", policy.direction, snap.User, snap.PrimaryGroup, snap.TransferPath, speed/1024.0)
 		}
@@ -231,6 +235,20 @@ func (h *Handler) evaluate(now time.Time) {
 		h.removeCandidate(snap.ID)
 	}
 	h.pruneCandidates(active)
+}
+
+func (h *Handler) shouldSkipFreshTransfer(snap plugin.ActiveSession, speed float64, now time.Time) bool {
+	if speed > 0 {
+		return false
+	}
+	if snap.TransferStartedAt.IsZero() {
+		return true
+	}
+	age := now.Sub(snap.TransferStartedAt)
+	if age < 0 {
+		return true
+	}
+	return age < h.interval
 }
 
 func (h *Handler) shouldCheckSession(snap plugin.ActiveSession) bool {

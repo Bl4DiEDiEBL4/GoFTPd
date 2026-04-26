@@ -26,10 +26,14 @@ type releaseState struct {
 }
 
 type AnnouncePlugin struct {
-	debug bool
-	theme *tmpl.Theme
-	mu    sync.Mutex
-	state map[string]*releaseState
+	debug               bool
+	theme               *tmpl.Theme
+	slowUploadWarnChans []string
+	slowUploadKickChans []string
+	slowDnWarnChans     []string
+	slowDnKickChans     []string
+	mu                  sync.Mutex
+	state               map[string]*releaseState
 }
 
 func New() *AnnouncePlugin             { return &AnnouncePlugin{state: map[string]*releaseState{}} }
@@ -38,6 +42,10 @@ func (p *AnnouncePlugin) Initialize(config map[string]interface{}) error {
 	if debug, ok := config["debug"].(bool); ok {
 		p.debug = debug
 	}
+	p.slowUploadWarnChans = p.routeTargets(config, "SLOWUPLOADWARN", "SLOWKICK", "SLAVEAUTH", "LOGIN")
+	p.slowUploadKickChans = p.routeTargets(config, "SLOWUPLOADKICK", "SLOWKICK", "SLAVEAUTH", "LOGIN")
+	p.slowDnWarnChans = p.routeTargets(config, "SLOWDOWNLOADWARN", "SLOWKICK", "SLAVEAUTH", "LOGIN")
+	p.slowDnKickChans = p.routeTargets(config, "SLOWDOWNLOADKICK", "SLOWKICK", "SLAVEAUTH", "LOGIN")
 	if themeFile, ok := config["theme_file"].(string); ok && strings.TrimSpace(themeFile) != "" {
 		th, err := tmpl.LoadTheme(themeFile)
 		if err == nil {
@@ -52,6 +60,45 @@ func (p *AnnouncePlugin) Initialize(config map[string]interface{}) error {
 	return nil
 }
 func (p *AnnouncePlugin) Close() error { return nil }
+
+func (p *AnnouncePlugin) routeTargets(config map[string]interface{}, routeKeys ...string) []string {
+	for _, key := range routeKeys {
+		switch routes := config["type_routes"].(type) {
+		case map[string]interface{}:
+			if raw, ok := routes[key]; ok {
+				if out := plugin.ToStringSlice(raw, nil); len(out) > 0 {
+					return out
+				}
+			}
+		case map[string][]string:
+			if raw, ok := routes[key]; ok {
+				if out := plugin.ToStringSlice(raw, nil); len(out) > 0 {
+					return out
+				}
+			}
+		}
+	}
+	if raw, ok := config["default_channel"].(string); ok {
+		if channel := strings.TrimSpace(raw); channel != "" {
+			return []string{channel}
+		}
+	}
+	return nil
+}
+
+func (p *AnnouncePlugin) appendTargeted(outs []plugin.Output, outType, text string, targets []string) []plugin.Output {
+	if len(targets) == 0 {
+		return append(outs, plugin.Output{Type: outType, Text: text})
+	}
+	for _, target := range targets {
+		target = strings.TrimSpace(target)
+		if target == "" {
+			continue
+		}
+		outs = append(outs, plugin.Output{Type: outType, Target: target, Text: text})
+	}
+	return outs
+}
 
 func releaseName(evt *event.Event) string {
 	if rel := strings.TrimSpace(evt.Data["release_name"]); rel != "" {
@@ -476,7 +523,7 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 				vars["username"], vars["group"], vars["filename"], vars["speed_kbps"], vars["path"], vars["verify_seconds"])
 		}
 		vars["message"] = message
-		outs = append(outs, plugin.Output{Type: "SLOWKICK", Text: p.render("SLOWUPLOADWARN", vars, "SLOWUP: "+message)})
+		outs = p.appendTargeted(outs, "SLOWUPLOADWARN", p.render("SLOWUPLOADWARN", vars, "SLOWUP: "+message), p.slowUploadWarnChans)
 	case event.EventSlowUploadKick:
 		message := strings.TrimSpace(vars["message"])
 		if message == "" {
@@ -487,7 +534,7 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 			}
 		}
 		vars["message"] = message
-		outs = append(outs, plugin.Output{Type: "SLOWKICK", Text: p.render("SLOWUPLOADKICK", vars, "SLOWUP: "+message)})
+		outs = p.appendTargeted(outs, "SLOWUPLOADKICK", p.render("SLOWUPLOADKICK", vars, "SLOWUP: "+message), p.slowUploadKickChans)
 	case event.EventSlowDownloadWarn:
 		message := strings.TrimSpace(vars["message"])
 		if message == "" {
@@ -495,7 +542,7 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 				vars["username"], vars["group"], vars["filename"], vars["speed_kbps"], vars["path"], vars["verify_seconds"])
 		}
 		vars["message"] = message
-		outs = append(outs, plugin.Output{Type: "SLOWKICK", Text: p.render("SLOWDOWNLOADWARN", vars, "SLOWDN: "+message)})
+		outs = p.appendTargeted(outs, "SLOWDOWNLOADWARN", p.render("SLOWDOWNLOADWARN", vars, "SLOWDN: "+message), p.slowDnWarnChans)
 	case event.EventSlowDownloadKick:
 		message := strings.TrimSpace(vars["message"])
 		if message == "" {
@@ -506,7 +553,7 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 			}
 		}
 		vars["message"] = message
-		outs = append(outs, plugin.Output{Type: "SLOWKICK", Text: p.render("SLOWDOWNLOADKICK", vars, "SLOWDN: "+message)})
+		outs = p.appendTargeted(outs, "SLOWDOWNLOADKICK", p.render("SLOWDOWNLOADKICK", vars, "SLOWDN: "+message), p.slowDnKickChans)
 	case event.EventPre:
 		group := vars["group"]
 		user := vars["user"]

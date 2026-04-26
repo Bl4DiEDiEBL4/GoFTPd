@@ -267,3 +267,65 @@ func TestValidateLoginReturnsRemainingSeconds(t *testing.T) {
 		t.Fatalf("expected retry hint in error, got %v", err)
 	}
 }
+
+func TestEvaluateSkipsFreshZeroSpeedTransfer(t *testing.T) {
+	var warned bool
+
+	h := New()
+	h.svc = &plugin.Services{
+		Logger: log.New(os.Stderr, "", 0),
+		ListActiveSessions: func() []plugin.ActiveSession {
+			return []plugin.ActiveSession{
+				{
+					ID:                11,
+					User:              "fastguy",
+					PrimaryGroup:      "USERS",
+					LoggedIn:          true,
+					TransferDirection: "upload",
+					TransferPath:      "/TV-1080P/Test.Release-GRP/file.r00",
+					TransferSlaveName: "SLAVE1",
+					TransferSlaveIdx:  88,
+					TransferStartedAt: time.Now().Add(-500 * time.Millisecond),
+				},
+				{
+					ID:       12,
+					User:     "other",
+					LoggedIn: true,
+				},
+			}
+		},
+		GetLiveTransferStats: func() []plugin.LiveTransferStat {
+			return []plugin.LiveTransferStat{
+				{
+					SlaveName:     "SLAVE1",
+					TransferIndex: 88,
+					Direction:     "upload",
+					SpeedBytes:    0,
+				},
+			}
+		},
+		EmitEvent: func(eventType, eventPath, filename, user string, size int64, speed float64, data map[string]string) {
+			warned = true
+		},
+		AbortTransfer:      func(slaveName string, transferIndex int32, reason string) bool { return true },
+		DisconnectSession:  func(id uint64) bool { return true },
+	}
+	h.interval = 5 * time.Second
+	h.monitorUploads = true
+	h.minUploadSpeedBytes = 25 * 1024
+	h.minUsersOnline = 2
+	h.announceWarn = true
+	h.excludeUsers = map[string]struct{}{}
+	h.excludeGroups = map[string]struct{}{}
+	h.excludePaths = normalizePaths([]string{"/PRE", "/REQUESTS", "/SPEEDTEST"})
+	h.candidates = map[uint64]candidate{}
+
+	h.evaluate(time.Now())
+
+	if warned {
+		t.Fatalf("did not expect a warning for a fresh zero-speed transfer")
+	}
+	if len(h.candidates) != 0 {
+		t.Fatalf("did not expect a fresh transfer to enter candidate tracking")
+	}
+}
