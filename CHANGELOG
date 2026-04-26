@@ -6,6 +6,8 @@ GoFTPd Changelog
 
 - Added short post-kick tempbans to `slowupkick` so slow users cannot
   reconnect immediately and reclaim the same race slot.
+- Extended `slowupkick` to watch slow downloads too, with separate
+  upload/download thresholds and staff-channel announce events.
 - Added the first `spacekeeper` daemon plugin as a master-side free-space
   cleaner that deletes the oldest eligible releases from configured virtual
   paths when a slave drops below its configured free-space threshold.
@@ -13,6 +15,14 @@ GoFTPd Changelog
   fallback behavior, dated-folder protection so date buckets are not selected
   as cleanup/archive targets, and background archive jobs including real
   cross-slave archive moves when the archive path routes to another slave.
+- Tightened `spacekeeper` archive rules so archive moves are also gated by
+  low free space on the watched source slave instead of running every cycle.
+- Hardened ACL reloads so malformed `permissions.yml` YAML fails cleanly
+  instead of silently degrading into a broken live permissions view.
+- Fixed `SITE RESCAN` for music sorting so refreshed audio metadata also
+  rebuilds the genre/artist/year/group sort-tree links.
+- Made music sort buckets section-aware by default so MP3 and FLAC no longer
+  land in the same genre/year/artist/group trees unless explicitly configured.
 
 1.0.5b
 ------
