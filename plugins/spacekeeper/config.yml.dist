@@ -16,9 +16,8 @@
 #     spacekeeper will copy it there in the background and then remove the
 #     source when the copy finishes cleanly. You can also force one or more
 #     specific archive slaves with target_slaves.
-# - archive_or_delete
-#     Tries archive relocation first. If that fails, deletes the release so
-#     space pressure can still be relieved.
+#     Set delete_fallback: true on an archive rule if you want it to delete
+#     the source release when archiving fails.
 #
 # Rules are written in virtual FTP paths, not disk paths or devices.
 # Active transfers, incomplete races, and dated bucket dirs can be skipped
@@ -43,6 +42,7 @@ rules:
   - name: "0day-space"
     slave: "SLAVE1"
     action: "delete_oldest"
+    # No destination here: delete rules only need paths + thresholds.
 
     # Candidate release directories. These are virtual paths, not disk paths.
     paths:
@@ -73,7 +73,10 @@ rules:
   - name: "0day-archive"
     slave: "SLAVE1"
     action: "archive_oldest"
+    # Archive rules use destination because they move releases instead of
+    # deleting them directly.
     destination: "/ARCHiVE/0DAY"
+    delete_fallback: false
     # Optional explicit archive pool. If omitted, normal upload routing for
     # destination decides where the archive lands.
     target_slaves: ["SLAVE2", "SLAVE3"]
@@ -86,11 +89,13 @@ rules:
     skip_active_races: true
     max_actions_per_cycle: 3
 
-  # When space is low, try to archive first. If that fails, delete instead.
-  - name: "0day-archive-or-delete"
+  # Same archive rule, but with explicit delete fallback if archiving fails.
+  - name: "0day-archive-with-delete-fallback"
     slave: "SLAVE1"
-    action: "archive_or_delete"
+    action: "archive_oldest"
+    # Same archive action, but explicit delete fallback on archive failure.
     destination: "/ARCHiVE/0DAY"
+    delete_fallback: true
     # If neither archive slave has enough room, spacekeeper will delete the
     # oldest archived release(s) already living under destination on one of
     # these slaves until the incoming release fits.
