@@ -1,5 +1,5 @@
-# This file holds slowupkick settings only.
-# Enable/disable the daemon plugin from etc/config.yml -> plugins.slowupkick.
+# This file holds slowkick settings only.
+# Enable/disable the daemon plugin from etc/config.yml -> plugins.slowkick.
 
 # Slow transfer kicker.
 #

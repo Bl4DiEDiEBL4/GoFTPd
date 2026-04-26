@@ -241,7 +241,7 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 #    request - handles SITE REQUEST/REQUESTS/REQFILL/REQDEL/REQWIPE
 #    speedtest - creates /SPEEDTEST/100MB, 500MB, 1000MB and
 #                emits SPEEDTEST announces without applying credits
-#    slowupkick - aborts and kicks slow uploads/downloads, and can tempban
+  #    slowkick - aborts and kicks slow uploads/downloads, and can tempban
 #                 the FTP user briefly so they cannot instantly re-grab slots
 #    spacekeeper - watches slave free space and deletes the oldest eligible
 #                  releases from configured virtual paths when a slave drops
@@ -476,11 +476,11 @@ plugins:
   speedtest:
     enabled: true
     config_file: "plugins/speedtest/config.yml"
-  slowupkick:
+  slowkick:
     enabled: true
     # Kicks slow uploads/downloads and can tempban the FTP user briefly so
     # they cannot immediately reconnect and reclaim the slot.
-    config_file: "plugins/slowupkick/config.yml"
+    config_file: "plugins/slowkick/config.yml"
   spacekeeper:
     enabled: false
     # Free-space and archive policy plugin using virtual FTP paths.

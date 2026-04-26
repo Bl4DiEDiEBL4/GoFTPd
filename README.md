@@ -266,7 +266,7 @@ Built-in daemon plugins:
 | `releaseguard` | Blocks bad release dir names before MKD creates them and provides `SITE BANNED` |
 | `request` | Provides SITE REQUEST/REQUESTS/REQFILL/REQDEL/REQWIPE |
 | `speedtest` | Creates speedtest files and emits SPEEDTEST events |
-| `slowupkick` | Monitors live uploads and downloads and aborts/kicks users whose speed stays below a configured floor long enough to block slots |
+| `slowkick` | Monitors live uploads and downloads and aborts/kicks users whose speed stays below a configured floor long enough to block slots |
 | `spacekeeper` | Watches slave free space and deletes the oldest eligible releases from configured virtual paths when a slave drops below its threshold |
 
 ### Speedtest
@@ -303,9 +303,9 @@ can wipe requests with `REQWIPE`. The sitebot request plugin can pass the IRC
 nick through using `-by:<nick>` only when the FTP login is listed in
 `request.proxy_users`.
 
-### Slowupkick
+### Slowkick
 
-The slowupkick plugin watches live uploads and downloads and only acts after a
+The slowkick plugin watches live uploads and downloads and only acts after a
 transfer stays below the configured speed floor for the full verify window.
 When it fires, the master tells the slave to abort the transfer first and then
 disconnects the FTP session, so partial uploads are cleaned up on the slave

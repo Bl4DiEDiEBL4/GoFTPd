@@ -105,7 +105,7 @@ func (b *Bridge) AbortTransfer(slaveName string, transferIndex int32, reason str
 		return false
 	}
 	if strings.TrimSpace(reason) == "" {
-		reason = "aborted by slowupkick"
+		reason = "aborted by slowkick"
 	}
 	IssueAbort(slave, transferIndex, reason)
 	return true

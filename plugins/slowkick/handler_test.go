@@ -1,4 +1,4 @@
-package slowupkick
+package slowkick
 
 import (
 	"log"
