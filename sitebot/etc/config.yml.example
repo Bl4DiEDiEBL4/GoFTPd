@@ -56,6 +56,7 @@ encryption:
   # Auto-exchange FiSH keys for PM/NOTICE traffic with users via DH1080.
   # This is peer-to-peer only; channel/topic FiSH still uses the static keys
   # below because DH1080 does not negotiate a shared channel key.
+  # If this setting is omitted, the sitebot defaults it to true.
   auto_exchange: true
   # Enter keys in "cbc:<key>" format in the final config file.
   # setup.sh asks for raw keys and writes the cbc: prefix for you.

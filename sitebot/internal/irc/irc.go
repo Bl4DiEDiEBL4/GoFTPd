@@ -290,7 +290,7 @@ func (b *Bot) sendTarget(target, msg string, notice bool) error {
 		}
 		return b.sendTargetRaw(target, msg, notice)
 	}
-	if enc := b.privateKeyForNick(target); enc != nil {
+	if enc := b.negotiatedPrivateKeyForNick(target); enc != nil {
 		msg = "+OK *" + enc.Encrypt(msg)
 		return b.sendTargetRaw(target, msg, notice)
 	}
@@ -302,6 +302,10 @@ func (b *Bot) sendTarget(target, msg string, notice bool) error {
 		if queued {
 			return nil
 		}
+	}
+	if enc := b.staticPrivateKey(); enc != nil {
+		msg = "+OK *" + enc.Encrypt(msg)
+		return b.sendTargetRaw(target, msg, notice)
 	}
 	return b.sendTargetRaw(target, msg, notice)
 }
@@ -327,6 +331,19 @@ func (b *Bot) privateKeyForNick(nick string) *BlowfishEncryptor {
 	if enc, ok := b.PMKeys[nick]; ok {
 		return enc
 	}
+	return b.PrivateKey
+}
+
+func (b *Bot) negotiatedPrivateKeyForNick(nick string) *BlowfishEncryptor {
+	nick = normalizeNick(nick)
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	return b.PMKeys[nick]
+}
+
+func (b *Bot) staticPrivateKey() *BlowfishEncryptor {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
 	return b.PrivateKey
 }
 
