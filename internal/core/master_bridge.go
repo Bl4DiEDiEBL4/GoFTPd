@@ -101,6 +101,12 @@ type MasterBridge interface {
 	// StartRemergeAll starts a full background VFS refresh for every online slave.
 	StartRemergeAll() (started int, errors []string)
 
+	// Slave-port auth guards: persistent denylist plus current temp bans.
+	ListSlaveAuthDenyEntries() []string
+	AddSlaveAuthDenyEntry(entry string) (string, error)
+	RemoveSlaveAuthDenyEntry(entry string) (bool, error)
+	ListSlaveAuthTempBans() []SlaveAuthBanInfo
+
 	// GetLiveTransferStats asks connected slaves for current live transfer counters.
 	GetLiveTransferStats() []LiveTransferStat
 
@@ -184,4 +190,10 @@ type LiveTransferStat struct {
 	StartedAt     time.Time
 	Transferred   int64
 	SpeedBytes    float64
+}
+
+type SlaveAuthBanInfo struct {
+	IP          string
+	Strikes     int
+	BannedUntil time.Time
 }

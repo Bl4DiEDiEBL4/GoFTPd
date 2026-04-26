@@ -1,0 +1,44 @@
+# Slow transfer kicker.
+#
+# Watches live uploads and downloads and kicks a user only when the transfer
+# stays below the speed threshold for the full verify window. The slave aborts
+# uploads first, so partial uploads get cleaned up on the slave side.
+enabled: false
+
+# Poll interval for checking live transfers.
+interval_seconds: 5
+
+# Watch uploads and/or downloads.
+monitor_uploads: true
+monitor_downloads: true
+
+# Upload-specific floor and verify window.
+min_upload_speed_kbps: 25
+verify_upload_seconds: 20
+
+# Download-specific floor and verify window.
+min_download_speed_kbps: 50
+verify_download_seconds: 20
+
+# Do nothing unless at least this many logged-in users are online.
+min_users_online: 2
+
+# Never kick these FTP users.
+exclude_users: []
+
+# Never kick users whose primary group matches one of these names.
+exclude_groups: ["SiteOP"]
+
+# Paths that should never be touched by the plugin.
+exclude_paths:
+  - "/PRE"
+  - "/REQUESTS"
+  - "/SPEEDTEST"
+
+# Log a warning when a user first drops below the threshold.
+announce_warn: true
+
+# Log the actual abort/kick when verification expires.
+announce_kick: true
+
+debug: false

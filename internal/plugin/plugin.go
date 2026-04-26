@@ -31,6 +31,7 @@ package plugin
 
 import (
 	"log"
+	"time"
 
 	"goftpd/internal/user"
 )
@@ -70,10 +71,42 @@ type Event struct {
 // the PluginManager when it calls Init(). Plugins should store the pointer
 // and use it in OnEvent callbacks.
 type Services struct {
-	Bridge    MasterBridge // VFS/slave access — WriteFile, ReadFile, PluginListDir, etc.
-	Debug     bool         // Global debug flag
-	Logger    *log.Logger  // Optional logger (may be nil — fall back to log.Printf)
-	EmitEvent func(eventType, path, filename, section string, size int64, speed float64, data map[string]string)
+	Bridge               MasterBridge // VFS/slave access — WriteFile, ReadFile, PluginListDir, etc.
+	Debug                bool         // Global debug flag
+	Logger               *log.Logger  // Optional logger (may be nil — fall back to log.Printf)
+	EmitEvent            func(eventType, path, filename, section string, size int64, speed float64, data map[string]string)
+	ListActiveSessions   func() []ActiveSession
+	GetLiveTransferStats func() []LiveTransferStat
+	DisconnectSession    func(id uint64) bool
+	AbortTransfer        func(slaveName string, transferIndex int32, reason string) bool
+}
+
+type ActiveSession struct {
+	ID                uint64
+	User              string
+	PrimaryGroup      string
+	Flags             string
+	Remote            string
+	CurrentDir        string
+	StartedAt         time.Time
+	LastCommandAt     time.Time
+	LoggedIn          bool
+	TransferDirection string
+	TransferPath      string
+	TransferBytes     int64
+	TransferStartedAt time.Time
+	TransferSlaveName string
+	TransferSlaveIdx  int32
+}
+
+type LiveTransferStat struct {
+	SlaveName     string
+	TransferIndex int32
+	Direction     string
+	Path          string
+	StartedAt     time.Time
+	Transferred   int64
+	SpeedBytes    float64
 }
 
 type SiteContext interface {

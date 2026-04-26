@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"path"
+	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,6 +33,8 @@ type SlaveManager struct {
 	authFailWindow   time.Duration
 	authBanDuration  time.Duration
 	authAllowNets    []*net.IPNet
+	authDenyFile     string
+	authDenyEntries  []authNetworkEntry
 
 	slaves   map[string]*RemoteSlave
 	slavesMu sync.RWMutex
@@ -57,6 +62,17 @@ type SlaveManager struct {
 type slaveAuthState struct {
 	Strikes     int
 	FirstSeen   time.Time
+	BannedUntil time.Time
+}
+
+type authNetworkEntry struct {
+	Raw string
+	Net *net.IPNet
+}
+
+type AuthBanSnapshot struct {
+	IP          string
+	Strikes     int
 	BannedUntil time.Time
 }
 
@@ -131,6 +147,18 @@ func (sm *SlaveManager) ConfigureAuthAllowlist(values []string) error {
 	sm.authAllowNets = nets
 	sm.authMu.Unlock()
 	return nil
+}
+
+func (sm *SlaveManager) ConfigureAuthDenylistFile(filePath string) error {
+	sm.authMu.Lock()
+	defer sm.authMu.Unlock()
+
+	sm.authDenyFile = strings.TrimSpace(filePath)
+	if sm.authDenyFile == "" {
+		sm.authDenyEntries = nil
+		return nil
+	}
+	return sm.loadAuthDenylistLocked()
 }
 
 func (sm *SlaveManager) publishDiskStatus(rs *RemoteSlave) {
@@ -259,6 +287,12 @@ func (sm *SlaveManager) acceptLoop() {
 		}
 
 		ip, remoteAddr := splitRemoteAddr(conn.RemoteAddr())
+		if denied, by := sm.isAuthExplicitlyDenied(ip); denied {
+			log.Printf("[SlaveManager] Denied slave connection from %s (denylist %s)", remoteAddr, by)
+			sm.publishSecurityEvent(ip, remoteAddr, "denylist", fmt.Sprintf("slave control IP matched denylist entry %s", by), 0, time.Time{})
+			conn.Close()
+			continue
+		}
 		if !sm.isAuthAllowed(ip) {
 			log.Printf("[SlaveManager] Denied slave connection from %s (not in allowlist)", remoteAddr)
 			sm.publishSecurityEvent(ip, remoteAddr, "deny", "slave control IP not in allowlist", 0, time.Time{})
@@ -446,6 +480,177 @@ func (sm *SlaveManager) isAuthAllowed(ip string) bool {
 		}
 	}
 	return false
+}
+
+func (sm *SlaveManager) isAuthExplicitlyDenied(ip string) (bool, string) {
+	if strings.TrimSpace(ip) == "" {
+		return false, ""
+	}
+	parsed := net.ParseIP(strings.TrimSpace(ip))
+	if parsed == nil {
+		return false, ""
+	}
+	sm.authMu.Lock()
+	entries := append([]authNetworkEntry(nil), sm.authDenyEntries...)
+	sm.authMu.Unlock()
+	for _, entry := range entries {
+		if entry.Net != nil && entry.Net.Contains(parsed) {
+			return true, entry.Raw
+		}
+	}
+	return false, ""
+}
+
+func (sm *SlaveManager) ListAuthDenyEntries() []string {
+	sm.authMu.Lock()
+	defer sm.authMu.Unlock()
+	out := make([]string, 0, len(sm.authDenyEntries))
+	for _, entry := range sm.authDenyEntries {
+		out = append(out, entry.Raw)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (sm *SlaveManager) AddAuthDenyEntry(raw string) (string, error) {
+	entry, err := parseAuthNetworkEntry(raw)
+	if err != nil {
+		return "", err
+	}
+	sm.authMu.Lock()
+	defer sm.authMu.Unlock()
+	for _, existing := range sm.authDenyEntries {
+		if strings.EqualFold(existing.Raw, entry.Raw) {
+			return entry.Raw, nil
+		}
+	}
+	sm.authDenyEntries = append(sm.authDenyEntries, entry)
+	sort.Slice(sm.authDenyEntries, func(i, j int) bool {
+		return sm.authDenyEntries[i].Raw < sm.authDenyEntries[j].Raw
+	})
+	if err := sm.saveAuthDenylistLocked(); err != nil {
+		return "", err
+	}
+	return entry.Raw, nil
+}
+
+func (sm *SlaveManager) RemoveAuthDenyEntry(raw string) (bool, error) {
+	entry, err := parseAuthNetworkEntry(raw)
+	if err != nil {
+		return false, err
+	}
+	sm.authMu.Lock()
+	defer sm.authMu.Unlock()
+	out := sm.authDenyEntries[:0]
+	removed := false
+	for _, existing := range sm.authDenyEntries {
+		if strings.EqualFold(existing.Raw, entry.Raw) {
+			removed = true
+			continue
+		}
+		out = append(out, existing)
+	}
+	sm.authDenyEntries = out
+	if !removed {
+		return false, nil
+	}
+	if err := sm.saveAuthDenylistLocked(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (sm *SlaveManager) ListAuthTempBans() []AuthBanSnapshot {
+	now := time.Now()
+	sm.authMu.Lock()
+	defer sm.authMu.Unlock()
+	out := make([]AuthBanSnapshot, 0, len(sm.authState))
+	for ip, state := range sm.authState {
+		if state == nil || state.BannedUntil.IsZero() || !now.Before(state.BannedUntil) {
+			continue
+		}
+		out = append(out, AuthBanSnapshot{
+			IP:          ip,
+			Strikes:     state.Strikes,
+			BannedUntil: state.BannedUntil,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].IP < out[j].IP
+	})
+	return out
+}
+
+func (sm *SlaveManager) loadAuthDenylistLocked() error {
+	sm.authDenyEntries = nil
+	if sm.authDenyFile == "" {
+		return nil
+	}
+	data, err := os.ReadFile(sm.authDenyFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		entry, err := parseAuthNetworkEntry(line)
+		if err != nil {
+			return fmt.Errorf("%s: %w", sm.authDenyFile, err)
+		}
+		sm.authDenyEntries = append(sm.authDenyEntries, entry)
+	}
+	sort.Slice(sm.authDenyEntries, func(i, j int) bool {
+		return sm.authDenyEntries[i].Raw < sm.authDenyEntries[j].Raw
+	})
+	return nil
+}
+
+func (sm *SlaveManager) saveAuthDenylistLocked() error {
+	if sm.authDenyFile == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(sm.authDenyFile), 0755); err != nil {
+		return err
+	}
+	var lines []string
+	lines = append(lines, "# Slave control denylist: exact IPs or CIDRs, one per line.")
+	for _, entry := range sm.authDenyEntries {
+		lines = append(lines, entry.Raw)
+	}
+	content := strings.Join(lines, "\n") + "\n"
+	return os.WriteFile(sm.authDenyFile, []byte(content), 0644)
+}
+
+func parseAuthNetworkEntry(raw string) (authNetworkEntry, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return authNetworkEntry{}, fmt.Errorf("empty denylist entry")
+	}
+	if strings.Contains(raw, "/") {
+		_, network, err := net.ParseCIDR(raw)
+		if err != nil {
+			return authNetworkEntry{}, fmt.Errorf("invalid denylist entry %q: %w", raw, err)
+		}
+		return authNetworkEntry{Raw: network.String(), Net: network}, nil
+	}
+	ip := net.ParseIP(raw)
+	if ip == nil {
+		return authNetworkEntry{}, fmt.Errorf("invalid denylist IP %q", raw)
+	}
+	bits := 32
+	if ip.To4() == nil {
+		bits = 128
+	}
+	return authNetworkEntry{
+		Raw: ip.String(),
+		Net: &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)},
+	}, nil
 }
 
 func splitRemoteAddr(addr net.Addr) (ip string, raw string) {

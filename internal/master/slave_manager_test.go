@@ -48,3 +48,35 @@ func TestSlaveAuthAllowlistSupportsExactIPsAndCIDRs(t *testing.T) {
 		t.Fatalf("non-allowlisted IP should not be allowed")
 	}
 }
+
+func TestSlaveAuthDenylistAddRemove(t *testing.T) {
+	dir := t.TempDir()
+	sm := NewSlaveManager("127.0.0.1", 1099, false, "", "", 60*time.Second)
+	if err := sm.ConfigureAuthDenylistFile(dir + "/slave_denylist.txt"); err != nil {
+		t.Fatalf("ConfigureAuthDenylistFile returned error: %v", err)
+	}
+
+	entry, err := sm.AddAuthDenyEntry("1.2.3.4")
+	if err != nil {
+		t.Fatalf("AddAuthDenyEntry returned error: %v", err)
+	}
+	if entry != "1.2.3.4" {
+		t.Fatalf("unexpected canonical entry %q", entry)
+	}
+
+	if denied, _ := sm.isAuthExplicitlyDenied("1.2.3.4"); !denied {
+		t.Fatalf("expected IP to be denylisted")
+	}
+
+	removed, err := sm.RemoveAuthDenyEntry("1.2.3.4")
+	if err != nil {
+		t.Fatalf("RemoveAuthDenyEntry returned error: %v", err)
+	}
+	if !removed {
+		t.Fatalf("expected denylist entry to be removed")
+	}
+
+	if denied, _ := sm.isAuthExplicitlyDenied("1.2.3.4"); denied {
+		t.Fatalf("expected IP to be removed from denylist")
+	}
+}

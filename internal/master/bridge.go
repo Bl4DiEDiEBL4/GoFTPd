@@ -94,6 +94,58 @@ func (b *Bridge) GetLiveTransferStats() []core.LiveTransferStat {
 	return out
 }
 
+func (b *Bridge) AbortTransfer(slaveName string, transferIndex int32, reason string) bool {
+	if b == nil || b.sm == nil || transferIndex == 0 {
+		return false
+	}
+	slave := b.sm.GetSlave(strings.TrimSpace(slaveName))
+	if slave == nil || !slave.IsOnline() {
+		return false
+	}
+	if strings.TrimSpace(reason) == "" {
+		reason = "aborted by slowupkick"
+	}
+	IssueAbort(slave, transferIndex, reason)
+	return true
+}
+
+func (b *Bridge) ListSlaveAuthDenyEntries() []string {
+	if b == nil || b.sm == nil {
+		return nil
+	}
+	return b.sm.ListAuthDenyEntries()
+}
+
+func (b *Bridge) AddSlaveAuthDenyEntry(entry string) (string, error) {
+	if b == nil || b.sm == nil {
+		return "", fmt.Errorf("master not initialized")
+	}
+	return b.sm.AddAuthDenyEntry(entry)
+}
+
+func (b *Bridge) RemoveSlaveAuthDenyEntry(entry string) (bool, error) {
+	if b == nil || b.sm == nil {
+		return false, fmt.Errorf("master not initialized")
+	}
+	return b.sm.RemoveAuthDenyEntry(entry)
+}
+
+func (b *Bridge) ListSlaveAuthTempBans() []core.SlaveAuthBanInfo {
+	if b == nil || b.sm == nil {
+		return nil
+	}
+	snaps := b.sm.ListAuthTempBans()
+	out := make([]core.SlaveAuthBanInfo, 0, len(snaps))
+	for _, snap := range snaps {
+		out = append(out, core.SlaveAuthBanInfo{
+			IP:          snap.IP,
+			Strikes:     snap.Strikes,
+			BannedUntil: snap.BannedUntil,
+		})
+	}
+	return out
+}
+
 func (b *Bridge) RunOnSlaveCommand(dirPath, command string, args []string, env map[string]string, timeoutSeconds int, preferredSlave string) (string, error) {
 	slave := b.resolveSlaveForDir(dirPath, preferredSlave)
 	if slave == nil {

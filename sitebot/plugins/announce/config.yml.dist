@@ -14,3 +14,4 @@ type_routes:
   LOGIN: ["#goftpd-staff"]
   SELFIP: ["#goftpd-staff"]
   SLAVEAUTH: ["#goftpd-staff"]
+  SLOWKICK: ["#goftpd-staff"]

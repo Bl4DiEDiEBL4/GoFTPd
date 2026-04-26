@@ -144,6 +144,9 @@ rules:
         - CHMOD
         - REHASH
         - REMERGE
+        - SLAVEBANS
+        - SLAVEBAN
+        - SLAVEUNBAN
         - ADDAFFIL
         - DELAFFIL
         - REQWIPE

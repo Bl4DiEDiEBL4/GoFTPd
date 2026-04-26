@@ -347,7 +347,7 @@ ensure_enabled_plugin_configs() {
     local repaired_any="false"
     local missing_any="false"
 
-    local daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre)
+    local daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre slowupkick)
     if [ -f "${daemon_config}" ]; then
         for plugin_name in "${daemon_plugins[@]}"; do
             enabled_value="$(daemon_plugin_enabled_in_config "${daemon_config}" "${plugin_name}")"
@@ -872,7 +872,7 @@ configure_daemon() {
         daemon_mode="$(prompt_mode "${SETUP_DAEMON_MODE:-master}")"
         long_name="$(prompt_default 'Daemon site name' "${SETUP_SITE_NAME:-GoFTPd}")"
         short_name="$(prompt_default 'Daemon short site tag' "${SETUP_SITE_SHORT:-${long_name}}")"
-        site_version="$(prompt_default 'Daemon version' "${SETUP_SITE_VERSION:-1.0.4b}")"
+        site_version="$(prompt_default 'Daemon version' "${SETUP_SITE_VERSION:-1.0.5b}")"
         system_timezone="$(detect_system_timezone)"
         timezone="$(prompt_default 'Daemon timezone (IANA name, use Local to follow the OS)' "${SETUP_TIMEZONE:-${system_timezone}}")"
         cert_name="$(prompt_default 'TLS certificate display name' "${SETUP_CERT_NAME:-${long_name}}")"
@@ -953,7 +953,7 @@ configure_daemon() {
     local daemon_enabled=()
     local daemon_disabled=()
     if [ "${daemon_mode}" = "master" ]; then
-        daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre)
+        daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre slowupkick)
     fi
 
     local plugin_name
@@ -1039,7 +1039,7 @@ configure_sitebot() {
         irc_port="$(prompt_default 'IRC port' "${SETUP_IRC_PORT:-6697}")"
         irc_nick="$(prompt_default 'IRC nick' "${SETUP_IRC_NICK:-GoSitebot}")"
         irc_user="$(prompt_default 'IRC user' "${SETUP_IRC_USER:-sitebot}")"
-        sitebot_version="${SETUP_SITEBOT_VERSION:-${SETUP_SITE_VERSION:-1.0.4b}}"
+        sitebot_version="${SETUP_SITEBOT_VERSION:-${SETUP_SITE_VERSION:-1.0.5b}}"
         irc_realname="$(prompt_default 'IRC realname' "${SETUP_IRC_REALNAME:-GoSitebot v${sitebot_version}}")"
         irc_password="$(prompt_default 'IRC server password' "${SETUP_IRC_PASSWORD:-changeme}")"
         if prompt_yes_no "Use SSL for IRC?" "$(bool_to_prompt_default "${SETUP_IRC_SSL:-true}")"; then
@@ -1083,7 +1083,7 @@ configure_sitebot() {
         private_key="$(prompt_default 'Blowfish key for PM replies (raw key, no cbc: prefix)' "${SETUP_BLOWFISH_KEY_PRIVATE:-${chat_key}}")"
     else
         say "Sitebot config already exists at ${sitebot_config}; keeping current sitebot settings."
-        sitebot_version="${SETUP_SITEBOT_VERSION:-${SETUP_SITE_VERSION:-1.0.4b}}"
+        sitebot_version="${SETUP_SITEBOT_VERSION:-${SETUP_SITE_VERSION:-1.0.5b}}"
         irc_host="${SETUP_IRC_HOST:-irc.example.net}"
         irc_port="${SETUP_IRC_PORT:-6697}"
         irc_nick="${SETUP_IRC_NICK:-GoSitebot}"
@@ -1288,7 +1288,7 @@ save_state_file() {
     }
     write_state_var SETUP_SITE_NAME "${SETUP_SITE_NAME:-GoFTPd}"
     write_state_var SETUP_SITE_SHORT "${SETUP_SITE_SHORT:-GoFTPd}"
-    write_state_var SETUP_SITE_VERSION "${SETUP_SITE_VERSION:-1.0.4b}"
+    write_state_var SETUP_SITE_VERSION "${SETUP_SITE_VERSION:-1.0.5b}"
     write_state_var SETUP_TIMEZONE "${SETUP_TIMEZONE:-Europe/Amsterdam}"
     write_state_var SETUP_CERT_NAME "${SETUP_CERT_NAME:-GoFTPd}"
     write_state_var SETUP_GENERATE_CERTS "${SETUP_GENERATE_CERTS:-true}"
@@ -1309,8 +1309,8 @@ save_state_file() {
     write_state_var SETUP_IRC_PORT "${SETUP_IRC_PORT:-6697}"
     write_state_var SETUP_IRC_NICK "${SETUP_IRC_NICK:-GoSitebot}"
     write_state_var SETUP_IRC_USER "${SETUP_IRC_USER:-sitebot}"
-    write_state_var SETUP_SITEBOT_VERSION "${SETUP_SITEBOT_VERSION:-${SETUP_SITE_VERSION:-1.0.4b}}"
-    write_state_var SETUP_IRC_REALNAME "${SETUP_IRC_REALNAME:-GoSitebot v${SETUP_SITEBOT_VERSION:-${SETUP_SITE_VERSION:-1.0.4b}}}"
+    write_state_var SETUP_SITEBOT_VERSION "${SETUP_SITEBOT_VERSION:-${SETUP_SITE_VERSION:-1.0.5b}}"
+    write_state_var SETUP_IRC_REALNAME "${SETUP_IRC_REALNAME:-GoSitebot v${SETUP_SITEBOT_VERSION:-${SETUP_SITE_VERSION:-1.0.5b}}}"
     write_state_var SETUP_IRC_PASSWORD "${SETUP_IRC_PASSWORD:-changeme}"
     write_state_var SETUP_IRC_SSL "${SETUP_IRC_SSL:-true}"
     write_state_var SETUP_PLUGIN_FTP_HOST "${SETUP_PLUGIN_FTP_HOST:-127.0.0.1}"

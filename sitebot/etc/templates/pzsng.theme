@@ -369,6 +369,10 @@ announce.BNC_ERROR = "%b{%c01{BNC:}} %c04{%response}"
 
 announce.LOGINFAIL = "%b{%c02{LOGiN:}} %c04{%message}"
 announce.SLAVEAUTHFAIL = "%b{%c04{SLAVESEC:}} %c07{%message}"
+announce.SLOWUPLOADWARN = "%b{%c07{SLOWUP:}} %c05{%message}"
+announce.SLOWUPLOADKICK = "%b{%c04{SLOWKICK:}} %c07{%message}"
+announce.SLOWDOWNLOADWARN = "%b{%c07{SLOWDN:}} %c05{%message}"
+announce.SLOWDOWNLOADKICK = "%b{%c04{SLOWKICK:}} %c07{%message}"
 
 announce.BANNEDCMD_LINE = "%b{%c01{BANNED:}} %c05{%line}"
 

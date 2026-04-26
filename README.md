@@ -159,11 +159,18 @@ paths that archive slave serves.
 The master control socket can also be hardened with:
 
 - `master.slave_allowlist` - optional exact IP / CIDR allowlist for slave connections
+- `master.slave_denylist_file` - persistent exact IP / CIDR denylist for the slave control socket
 - `master.slave_auth_fail_limit`
 - `master.slave_auth_fail_window_seconds`
 - `master.slave_auth_ban_seconds`
 
 Those guard only the slave control port, not normal FTP client sessions.
+
+Siteops can manage the persistent denylist from FTP with:
+
+- `SITE SLAVEBANS`
+- `SITE SLAVEBAN <ip|cidr>`
+- `SITE SLAVEUNBAN <ip|cidr>`
 
 ## ACL Rules
 
@@ -259,6 +266,7 @@ Built-in daemon plugins:
 | `releaseguard` | Blocks bad release dir names before MKD creates them and provides `SITE BANNED` |
 | `request` | Provides SITE REQUEST/REQUESTS/REQFILL/REQDEL/REQWIPE |
 | `speedtest` | Creates speedtest files and emits SPEEDTEST events |
+| `slowupkick` | Monitors live uploads and downloads and aborts/kicks users whose speed stays below a configured floor long enough to block slots |
 
 ### Speedtest
 
@@ -293,6 +301,15 @@ SITE commands:
 can wipe requests with `REQWIPE`. The sitebot request plugin can pass the IRC
 nick through using `-by:<nick>` only when the FTP login is listed in
 `request.proxy_users`.
+
+### Slowupkick
+
+The slowupkick plugin watches live uploads and downloads and only acts after a
+transfer stays below the configured speed floor for the full verify window.
+When it fires, the master tells the slave to abort the transfer first and then
+disconnects the FTP session, so partial uploads are cleaned up on the slave
+side instead of being left behind as junk. Upload and download thresholds can
+be tuned independently.
 
 ### PRE And Affils
 

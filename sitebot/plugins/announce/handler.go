@@ -469,6 +469,38 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 		}
 		vars["message"] = message
 		outs = append(outs, plugin.Output{Type: "SLAVEAUTH", Text: p.render("SLAVEAUTHFAIL", vars, "SLAVESEC: "+message)})
+	case event.EventSlowUploadWarn:
+		message := strings.TrimSpace(vars["message"])
+		if message == "" {
+			message = fmt.Sprintf("%s/%s is uploading %s at %sKB/s in %s, verifying for %ss before kick.",
+				vars["username"], vars["group"], vars["filename"], vars["speed_kbps"], vars["path"], vars["verify_seconds"])
+		}
+		vars["message"] = message
+		outs = append(outs, plugin.Output{Type: "SLOWKICK", Text: p.render("SLOWUPLOADWARN", vars, "SLOWUP: "+message)})
+	case event.EventSlowUploadKick:
+		message := strings.TrimSpace(vars["message"])
+		if message == "" {
+			message = fmt.Sprintf("%s/%s was kicked for slow upload %s at %sKB/s in %s (floor %sKB/s).",
+				vars["username"], vars["group"], vars["filename"], vars["speed_kbps"], vars["path"], vars["min_speed_kbps"])
+		}
+		vars["message"] = message
+		outs = append(outs, plugin.Output{Type: "SLOWKICK", Text: p.render("SLOWUPLOADKICK", vars, "SLOWUP: "+message)})
+	case event.EventSlowDownloadWarn:
+		message := strings.TrimSpace(vars["message"])
+		if message == "" {
+			message = fmt.Sprintf("%s/%s is downloading %s at %sKB/s from %s, verifying for %ss before kick.",
+				vars["username"], vars["group"], vars["filename"], vars["speed_kbps"], vars["path"], vars["verify_seconds"])
+		}
+		vars["message"] = message
+		outs = append(outs, plugin.Output{Type: "SLOWKICK", Text: p.render("SLOWDOWNLOADWARN", vars, "SLOWDN: "+message)})
+	case event.EventSlowDownloadKick:
+		message := strings.TrimSpace(vars["message"])
+		if message == "" {
+			message = fmt.Sprintf("%s/%s was kicked for slow download %s at %sKB/s from %s (floor %sKB/s).",
+				vars["username"], vars["group"], vars["filename"], vars["speed_kbps"], vars["path"], vars["min_speed_kbps"])
+		}
+		vars["message"] = message
+		outs = append(outs, plugin.Output{Type: "SLOWKICK", Text: p.render("SLOWDOWNLOADKICK", vars, "SLOWDN: "+message)})
 	case event.EventPre:
 		group := vars["group"]
 		user := vars["user"]

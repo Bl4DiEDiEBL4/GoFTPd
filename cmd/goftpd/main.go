@@ -28,6 +28,7 @@ import (
 	"goftpd/plugins/pre"
 	"goftpd/plugins/releaseguard"
 	"goftpd/plugins/request"
+	"goftpd/plugins/slowupkick"
 	"goftpd/plugins/speedtest"
 	"goftpd/plugins/tvmaze"
 	"gopkg.in/yaml.v3"
@@ -109,6 +110,9 @@ func main() {
 		)
 		if err := sm.ConfigureAuthAllowlist(stringSliceFromCfg(cfg.Master, "slave_allowlist")); err != nil {
 			log.Fatalf("Invalid master.slave_allowlist: %v", err)
+		}
+		if err := sm.ConfigureAuthDenylistFile(stringFromCfg(cfg.Master, "slave_denylist_file", "etc/slave_denylist.txt")); err != nil {
+			log.Fatalf("Invalid master.slave_denylist_file: %v", err)
 		}
 		sm.ConfigureAuthGuard(
 			intFromCfg(cfg.Master, "slave_auth_fail_limit", 2),
@@ -196,6 +200,17 @@ func main() {
 			sm.SetSlavePolicies(policies)
 			sm.SetBootstrapDirs(configuredSectionDirs(c))
 			sm.SetProtectedDirs(protectedVFSDirs(c))
+			if err := sm.ConfigureAuthAllowlist(stringSliceFromCfg(c.Master, "slave_allowlist")); err != nil {
+				log.Printf("[REHASH] invalid master.slave_allowlist: %v", err)
+			}
+			if err := sm.ConfigureAuthDenylistFile(stringFromCfg(c.Master, "slave_denylist_file", "etc/slave_denylist.txt")); err != nil {
+				log.Printf("[REHASH] invalid master.slave_denylist_file: %v", err)
+			}
+			sm.ConfigureAuthGuard(
+				intFromCfg(c.Master, "slave_auth_fail_limit", 2),
+				time.Duration(intFromCfg(c.Master, "slave_auth_fail_window_seconds", 900))*time.Second,
+				time.Duration(intFromCfg(c.Master, "slave_auth_ban_seconds", 3600))*time.Second,
+			)
 			sm.EnsureBootstrapDirs()
 			sm.PublishAllDiskStatuses()
 			log.Printf("[REHASH] reapplied %d slave policies", len(policies))
@@ -227,8 +242,35 @@ func main() {
 		bridgeForPlugins = masterBridge
 	}
 	cfg.PluginManager.SetServices(&plugin.Services{
-		Bridge: bridgeForPlugins,
-		Debug:  cfg.Debug,
+		Bridge:             bridgeForPlugins,
+		Debug:              cfg.Debug,
+		ListActiveSessions: core.ListActiveSessionsForPlugins,
+		DisconnectSession:  core.DisconnectActiveSession,
+		GetLiveTransferStats: func() []plugin.LiveTransferStat {
+			if masterBridge == nil {
+				return nil
+			}
+			stats := masterBridge.GetLiveTransferStats()
+			out := make([]plugin.LiveTransferStat, 0, len(stats))
+			for _, stat := range stats {
+				out = append(out, plugin.LiveTransferStat{
+					SlaveName:     stat.SlaveName,
+					TransferIndex: stat.TransferIndex,
+					Direction:     stat.Direction,
+					Path:          stat.Path,
+					StartedAt:     stat.StartedAt,
+					Transferred:   stat.Transferred,
+					SpeedBytes:    stat.SpeedBytes,
+				})
+			}
+			return out
+		},
+		AbortTransfer: func(slaveName string, transferIndex int32, reason string) bool {
+			if masterBridge == nil {
+				return false
+			}
+			return masterBridge.AbortTransfer(slaveName, transferIndex, reason)
+		},
 		EmitEvent: func(eventType, eventPath, filename, section string, size int64, speed float64, data map[string]string) {
 			core.PublishEvent(cfg, core.Event{
 				Type:      core.EventType(eventType),
@@ -301,6 +343,8 @@ func main() {
 			p = request.New()
 		case "speedtest":
 			p = speedtest.New()
+		case "slowupkick":
+			p = slowupkick.New()
 		default:
 			log.Printf("[PLUGINS] Unknown plugin: %s (add a case in cmd/goftpd/main.go)", pluginName)
 			continue
@@ -494,6 +538,25 @@ func stringSliceFromCfg(m map[string]interface{}, key string) []string {
 	default:
 		return nil
 	}
+}
+
+func stringFromCfg(m map[string]interface{}, key, def string) string {
+	if m == nil {
+		return def
+	}
+	v, ok := m[key]
+	if !ok {
+		return def
+	}
+	s, ok := v.(string)
+	if !ok {
+		return def
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return def
+	}
+	return s
 }
 
 func stringSliceFromPluginConfig(raw interface{}) []string {

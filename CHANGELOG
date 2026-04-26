@@ -1,0 +1,102 @@
+GoFTPd Changelog
+================
+
+1.0.6b
+------
+
+- Unreleased changes go here.
+
+1.0.5b
+------
+
+- Reworked the in-memory VFS so directory listings use direct child indexes
+  instead of broad global scans.
+- Added cached race-state reads and RaceDB-backed release search to reduce
+  hot-path overhead during browsing and racing.
+- Switched the shipped ACL examples to root-based paths (`/PRE`, `/MP3`, etc.)
+  and cleaned up the structured permissions examples.
+- Moved PRE affil visibility management fully into the PRE plugin so
+  `affils.yml` stays the source of truth and generated ACL rules stay in sync.
+- Added slave-control hardening:
+  - IP allowlist support
+  - auth-failure temp bans
+  - persistent denylist file
+  - `SITE SLAVEBANS`, `SITE SLAVEBAN`, and `SITE SLAVEUNBAN`
+- Added the built-in `slowupkick` plugin to warn and kick slow uploaders and
+  downloaders, with staff-channel announcements.
+- Added DH1080 auto-exchange for encrypted PM/NOTICE traffic in the sitebot.
+- Fixed a race where very fast slave acknowledgements could arrive before the
+  master had registered its waiter, causing random upload timeout failures.
+- Fixed zip zipscript handling for `0DAY` and `EBOOKS`:
+  - blocks manual `file_id.diz` uploads
+  - extracts `file_id.diz` from uploaded archives
+  - parses more real-world DIZ count formats
+  - uses the recovered count for progress, halfway, and complete banners
+- Fixed missing or inconsistent `NEW` announces by synthesizing `NEW` from the
+  first real upload when a clean `MKDIR` announce was missed.
+- Fixed dated-dir announce handling for layouts such as
+  `/0DAY/2026-04-26/release/`.
+- Fixed section resolution for nested roots like `FOREIGN`, `PRE`, and
+  `ARCHIVE` so announces route to the correct child section.
+- Fixed `SITE RESCAN` for audio releases so cached music metadata such as genre
+  and year is refreshed again for complete banners.
+- Fixed parent incomplete markers for zip releases.
+- Fixed root and section banner leakage so race banners only appear where they
+  make sense, and made the normal CWD banner configurable.
+- Fixed topic command behavior and PM encryption flow in the sitebot.
+
+1.0.4b
+------
+
+- Added the built-in zipscript module with tighter ZIP and SFV handling.
+- Added `SITE BW` plus sitebot `!bw`.
+- Added `SITE REMERGE`.
+- Added request plugin improvements and public request handling.
+- Added configurable log mirroring and log retention controls.
+- Added music genre to COMPLETE banners.
+- Added section directory creation on slaves and better request visibility on
+  CWD.
+- Fixed nested section routing and release detection for sitebot announces.
+- Fixed incomplete markers for dated release dirs and section roots.
+- Fixed private-path event suppression and improved normal-user listing
+  behavior.
+
+1.0.3b
+------
+
+- Introduced the unified `setup.sh` flow and split plugin configs into
+  `config.yml.dist` templates.
+- Added setup-driven TLS certificate generation and more complete interactive
+  config handling.
+- Added self-service IP management and autonuke support.
+- Added version propagation into startup banners and media banners.
+- Added built-in site user and group management improvements.
+- Improved logging defaults, disabled debug in shipped examples, and tightened
+  rehash output.
+- Improved race stat formatting and restored cached SFV state during reconcile.
+
+1.0.2b
+------
+
+- Large architecture refresh of daemon and sitebot internals.
+- Added async plugin flow, unified config layout, and broader IRC output
+  cleanup.
+- Added `SITE PRE`, PREBW support, dated sections, `SITE REHASH`, and
+  `SITE INVITE`.
+- Added MLST/MLSD support and cbftp-related listing fixes.
+- Added metadata lookup groundwork and IMDb rewrite work.
+- Improved race speed handling and general announce routing.
+
+1.0.1b
+------
+
+- Fixed bcrypt password handling.
+- Fixed wrong output from several SITE commands.
+- Improved race rendering and race database plumbing.
+- Expanded site user management behavior.
+
+1.0.0b
+------
+
+- Initial beta baseline for the current GoFTPd codebase.
+- Core FTP daemon, sitebot, VFS, ACL, and race-tracking foundations in place.

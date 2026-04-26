@@ -103,6 +103,12 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 		return s.HandleSiteRehash(remainingArgs)
 	case "REMERGE":
 		return s.HandleSiteRemerge(remainingArgs)
+	case "SLAVEBANS":
+		return s.HandleSiteSlaveBans(remainingArgs)
+	case "SLAVEBAN":
+		return s.HandleSiteSlaveBan(remainingArgs)
+	case "SLAVEUNBAN":
+		return s.HandleSiteSlaveUnban(remainingArgs)
 
 	// Miscellaneous (site_misc.go / site_race.go)
 	case "RACE":
@@ -174,6 +180,9 @@ func requiredSiteCommandFlags(command string) string {
 		"CHMOD",
 		"REHASH",
 		"REMERGE",
+		"SLAVEBANS",
+		"SLAVEBAN",
+		"SLAVEUNBAN",
 		"ADDAFFIL",
 		"DELAFFIL":
 		return "1"

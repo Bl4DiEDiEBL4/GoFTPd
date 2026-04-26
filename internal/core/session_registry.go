@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"goftpd/internal/acl"
+	"goftpd/internal/plugin"
 )
 
 type sessionSnapshot struct {
 	ID                uint64
 	User              string
+	PrimaryGroup      string
 	Flags             string
 	Remote            string
 	CurrentDir        string
@@ -68,6 +70,7 @@ func listActiveSessions() []sessionSnapshot {
 		s.stateMu.RUnlock()
 		if s.IsLogged && s.User != nil {
 			snap.User = s.User.Name
+			snap.PrimaryGroup = s.User.PrimaryGroup
 			snap.Flags = s.User.Flags
 		}
 		out = append(out, snap)
@@ -75,6 +78,47 @@ func listActiveSessions() []sessionSnapshot {
 	})
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
+}
+
+func ListActiveSessionsForPlugins() []plugin.ActiveSession {
+	snaps := listActiveSessions()
+	out := make([]plugin.ActiveSession, 0, len(snaps))
+	for _, snap := range snaps {
+		out = append(out, plugin.ActiveSession{
+			ID:                snap.ID,
+			User:              snap.User,
+			PrimaryGroup:      snap.PrimaryGroup,
+			Flags:             snap.Flags,
+			Remote:            snap.Remote,
+			CurrentDir:        snap.CurrentDir,
+			StartedAt:         snap.StartedAt,
+			LastCommandAt:     snap.LastCommandAt,
+			LoggedIn:          snap.LoggedIn,
+			TransferDirection: snap.TransferDirection,
+			TransferPath:      snap.TransferPath,
+			TransferBytes:     snap.TransferBytes,
+			TransferStartedAt: snap.TransferStartedAt,
+			TransferSlaveName: snap.TransferSlaveName,
+			TransferSlaveIdx:  snap.TransferSlaveIdx,
+		})
+	}
+	return out
+}
+
+func DisconnectActiveSession(id uint64) bool {
+	if id == 0 {
+		return false
+	}
+	val, ok := activeSessions.Load(id)
+	if !ok {
+		return false
+	}
+	s, ok := val.(*Session)
+	if !ok || s == nil || s.Conn == nil {
+		return false
+	}
+	_ = s.Conn.Close()
+	return true
 }
 
 func kickActiveUser(username string) int {

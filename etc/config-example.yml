@@ -12,7 +12,7 @@
 # =============================================================================
 sitename_long:  "GoFTPd"        # Full site name, shown in FTP banners
 sitename_short: "GoFTPd"            # 2-3 char site tag used in race stats
-version:        "1.0.4b"        # Displayed in FEAT / LIST headers
+version:        "1.0.5b"        # Displayed in FEAT / LIST headers
 timezone:       "Europe/Amsterdam" # IANA timezone for FTP LIST/MLSD/MDTM and dated dirs; empty/"Local" uses OS local time
 show_cwd_banner: true           # Show the GoFTPd logo banner on CWD when there is no actual race data.
                                 # Real race-stat banners are still shown regardless of this setting.
@@ -40,6 +40,8 @@ master:
   slave_allowlist: []           # Optional IP/CIDR allowlist for slave control connections.
                                 # Leave empty to allow any source to attempt the slave handshake.
                                 # Example: ["203.0.113.10", "2001:db8::10", "203.0.113.0/24"]
+  slave_denylist_file: "etc/slave_denylist.txt" # Persistent exact IP / CIDR denylist for the slave control port.
+                                # Managed manually or via SITE SLAVEBAN / SLAVEUNBAN / SLAVEBANS.
   heartbeat_timeout: 60         # Seconds before the master marks a silent slave offline.
                                 # The master will try a ping at about half this interval.
   slave_auth_fail_limit: 2      # Built-in guard for bad slave-port handshakes.
@@ -234,6 +236,8 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 #    request - handles SITE REQUEST/REQUESTS/REQFILL/REQDEL/REQWIPE
 #    speedtest - creates /SPEEDTEST/100MB, 500MB, 1000MB and
 #                emits SPEEDTEST announces without applying credits
+#    slowupkick - aborts and kicks uploads that stay too slow for too long,
+#                 letting racing slots free up for other users
 #
 #  To add your own plugin:
 #    1. Create /plugins/<name>/handler.go implementing plugin.Plugin
@@ -461,6 +465,12 @@ plugins:
   speedtest:
     enabled: true
     config_file: "plugins/speedtest/config.yml"
+  slowupkick:
+    enabled: false
+    # Kicks uploads that stay below a configured speed floor for too long.
+    # The slave aborts the transfer first, so partial files are cleaned up
+    # instead of being left behind as incomplete junk.
+    config_file: "plugins/slowupkick/config.yml"
   request:
     enabled: true
     # TUR-style request manager:
