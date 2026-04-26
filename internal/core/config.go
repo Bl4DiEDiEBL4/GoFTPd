@@ -117,6 +117,7 @@ type Config struct {
 	DisplaySize  string `yaml:"display_size_unit"`
 	DisplaySpeed string `yaml:"display_speed_unit"`
 	ColorMode    int    `yaml:"color_mode"`
+	ShowCWDBanner bool  `yaml:"show_cwd_banner"`
 	// Nuke
 	NukeMaxMultiplier int              `yaml:"nuke_max_multiplier"`
 	NukeDirStyle      string           `yaml:"nukedir_style"`
@@ -176,6 +177,11 @@ func LoadConfig(filePath string) (*Config, error) {
 	cfg := &Config{}
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, err
+	}
+	raw := map[string]interface{}{}
+	_ = yaml.Unmarshal(data, &raw)
+	if _, ok := raw["show_cwd_banner"]; !ok {
+		cfg.ShowCWDBanner = true
 	}
 	if err := resolvePluginConfigFiles(cfg.Plugins, filepath.Dir(filePath)); err != nil {
 		return nil, err

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"path"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -539,13 +540,14 @@ func shouldEmitSyntheticNew(evt *event.Event, section string) bool {
 }
 
 func isDateDir(name string) bool {
-	if len(name) != 4 {
-		return false
-	}
-	for _, r := range name {
-		if r < '0' || r > '9' {
-			return false
+	name = strings.TrimSpace(name)
+	if len(name) == 4 {
+		for _, r := range name {
+			if r < '0' || r > '9' {
+				return false
+			}
 		}
+		return true
 	}
-	return true
+	return regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$|^\d{8}$`).MatchString(name)
 }

@@ -384,7 +384,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					for _, line := range strings.Split(strings.TrimRight(builder.String(), "\r\n"), "\n") {
 						fmt.Fprintf(s.Conn, "250-%s\r\n", line)
 					}
-				} else {
+				} else if s.Config.ShowCWDBanner {
 					var builder strings.Builder
 					RenderRaceHeader(&builder, s.Config.Version)
 					for _, line := range strings.Split(strings.TrimRight(builder.String(), "\r\n"), "\n") {
@@ -1664,8 +1664,17 @@ func incompleteMarkerEntries(bridge MasterBridge, cfg *Config, pattern, dirPath 
 		if zipscript.IsIgnoredReleaseSubdir(cfg.Zipscript, releasePath) {
 			continue
 		}
-		_, _, _, present, total := bridge.GetVFSRaceStats(releasePath)
 		releaseEntries := bridge.ListDir(releasePath)
+		present, total := 0, 0
+		if zipscript.UsesZip(cfg.Zipscript, releasePath) {
+			expected := zipExpectedPartsFromDIZ(bridge, releasePath)
+			_, _, present = zipDirRaceStats(releaseEntries, expected)
+			if expected > 0 {
+				total = expected
+			}
+		} else {
+			_, _, _, present, total = bridge.GetVFSRaceStats(releasePath)
+		}
 
 		noSFVPattern := zipscript.NoSFVIndicator(cfg.Zipscript)
 		if noSFVPattern != "" && !zipscript.UsesZip(cfg.Zipscript, releasePath) && !hasSFVEntry(releaseEntries) {

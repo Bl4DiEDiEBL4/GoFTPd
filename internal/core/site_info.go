@@ -142,11 +142,13 @@ func (s *Session) HandleSiteRules(args []string) bool {
 	if err != nil {
 		fmt.Fprintf(s.Conn, "550 Rules not available\r\n")
 	} else {
+		fmt.Fprintf(s.Conn, "214- SITE RULES\r\n")
 		for _, line := range strings.Split(rules, "\n") {
 			if strings.TrimSpace(line) != "" {
-				fmt.Fprintf(s.Conn, "%s\r\n", line)
+				fmt.Fprintf(s.Conn, "214- %s\r\n", line)
 			}
 		}
+		fmt.Fprintf(s.Conn, "214 End of RULES\r\n")
 	}
 	return false
 }

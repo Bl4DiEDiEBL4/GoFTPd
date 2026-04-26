@@ -202,14 +202,12 @@ func RenderRaceStats(w io.Writer, users []VFSRaceUser, groups []VFSRaceGroup, to
 	width := 70
 
 	raw(w, line(cpTL, cpHZ, cpTR, width))
-	text(w, fmt.Sprintf(" You are using GoFTPd v%s ", version), width)
-	text(w, "", width)
 	text(w, "   ____       _____ _____ ____     _  ", width)
 	text(w, "  / ___| ___ |  ___|_   _|  _ \\ __| | ", width)
 	text(w, " | |  _ / _ \\| |_    | | | |_) / _` | ", width)
 	text(w, " | |_| | (_) |  _|   | | |  __/ (_| | ", width)
 	text(w, "  \\____|\\___/|_|     |_| |_|   \\__,_| ", width)
-	text(w, "", width)
+	text(w, fmt.Sprintf(" You are using GoFTPd v%s ", version), width)
 
 	// Junction = top-T: the section above is a single-wide block (ASCII art),
 	// so column dividers start here and only go DOWNWARD. Using cpCR here
@@ -276,14 +274,12 @@ func RenderRaceHeader(w io.Writer, version string) {
 	width := 70
 
 	raw(w, line(cpTL, cpHZ, cpTR, width))
-	text(w, fmt.Sprintf(" You are using GoFTPd v%s ", version), width)
-	text(w, "", width)
 	text(w, "   ____       _____ _____ ____     _  ", width)
 	text(w, "  / ___| ___ |  ___|_   _|  _ \\ __| | ", width)
 	text(w, " | |  _ / _ \\| |_    | | | |_) / _` | ", width)
 	text(w, " | |_| | (_) |  _|   | | |  __/ (_| | ", width)
 	text(w, "  \\____|\\___/|_|     |_| |_|   \\__,_| ", width)
-	text(w, "", width)
+	text(w, fmt.Sprintf(" You are using GoFTPd v%s ", version), width)
 	raw(w, line(cpBL, cpHZ, cpBR, width))
 }
 
