@@ -483,10 +483,10 @@ plugins:
     config_file: "plugins/slowupkick/config.yml"
   spacekeeper:
     enabled: false
-    # Combined free-space and archive policy plugin. The detailed rule file can
-    # turn the free-space cleanup side and the archive-move side on/off
-    # separately, while still using virtual FTP paths instead of devices or
-    # physical disk paths.
+    # Free-space and archive policy plugin using virtual FTP paths.
+    # In plugins/spacekeeper/config.yml:
+    #   - delete_oldest rules do not use destination
+    #   - archive_oldest rules do use destination
     config_file: "plugins/spacekeeper/config.yml"
   request:
     enabled: true

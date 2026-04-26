@@ -16,6 +16,7 @@ type rule struct {
 	Name             string
 	Slave            string
 	Action           string
+	DeleteFallback   bool
 	Paths            []string
 	Destination      string
 	TargetSlaves     []string
@@ -141,12 +142,7 @@ func (h *Handler) evaluate(now time.Time) {
 			if !h.enableArchive {
 				continue
 			}
-			h.applyMoveRule(rule, state, now, activeTransfers)
-		case "archive_or_delete":
-			if !h.enableFreeSpace && !h.enableArchive {
-				continue
-			}
-			h.applyArchiveOrDeleteRule(rule, state, now, activeTransfers)
+			h.applyArchiveRule(rule, state, now, activeTransfers)
 		default:
 			h.logf("rule %q uses unsupported action %q, skipping", rule.Name, rule.Action)
 		}
@@ -189,7 +185,7 @@ func (h *Handler) applyDeleteRule(rule rule, state plugin.SlaveState, now time.T
 	}
 }
 
-func (h *Handler) applyMoveRule(rule rule, state plugin.SlaveState, now time.Time, activeTransfers []string) {
+func (h *Handler) applyArchiveRule(rule rule, state plugin.SlaveState, now time.Time, activeTransfers []string) {
 	if state.FreeBytes >= rule.TriggerFreeBytes {
 		return
 	}
@@ -206,30 +202,7 @@ func (h *Handler) applyMoveRule(rule rule, state plugin.SlaveState, now time.Tim
 		if !h.markInflight(cand.Path, now) {
 			break
 		}
-		h.startArchiveJob(rule, state, cand, false)
-		estimatedFree += cand.Bytes
-		actions++
-	}
-}
-
-func (h *Handler) applyArchiveOrDeleteRule(rule rule, state plugin.SlaveState, now time.Time, activeTransfers []string) {
-	if state.FreeBytes >= rule.TriggerFreeBytes {
-		return
-	}
-	estimatedFree := state.FreeBytes
-	actions := 0
-	for estimatedFree < rule.TargetFreeBytes && actions < rule.MaxActions {
-		cand, ok := h.findOldestCandidate(rule, now, activeTransfers)
-		if !ok {
-			if actions == 0 {
-				h.logf("rule %q found nothing eligible on slave %s", rule.Name, rule.Slave)
-			}
-			break
-		}
-		if !h.markInflight(cand.Path, now) {
-			break
-		}
-		h.startArchiveJob(rule, state, cand, true)
+		h.startArchiveJob(rule, state, cand)
 		estimatedFree += cand.Bytes
 		actions++
 	}
@@ -253,7 +226,7 @@ func (h *Handler) archiveCandidate(fromPath, toDir, toName, targetSlave string) 
 	return fmt.Errorf("rename did not materialize target %s", targetPath)
 }
 
-func (h *Handler) startArchiveJob(rule rule, state plugin.SlaveState, cand candidate, deleteFallback bool) {
+func (h *Handler) startArchiveJob(rule rule, state plugin.SlaveState, cand candidate) {
 	destDir := cleanAbs(rule.Destination)
 	destName := path.Base(cand.Path)
 	targetPlan, targetErr := h.chooseArchiveTarget(rule, cand.Bytes)
@@ -286,7 +259,7 @@ func (h *Handler) startArchiveJob(rule rule, state plugin.SlaveState, cand candi
 			}
 			return
 		}
-		if !deleteFallback || !h.enableFreeSpace {
+		if !rule.DeleteFallback || !h.enableFreeSpace {
 			h.logf("rule %q failed moving %s -> %s/%s: %v", rule.Name, cand.Path, destDir, destName, err)
 			return
 		}
@@ -522,7 +495,7 @@ func (h *Handler) evaluateCandidate(rule rule, dirPath string, modTime int64, no
 	if isDateBucketName(base) {
 		return candidate{}, false
 	}
-	if strings.EqualFold(rule.Action, "archive_oldest") || strings.EqualFold(rule.Action, "archive_or_delete") {
+	if strings.EqualFold(rule.Action, "archive_oldest") {
 		destDir := cleanAbs(rule.Destination)
 		destPath := cleanAbs(path.Join(destDir, path.Base(dirPath)))
 		if destDir == "" || destDir == "/" || h.svc.Bridge.FileExists(destPath) {
@@ -656,6 +629,7 @@ func parseRules(raw interface{}) []rule {
 			Name:             stringValue(cfg, "name", fmt.Sprintf("rule-%d", idx+1)),
 			Slave:            strings.TrimSpace(stringValue(cfg, "slave", "")),
 			Action:           strings.ToLower(strings.TrimSpace(stringValue(cfg, "action", "delete_oldest"))),
+			DeleteFallback:   boolValue(cfg, "delete_fallback", false),
 			Paths:            paths,
 			Destination:      cleanAbs(stringValue(cfg, "destination", "")),
 			TargetSlaves:     stringSliceConfig(cfg["target_slaves"]),
@@ -675,10 +649,6 @@ func parseRules(raw interface{}) []rule {
 				continue
 			}
 		case "archive_oldest":
-			if r.Destination == "" || r.TriggerFreeBytes <= 0 || r.TargetFreeBytes <= r.TriggerFreeBytes {
-				continue
-			}
-		case "archive_or_delete":
 			if r.Destination == "" || r.TriggerFreeBytes <= 0 || r.TargetFreeBytes <= r.TriggerFreeBytes {
 				continue
 			}

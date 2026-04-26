@@ -320,8 +320,10 @@ reported free space per slave and, when a configured slave falls below its
 trigger threshold, deletes the oldest eligible releases from the configured
 virtual FTP paths until the target threshold is reached or nothing else is
 safe to touch. It also supports archive-style relocation into a destination
-path and an `archive_or_delete` fallback policy for low-space cleanup. The
-two sides can be switched independently with
+path through `archive_oldest` rules. If you want an archive rule to delete
+the source release when archiving fails, set `delete_fallback: true` on that
+archive rule. Delete rules do not use `destination` at all. The two sides can
+be switched independently with
 `enable_freespace_actions` and `enable_archive_actions`, and both skip active
 transfers and incomplete releases by default. Dated bucket directories such as
 `0426`, `20260426`, and `2026-04-26` are skipped as cleanup/archive targets.
@@ -335,6 +337,33 @@ slave from that list explicitly. If no listed archive slave currently has
 enough room for the incoming release, spacekeeper will try to free room on one
 of those archive slaves by deleting the oldest archived releases already under
 that rule's destination path until the new release fits.
+
+Example delete rule:
+
+```yml
+- name: "0day-delete"
+  slave: "SLAVE1"
+  action: "delete_oldest"
+  paths:
+    - "/0DAY/*/*"
+  trigger_free_gb: 30
+  target_free_gb: 50
+```
+
+Example archive rule:
+
+```yml
+- name: "0day-archive"
+  slave: "SLAVE1"
+  action: "archive_oldest"
+  destination: "/ARCHiVE/0DAY"
+  delete_fallback: true
+  target_slaves: ["ARCHIVE1", "ARCHIVE2"]
+  paths:
+    - "/0DAY/*/*"
+  trigger_free_gb: 30
+  target_free_gb: 50
+```
 
 ### PRE And Affils
 
