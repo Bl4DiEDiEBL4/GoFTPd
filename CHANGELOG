@@ -4,9 +4,9 @@ GoFTPd Changelog
 1.0.6b
 ------
 
-- Added short post-kick tempbans to `slowupkick` so slow users cannot
+- Added short post-kick tempbans to `slowkick` so slow users cannot
   reconnect immediately and reclaim the same race slot.
-- Extended `slowupkick` to watch slow downloads too, with separate
+- Extended `slowkick` to watch slow downloads too, with separate
   upload/download thresholds and staff-channel announce events.
 - Added the first `spacekeeper` daemon plugin as a master-side free-space
   cleaner that deletes the oldest eligible releases from configured virtual
@@ -40,7 +40,7 @@ GoFTPd Changelog
   - auth-failure temp bans
   - persistent denylist file
   - `SITE SLAVEBANS`, `SITE SLAVEBAN`, and `SITE SLAVEUNBAN`
-- Added the built-in `slowupkick` plugin to warn and kick slow uploaders and
+- Added the built-in `slowkick` plugin to warn and kick slow uploaders and
   downloaders, with staff-channel announcements.
 - Added DH1080 auto-exchange for encrypted PM/NOTICE traffic in the sitebot.
 - Fixed a race where very fast slave acknowledgements could arrive before the

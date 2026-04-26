@@ -29,7 +29,7 @@ import (
 	"goftpd/plugins/pre"
 	"goftpd/plugins/releaseguard"
 	"goftpd/plugins/request"
-	"goftpd/plugins/slowupkick"
+	"goftpd/plugins/slowkick"
 	"goftpd/plugins/spacekeeper"
 	"goftpd/plugins/speedtest"
 	"goftpd/plugins/tvmaze"
@@ -371,8 +371,8 @@ func main() {
 			p = request.New()
 		case "speedtest":
 			p = speedtest.New()
-		case "slowupkick":
-			p = slowupkick.New()
+		case "slowkick":
+			p = slowkick.New()
 		case "spacekeeper":
 			p = spacekeeper.New()
 		default:

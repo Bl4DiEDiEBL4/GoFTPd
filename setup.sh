@@ -352,7 +352,7 @@ ensure_enabled_plugin_configs() {
     local repaired_any="false"
     local missing_any="false"
 
-    local daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre slowupkick spacekeeper)
+local daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre slowkick spacekeeper)
     if [ -f "${daemon_config}" ]; then
         for plugin_name in "${daemon_plugins[@]}"; do
             enabled_value="$(daemon_plugin_enabled_in_config "${daemon_config}" "${plugin_name}")"
@@ -958,7 +958,7 @@ configure_daemon() {
     local daemon_enabled=()
     local daemon_disabled=()
     if [ "${daemon_mode}" = "master" ]; then
-        daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre slowupkick spacekeeper)
+daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre slowkick spacekeeper)
     fi
 
     local plugin_name

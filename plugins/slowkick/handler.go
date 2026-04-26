@@ -1,4 +1,4 @@
-package slowupkick
+package slowkick
 
 import (
 	"fmt"
@@ -64,7 +64,7 @@ func New() *Handler {
 	}
 }
 
-func (h *Handler) Name() string { return "slowupkick" }
+func (h *Handler) Name() string { return "slowkick" }
 
 func (h *Handler) Init(svc *plugin.Services, cfg map[string]interface{}) error {
 	h.svc = svc
@@ -419,10 +419,10 @@ func (h *Handler) pruneCandidates(active map[uint64]struct{}) {
 func (h *Handler) logf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
 	if h.svc != nil && h.svc.Logger != nil {
-		h.svc.Logger.Printf("[SLOWUPKICK] %s", msg)
+		h.svc.Logger.Printf("[SLOWKICK] %s", msg)
 		return
 	}
-	log.Printf("[SLOWUPKICK] %s", msg)
+	log.Printf("[SLOWKICK] %s", msg)
 }
 
 func (h *Handler) emitSlowEvent(eventType string, snap plugin.ActiveSession, speed float64, policy transferPolicy) {
