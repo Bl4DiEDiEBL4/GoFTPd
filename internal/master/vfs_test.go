@@ -237,3 +237,25 @@ func TestVFSRelocateFileMovesOwnership(t *testing.T) {
 		t.Fatalf("expected sfv metadata to move with relocate")
 	}
 }
+
+func TestSetProtectedDirsOnlyKeepsConfiguredRootDirs(t *testing.T) {
+	vfs := NewVirtualFileSystem()
+
+	vfs.AddFile("/X264", VFSFile{IsDir: true, Seen: true, SlaveName: "SLAVE1", LastModified: 100})
+	vfs.AddFile("/X265", VFSFile{IsDir: true, Seen: true, SlaveName: "SLAVE1", LastModified: 100})
+
+	vfs.SetProtectedDirs([]string{"/X265"})
+	vfs.MarkAllUnseen("SLAVE1")
+	vfs.PurgeUnseen("SLAVE1")
+
+	if stale := vfs.GetFile("/X264"); stale != nil {
+		t.Fatalf("expected stale unconfigured root dir /X264 to be purged, got %+v", stale)
+	}
+	kept := vfs.GetFile("/X265")
+	if kept == nil {
+		t.Fatalf("expected configured protected dir /X265 to remain")
+	}
+	if kept.SlaveName != "" {
+		t.Fatalf("expected protected dir /X265 to be detached from slave ownership, got %+v", kept)
+	}
+}
