@@ -306,8 +306,8 @@ func (p *Plugin) handleStaffCommand(evt *event.Event) ([]plugin.Output, error) {
 	username := strings.TrimSpace(args[1])
 	if username == "" {
 		return p.reply(evt, p.render("QUOTACMD_USAGE", map[string]string{
-			"response": "!ft <trial|quota|extend|delete> <username> [days]",
-		}, "QUOTA: usage: !ft <trial|quota|extend|delete> <username> [days]")), nil
+			"response": p.staffUsage(),
+		}, "QUOTA: usage: "+p.staffUsage())), nil
 	}
 
 	var line string

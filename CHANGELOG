@@ -23,7 +23,7 @@ GoFTPd Changelog
   SQLite, MySQL, or HTTP/JSON sources and append `NEWPRETIME` /
   `OLDPRETIME` announces for new release dirs.
 - Added a sitebot-side `quota` plugin for trial/quota tracking, staff
-  `!ft` management, and disabled-user enforcement tied to flag `6`.
+  `!quotactl` management, and disabled-user enforcement tied to flag `6`.
 - Fixed `SITE RESCAN` for music sorting so refreshed audio metadata also
   rebuilds the genre/artist/year/group sort-tree links.
 - Made music sort buckets section-aware by default so MP3 and FLAC no longer
