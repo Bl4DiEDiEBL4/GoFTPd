@@ -328,6 +328,22 @@ daemon_plugin_enabled_in_config() {
     ' "${file}"
 }
 
+daemon_plugin_present_in_config() {
+    local file="$1"
+    local plugin_name="$2"
+    awk -v plugin_name="${plugin_name}" '
+        BEGIN { in_plugins = 0 }
+        /^plugins:$/ { in_plugins = 1; next }
+        in_plugins && $0 ~ ("^  " plugin_name ":$") { found = 1; exit }
+        in_plugins && /^[^[:space:]#]/ { exit }
+        END {
+            if (found) {
+                print "true"
+            }
+        }
+    ' "${file}"
+}
+
 sitebot_plugin_enabled_in_config() {
     local file="$1"
     local plugin_name="$2"
@@ -341,6 +357,23 @@ sitebot_plugin_enabled_in_config() {
             gsub(/[[:space:]]+/, "", value)
             print value
             exit
+        }
+    ' "${file}"
+}
+
+sitebot_plugin_present_in_config() {
+    local file="$1"
+    local plugin_name="$2"
+    awk -v plugin_name="${plugin_name}" '
+        BEGIN { in_plugins = 0; in_enabled = 0 }
+        /^plugins:$/ { in_plugins = 1; next }
+        in_plugins && /^  enabled:$/ { in_enabled = 1; next }
+        in_enabled && $0 ~ ("^    " plugin_name ":[[:space:]]+") { found = 1; exit }
+        in_enabled && /^  config:$/ { exit }
+        END {
+            if (found) {
+                print "true"
+            }
         }
     ' "${file}"
 }
@@ -505,6 +538,39 @@ set_daemon_plugin_enabled() {
     mv "${file}.tmp" "${file}"
 }
 
+ensure_daemon_plugin_entry() {
+    local file="$1"
+    local plugin_name="$2"
+    local config_file="$3"
+    if [ "$(daemon_plugin_present_in_config "${file}" "${plugin_name}")" = "true" ]; then
+        return 0
+    fi
+    awk -v plugin_name="${plugin_name}" -v config_file="${config_file}" '
+        BEGIN { in_plugins = 0; inserted = 0 }
+        /^plugins:$/ {
+            in_plugins = 1
+            print
+            next
+        }
+        in_plugins && /^[^[:space:]#]/ && !inserted {
+            print "  " plugin_name ":"
+            print "    enabled: false"
+            print "    config_file: \"" config_file "\""
+            inserted = 1
+            in_plugins = 0
+        }
+        { print }
+        END {
+            if (in_plugins && !inserted) {
+                print "  " plugin_name ":"
+                print "    enabled: false"
+                print "    config_file: \"" config_file "\""
+            }
+        }
+    ' "${file}" > "${file}.tmp"
+    mv "${file}.tmp" "${file}"
+}
+
 set_sitebot_plugin_enabled() {
     local file="$1"
     local plugin_name="$2"
@@ -519,6 +585,41 @@ set_sitebot_plugin_enabled() {
             next
         }
         { print }
+    ' "${file}" > "${file}.tmp"
+    mv "${file}.tmp" "${file}"
+}
+
+ensure_sitebot_plugin_enabled_entry() {
+    local file="$1"
+    local plugin_name="$2"
+    if [ "$(sitebot_plugin_present_in_config "${file}" "${plugin_name}")" = "true" ]; then
+        return 0
+    fi
+    awk -v plugin_name="${plugin_name}" '
+        BEGIN { in_plugins = 0; in_enabled = 0; inserted = 0 }
+        /^plugins:$/ {
+            in_plugins = 1
+            print
+            next
+        }
+        in_plugins && /^  enabled:$/ {
+            in_enabled = 1
+            print
+            next
+        }
+        in_enabled && /^  config:$/ && !inserted {
+            print "    " plugin_name ": false"
+            inserted = 1
+            in_enabled = 0
+            print
+            next
+        }
+        { print }
+        END {
+            if (in_enabled && !inserted) {
+                print "    " plugin_name ": false"
+            }
+        }
     ' "${file}" > "${file}.tmp"
     mv "${file}.tmp" "${file}"
 }
@@ -982,6 +1083,7 @@ daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request relea
             enabled_bool="false"
         fi
         printf -v "${var_name}" '%s' "${enabled_bool}"
+        ensure_daemon_plugin_entry "${daemon_config}" "${plugin_name}" "$(daemon_plugin_config_path "${plugin_name}")"
         set_daemon_plugin_enabled "${daemon_config}" "${plugin_name}" "${enabled_bool}"
         if [ "${enabled_bool}" = "true" ]; then
             daemon_enabled+=("${plugin_name}")
@@ -1237,6 +1339,7 @@ configure_sitebot() {
             enabled_bool="false"
         fi
         printf -v "${var_name}" '%s' "${enabled_bool}"
+        ensure_sitebot_plugin_enabled_entry "${sitebot_config}" "${plugin_name}"
         set_sitebot_plugin_enabled "${sitebot_config}" "${plugin_name}" "${enabled_bool}"
         if [ "${enabled_bool}" = "true" ]; then
             sitebot_enabled+=("${plugin_name}")
