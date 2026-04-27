@@ -257,3 +257,18 @@ func TestSetProtectedDirsPrunesStaleUnownedRootDirs(t *testing.T) {
 		t.Fatalf("expected protected dir /X265 to be detached from slave ownership, got %+v", kept)
 	}
 }
+
+func TestVFSResolvePathFollowsSymlinkSegments(t *testing.T) {
+	vfs := NewVirtualFileSystem()
+
+	vfs.AddFile("/FLAC", VFSFile{IsDir: true, Seen: true})
+	vfs.AddFile("/FLAC/2026-04-27", VFSFile{IsDir: true, Seen: true})
+	vfs.AddFile("/FLAC/2026-04-27/Release-GRP", VFSFile{IsDir: true, Seen: true})
+	vfs.AddSymlink("/!Today_FLAC", "/FLAC/2026-04-27")
+
+	got := vfs.ResolvePath("/!Today_FLAC/Release-GRP/file.r01")
+	want := "/FLAC/2026-04-27/Release-GRP/file.r01"
+	if got != want {
+		t.Fatalf("expected resolved path %s, got %s", want, got)
+	}
+}

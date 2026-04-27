@@ -162,6 +162,33 @@ func releaseName(evt *event.Event) string {
 	return base
 }
 
+func normalizeReleaseDisplayName(evt *event.Event, current string) string {
+	current = strings.TrimSpace(current)
+	if current != "" && current != "." && current != "/" {
+		return current
+	}
+	if evt == nil {
+		return current
+	}
+	if evt.Path != "" {
+		clean := path.Clean("/" + strings.TrimSpace(evt.Path))
+		if clean != "/" && clean != "." {
+			if evt.Type == event.EventUpload || evt.Type == event.EventDownload {
+				if parent := strings.TrimSpace(path.Base(path.Dir(clean))); parent != "" && parent != "." && parent != "/" {
+					return parent
+				}
+			}
+			if base := strings.TrimSpace(path.Base(clean)); base != "" && base != "." && base != "/" {
+				return base
+			}
+		}
+	}
+	if name := strings.TrimSpace(evt.Filename); name != "" && name != "." && name != "/" {
+		return name
+	}
+	return current
+}
+
 func releaseStateKey(evt *event.Event) string {
 	rel := releaseName(evt)
 	if subdir := strings.TrimSpace(evt.Data["release_subdir"]); subdir != "" {
@@ -210,7 +237,7 @@ func speedMB(evt *event.Event) string { return fmt.Sprintf("%.2fMB/s", evt.Speed
 func mb(size int64) string            { return fmt.Sprintf("%.0fMB", float64(size)/1024.0/1024.0) }
 
 func (p *AnnouncePlugin) vars(evt *event.Event) map[string]string {
-	rel := releaseName(evt)
+	rel := normalizeReleaseDisplayName(evt, releaseName(evt))
 	v := map[string]string{
 		"section":     evt.Section,
 		"relname":     rel,
@@ -225,10 +252,8 @@ func (p *AnnouncePlugin) vars(evt *event.Event) map[string]string {
 	for k, val := range evt.Data {
 		v[k] = val
 	}
-	if v["relname"] == "" {
-		v["relname"] = rel
-	}
-	if v["reldir"] == "" {
+	v["relname"] = normalizeReleaseDisplayName(evt, v["relname"])
+	if strings.TrimSpace(v["reldir"]) == "" || strings.TrimSpace(v["reldir"]) == "." || strings.TrimSpace(v["reldir"]) == "/" {
 		v["reldir"] = v["relname"]
 	}
 	if subdir := strings.TrimSpace(evt.Data["release_subdir"]); subdir != "" {

@@ -43,6 +43,7 @@ func TestEvaluateKicksVerifiedSlowUpload(t *testing.T) {
 					SlaveName:     "SLAVE1",
 					TransferIndex: 42,
 					Direction:     "upload",
+					Transferred:   1024,
 					SpeedBytes:    10 * 1024,
 				},
 			}
@@ -124,6 +125,7 @@ func TestEvaluateSkipsExcludedPath(t *testing.T) {
 					SlaveName:     "SLAVE1",
 					TransferIndex: 42,
 					Direction:     "upload",
+					Transferred:   1024,
 					SpeedBytes:    10 * 1024,
 				},
 			}
@@ -188,6 +190,7 @@ func TestEvaluateKicksVerifiedSlowDownload(t *testing.T) {
 					SlaveName:     "SLAVE1",
 					TransferIndex: 99,
 					Direction:     "download",
+					Transferred:   1024,
 					SpeedBytes:    10 * 1024,
 				},
 			}
@@ -300,6 +303,7 @@ func TestEvaluateSkipsFreshZeroSpeedTransfer(t *testing.T) {
 					SlaveName:     "SLAVE1",
 					TransferIndex: 88,
 					Direction:     "upload",
+					Transferred:   0,
 					SpeedBytes:    0,
 				},
 			}
@@ -327,5 +331,131 @@ func TestEvaluateSkipsFreshZeroSpeedTransfer(t *testing.T) {
 	}
 	if len(h.candidates) != 0 {
 		t.Fatalf("did not expect a fresh transfer to enter candidate tracking")
+	}
+}
+
+func TestEvaluateSkipsZeroSpeedTransferWithoutAnyProgress(t *testing.T) {
+	var warned bool
+
+	h := New()
+	h.svc = &plugin.Services{
+		Logger: log.New(os.Stderr, "", 0),
+		ListActiveSessions: func() []plugin.ActiveSession {
+			return []plugin.ActiveSession{
+				{
+					ID:                21,
+					User:              "stillwaiting",
+					PrimaryGroup:      "USERS",
+					LoggedIn:          true,
+					TransferDirection: "upload",
+					TransferPath:      "/BLURAY-UHD/Test.Release-GRP/file.r75",
+					TransferSlaveName: "SLAVE1",
+					TransferSlaveIdx:  144,
+					TransferStartedAt: time.Now().Add(-30 * time.Second),
+					TransferBytes:     0,
+				},
+				{
+					ID:       22,
+					User:     "other",
+					LoggedIn: true,
+				},
+			}
+		},
+		GetLiveTransferStats: func() []plugin.LiveTransferStat {
+			return []plugin.LiveTransferStat{
+				{
+					SlaveName:     "SLAVE1",
+					TransferIndex: 144,
+					Direction:     "upload",
+					StartedAt:     time.Now().Add(-30 * time.Second),
+					Transferred:   0,
+					SpeedBytes:    0,
+				},
+			}
+		},
+		EmitEvent:         func(eventType, eventPath, filename, user string, size int64, speed float64, data map[string]string) { warned = true },
+		AbortTransfer:     func(slaveName string, transferIndex int32, reason string) bool { return true },
+		DisconnectSession: func(id uint64) bool { return true },
+	}
+	h.interval = 5 * time.Second
+	h.monitorUploads = true
+	h.minUploadSpeedBytes = 25 * 1024
+	h.minUsersOnline = 2
+	h.announceWarn = true
+	h.excludeUsers = map[string]struct{}{}
+	h.excludeGroups = map[string]struct{}{}
+	h.excludePaths = normalizePaths([]string{"/PRE", "/REQUESTS", "/SPEEDTEST"})
+	h.candidates = map[uint64]candidate{}
+
+	h.evaluate(time.Now())
+
+	if warned {
+		t.Fatalf("did not expect a warning for a zero-progress transfer")
+	}
+	if len(h.candidates) != 0 {
+		t.Fatalf("did not expect a zero-progress transfer to enter candidate tracking")
+	}
+}
+
+func TestEvaluateWarnsForZeroSpeedTransferAfterProgress(t *testing.T) {
+	var warned bool
+
+	h := New()
+	h.svc = &plugin.Services{
+		Logger: log.New(os.Stderr, "", 0),
+		ListActiveSessions: func() []plugin.ActiveSession {
+			return []plugin.ActiveSession{
+				{
+					ID:                31,
+					User:              "nowstalled",
+					PrimaryGroup:      "USERS",
+					LoggedIn:          true,
+					TransferDirection: "upload",
+					TransferPath:      "/GAMES/Test.Release-GRP/file.r25",
+					TransferSlaveName: "SLAVE1",
+					TransferSlaveIdx:  244,
+					TransferStartedAt: time.Now().Add(-30 * time.Second),
+					TransferBytes:     50 * 1024 * 1024,
+				},
+				{
+					ID:       32,
+					User:     "other",
+					LoggedIn: true,
+				},
+			}
+		},
+		GetLiveTransferStats: func() []plugin.LiveTransferStat {
+			return []plugin.LiveTransferStat{
+				{
+					SlaveName:     "SLAVE1",
+					TransferIndex: 244,
+					Direction:     "upload",
+					StartedAt:     time.Now().Add(-30 * time.Second),
+					Transferred:   50 * 1024 * 1024,
+					SpeedBytes:    0,
+				},
+			}
+		},
+		EmitEvent:         func(eventType, eventPath, filename, user string, size int64, speed float64, data map[string]string) { warned = true },
+		AbortTransfer:     func(slaveName string, transferIndex int32, reason string) bool { return true },
+		DisconnectSession: func(id uint64) bool { return true },
+	}
+	h.interval = 5 * time.Second
+	h.monitorUploads = true
+	h.minUploadSpeedBytes = 25 * 1024
+	h.minUsersOnline = 2
+	h.announceWarn = true
+	h.excludeUsers = map[string]struct{}{}
+	h.excludeGroups = map[string]struct{}{}
+	h.excludePaths = normalizePaths([]string{"/PRE", "/REQUESTS", "/SPEEDTEST"})
+	h.candidates = map[uint64]candidate{}
+
+	h.evaluate(time.Now())
+
+	if !warned {
+		t.Fatalf("expected a warning once the transfer has already shown progress and then stalls")
+	}
+	if len(h.candidates) != 1 {
+		t.Fatalf("expected stalled transfer to enter candidate tracking")
 	}
 }

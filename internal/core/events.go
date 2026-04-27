@@ -372,14 +372,18 @@ func (s *Session) emitEvent(evtType EventType, eventPath, fileName string, size 
 // completed the race) and is ignored for aggregate speed calculation — we
 // use max(user.DurationMs) as the wall-clock span instead, which is the
 // effective critical-path time across all racers.
-func emitRaceEnd(s *Session, users []VFSRaceUser, totalBytes int64, total int, xferMs int64) {
+func emitRaceEnd(s *Session, dirPath string, users []VFSRaceUser, totalBytes int64, total int, xferMs int64) {
 	if s == nil {
 		return
 	}
+	dirPath = path.Clean("/" + strings.TrimSpace(dirPath))
+	if dirPath == "/" || dirPath == "." {
+		dirPath = s.CurrentDir
+	}
 	users = trimRaceUsers(s.Config, users)
-	if !markRaceCompleteOnce(s.CurrentDir, totalBytes, total) {
+	if !markRaceCompleteOnce(dirPath, totalBytes, total) {
 		if s.Config != nil && s.Config.Debug {
-			log.Printf("[RACE] duplicate complete suppressed for %s", s.CurrentDir)
+			log.Printf("[RACE] duplicate complete suppressed for %s", dirPath)
 		}
 		return
 	}
@@ -394,7 +398,7 @@ func emitRaceEnd(s *Session, users []VFSRaceUser, totalBytes int64, total int, x
 	if s.Config.Mode == "master" && s.MasterManager != nil {
 		if bridge, ok := s.MasterManager.(MasterBridge); ok {
 			hookRunner = bridge
-			if ms := bridge.GetRaceWallClockMilliseconds(s.CurrentDir); ms > 0 {
+			if ms := bridge.GetRaceWallClockMilliseconds(dirPath); ms > 0 {
 				raceDurationMs = ms
 			}
 		}
@@ -421,7 +425,7 @@ func emitRaceEnd(s *Session, users []VFSRaceUser, totalBytes int64, total int, x
 	if durSec > 0 {
 		avgMB = (float64(totalBytes) / 1024.0 / 1024.0) / durSec
 	}
-	rel := path.Base(s.CurrentDir)
+	rel := path.Base(dirPath)
 	common := map[string]string{
 		"relname":    rel,
 		"t_files":    fmt.Sprintf("%dF", total),
@@ -430,16 +434,16 @@ func emitRaceEnd(s *Session, users []VFSRaceUser, totalBytes int64, total int, x
 		"t_avgspeed": fmt.Sprintf("%.2fMB/s", avgMB),
 		"u_count":    fmt.Sprintf("%d", len(users)),
 	}
-	if subdir := zipscript.ReleaseSubdirLabel(s.Config.Zipscript, s.CurrentDir); subdir != "" {
+	if subdir := zipscript.ReleaseSubdirLabel(s.Config.Zipscript, dirPath); subdir != "" {
 		common["release_subdir"] = subdir
-		common["release_name"] = path.Base(path.Dir(s.CurrentDir))
-		if zipscript.IsIgnoredReleaseSubdir(s.Config.Zipscript, s.CurrentDir) || !zipscript.AnnounceReleaseSubdirs(s.Config.Zipscript) {
+		common["release_name"] = path.Base(path.Dir(dirPath))
+		if zipscript.IsIgnoredReleaseSubdir(s.Config.Zipscript, dirPath) || !zipscript.AnnounceReleaseSubdirs(s.Config.Zipscript) {
 			common["skip_release_announce"] = "true"
 		}
 	}
 
 	// COMPLETE line
-	s.emitEvent(EventRaceEnd, s.CurrentDir, rel, totalBytes, avgMB, copyMap(common))
+	s.emitEvent(EventRaceEnd, dirPath, rel, totalBytes, avgMB, copyMap(common))
 
 	if len(users) == 0 {
 		return
@@ -462,7 +466,7 @@ func emitRaceEnd(s *Session, users []VFSRaceUser, totalBytes int64, total int, x
 	statsData["u_slowest_speed"] = fmt.Sprintf("%.2fMB/s", userSlowSpeed(slowest)/1024.0/1024.0)
 	statsData["u_fastest_name"] = fastest.Name
 	statsData["u_fastest_speed"] = fmt.Sprintf("%.2fMB/s", fastest.PeakSpeed/1024.0/1024.0)
-	s.emitEvent(EventRaceStats, s.CurrentDir, rel, totalBytes, avgMB, statsData)
+	s.emitEvent(EventRaceStats, dirPath, rel, totalBytes, avgMB, statsData)
 
 	// One event per racer in HOF
 	for i, u := range users {
@@ -474,15 +478,15 @@ func emitRaceEnd(s *Session, users []VFSRaceUser, totalBytes int64, total int, x
 		uData["u_racer_mb"] = fmt.Sprintf("%.1f", float64(u.Bytes)/1024.0/1024.0)
 		uData["u_racer_pct"] = fmt.Sprintf("%d", u.Percent)
 		uData["u_racer_speed"] = fmt.Sprintf("%.2fMB/s", u.Speed/1024.0/1024.0)
-		s.emitEvent(EventRaceUser, s.CurrentDir, rel, u.Bytes, u.Speed/1024.0/1024.0, uData)
+		s.emitEvent(EventRaceUser, dirPath, rel, u.Bytes, u.Speed/1024.0/1024.0, uData)
 	}
 
 	// Footer
-	s.emitEvent(EventRaceFooter, s.CurrentDir, rel, totalBytes, avgMB, copyMap(common))
+	s.emitEvent(EventRaceFooter, dirPath, rel, totalBytes, avgMB, copyMap(common))
 
-	section, sectionRoot := zipscript.SectionInfoFromPath(s.CurrentDir)
+	section, sectionRoot := zipscript.SectionInfoFromPath(dirPath)
 	zipscript.RunOnCompleteHook(s.Config.Zipscript, zipscript.CompleteHookContext{
-		DirPath:       s.CurrentDir,
+		DirPath:       dirPath,
 		RelName:       rel,
 		ReleaseName:   common["release_name"],
 		ReleaseSubdir: common["release_subdir"],

@@ -769,6 +769,13 @@ func (b *Bridge) GetFileSize(filePath string) int64 {
 	return f.Size
 }
 
+func (b *Bridge) ResolvePath(filePath string) string {
+	if b == nil || b.sm == nil || b.sm.GetVFS() == nil {
+		return filepath.ToSlash(filepath.Clean(filePath))
+	}
+	return b.sm.GetVFS().ResolvePath(filePath)
+}
+
 // FileExists checks if a path exists in the VFS.
 func (b *Bridge) FileExists(filePath string) bool {
 	return b.sm.GetVFS().FileExists(filePath)

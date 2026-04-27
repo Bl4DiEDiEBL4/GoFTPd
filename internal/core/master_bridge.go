@@ -48,6 +48,10 @@ type MasterBridge interface {
 	// FileExists checks if a path exists in the VFS.
 	FileExists(filePath string) bool
 
+	// ResolvePath returns the canonical VFS path after following any symlink
+	// segments that exist in the master's VFS.
+	ResolvePath(filePath string) string
+
 	// ReadFile reads a small file from a slave (for .message/.imdb display).
 	ReadFile(filePath string) ([]byte, error)
 	ReadZipEntry(archivePath, entryName string) ([]byte, error)

@@ -237,6 +237,31 @@ func (vfs *VirtualFileSystem) GetFile(path string) *VFSFile {
 	return vfs.files[filepath.Clean(path)]
 }
 
+func (vfs *VirtualFileSystem) ResolvePath(p string) string {
+	vfs.mu.RLock()
+	defer vfs.mu.RUnlock()
+
+	current := cleanVFSPath(p)
+	if current == "/" {
+		return current
+	}
+
+	parts := strings.Split(strings.TrimPrefix(current, "/"), "/")
+	current = "/"
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			continue
+		}
+		next := cleanVFSPath(filepath.ToSlash(filepath.Join(current, part)))
+		if f := vfs.files[next]; f != nil && f.IsSymlink && strings.TrimSpace(f.LinkTarget) != "" {
+			current = cleanVFSPath(f.LinkTarget)
+			continue
+		}
+		current = next
+	}
+	return current
+}
+
 func (vfs *VirtualFileSystem) DeleteFile(path string) {
 	vfs.mu.Lock()
 	defer vfs.mu.Unlock()

@@ -188,8 +188,9 @@ func (h *Handler) evaluate(now time.Time) {
 		if !ok || !h.shouldCheckSession(snap) {
 			continue
 		}
-		speed := currentTransferSpeedBytes(snap, liveStats)
-		if h.shouldSkipFreshTransfer(snap, speed, now) {
+		liveStat, hasLiveStat := matchedLiveStat(snap, liveStats)
+		speed := currentTransferSpeedBytes(snap, liveStat, hasLiveStat)
+		if h.shouldSkipFreshTransfer(snap, liveStat, hasLiveStat, speed, now) {
 			h.removeCandidate(snap.ID)
 			continue
 		}
@@ -237,7 +238,10 @@ func (h *Handler) evaluate(now time.Time) {
 	h.pruneCandidates(active)
 }
 
-func (h *Handler) shouldSkipFreshTransfer(snap plugin.ActiveSession, speed float64, now time.Time) bool {
+func (h *Handler) shouldSkipFreshTransfer(snap plugin.ActiveSession, liveStat plugin.LiveTransferStat, hasLiveStat bool, speed float64, now time.Time) bool {
+	if !transferHasMoved(snap, liveStat, hasLiveStat) {
+		return true
+	}
 	if speed > 0 {
 		return false
 	}
@@ -310,9 +314,9 @@ func (h *Handler) transferPolicy(snap plugin.ActiveSession) (transferPolicy, boo
 	}
 }
 
-func currentTransferSpeedBytes(snap plugin.ActiveSession, liveStats []plugin.LiveTransferStat) float64 {
-	if stat, ok := matchedLiveStat(snap, liveStats); ok {
-		return stat.SpeedBytes
+func currentTransferSpeedBytes(snap plugin.ActiveSession, liveStat plugin.LiveTransferStat, hasLiveStat bool) float64 {
+	if hasLiveStat {
+		return liveStat.SpeedBytes
 	}
 	if snap.TransferStartedAt.IsZero() || snap.TransferBytes <= 0 {
 		return 0
@@ -322,6 +326,13 @@ func currentTransferSpeedBytes(snap plugin.ActiveSession, liveStats []plugin.Liv
 		return 0
 	}
 	return float64(snap.TransferBytes) / seconds
+}
+
+func transferHasMoved(snap plugin.ActiveSession, liveStat plugin.LiveTransferStat, hasLiveStat bool) bool {
+	if hasLiveStat {
+		return liveStat.Transferred > 0
+	}
+	return snap.TransferBytes > 0
 }
 
 func matchedLiveStat(snap plugin.ActiveSession, liveStats []plugin.LiveTransferStat) (plugin.LiveTransferStat, bool) {
