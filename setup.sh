@@ -1467,6 +1467,223 @@ ensure_script_permissions() {
     done
 }
 
+run_privileged() {
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
+systemd_available() {
+    [ "$(uname -s)" = "Linux" ] && command -v systemctl >/dev/null 2>&1
+}
+
+default_service_group_for_user() {
+    local user_name="$1"
+    id -gn "${user_name}" 2>/dev/null || id -gn
+}
+
+service_account_exists() {
+    local user_name="$1"
+    id "${user_name}" >/dev/null 2>&1
+}
+
+ensure_service_account() {
+    local user_name="$1"
+    local group_name="$2"
+
+    if service_account_exists "${user_name}"; then
+        return 0
+    fi
+
+    if ! prompt_yes_no "Create dedicated service account ${user_name}:${group_name}?" "Y"; then
+        say ""
+        say "Skipping account creation."
+        say "Make sure ${user_name} exists and can read/write the paths GoFTPd needs."
+        return 1
+    fi
+
+    if getent group "${group_name}" >/dev/null 2>&1; then
+        run_privileged useradd --system --create-home --home-dir "/var/lib/${user_name}" --shell /usr/sbin/nologin --gid "${group_name}" "${user_name}"
+    else
+        run_privileged useradd --system --create-home --home-dir "/var/lib/${user_name}" --shell /usr/sbin/nologin --user-group "${user_name}"
+    fi
+
+    say "Created service account ${user_name}."
+    return 0
+}
+
+configure_slave_root_permissions() {
+    local run_user="$1"
+    local run_group="$2"
+    local default_roots="${SETUP_SLAVE_ROOTS:-}"
+    local roots_csv path
+
+    if [ "${SETUP_DAEMON_MODE:-master}" != "slave" ]; then
+        return 0
+    fi
+
+    say ""
+    say "A slave service user must be able to read/write its data roots."
+    say "If you want GoFTPd to manage the files directly as ${run_user},"
+    say "it needs access to the configured slave roots."
+
+    roots_csv="$(prompt_default "Slave root paths to grant access to (comma-separated)" "${default_roots}")"
+    if [ -z "${roots_csv}" ]; then
+        say "No slave root paths provided; leaving filesystem permissions alone."
+        return 0
+    fi
+
+    if ! prompt_yes_no "Recursively chown those slave roots to ${run_user}:${run_group}?" "N"; then
+        say "Skipping automatic root permission changes."
+        say "Make sure ${run_user} can read, write, rename, and delete under those roots."
+        return 0
+    fi
+
+    IFS=',' read -r -a _slave_root_paths <<< "${roots_csv}"
+    for path in "${_slave_root_paths[@]}"; do
+        path="$(printf '%s' "${path}" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+        [ -z "${path}" ] && continue
+        run_privileged mkdir -p "${path}"
+        run_privileged chown -R "${run_user}:${run_group}" "${path}"
+        say "Updated ownership on ${path}"
+    done
+}
+
+write_systemd_unit() {
+    local service_name="$1"
+    local description="$2"
+    local working_dir="$3"
+    local exec_start="$4"
+    local run_user="$5"
+    local run_group="$6"
+    local target_file="/etc/systemd/system/${service_name}.service"
+    local tmp_file
+    tmp_file="$(mktemp)"
+    cat > "${tmp_file}" <<EOF
+[Unit]
+Description=${description}
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${run_user}
+Group=${run_group}
+WorkingDirectory=${working_dir}
+ExecStart=${exec_start}
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    run_privileged install -m 0644 "${tmp_file}" "${target_file}"
+    rm -f "${tmp_file}"
+}
+
+configure_systemd_services() {
+    local service_user service_group daemon_service_name sitebot_service_name
+    local start_now_default="Y"
+    local enable_now="false"
+
+    if ! systemd_available; then
+        say "Systemd was not detected on this host. Skipping service setup."
+        return 0
+    fi
+
+    if [ ! -f "${ROOT_DIR}/goftpd" ]; then
+        say "The daemon binary (${ROOT_DIR}/goftpd) does not exist yet."
+        say "Run ./setup.sh build or ./setup.sh install first."
+        return 1
+    fi
+
+    say ""
+    say "For Debian/Ubuntu service installs, run this as root or from an account"
+    say "that can use sudo. The installer may need to create service users,"
+    say "write unit files, and adjust slave-root permissions."
+
+    service_user="$(prompt_default "systemd service user" "${SETUP_SERVICE_USER:-goftpd}")"
+    service_group="$(prompt_default "systemd service group" "${SETUP_SERVICE_GROUP:-goftpd}")"
+    daemon_service_name="$(prompt_default "daemon systemd service name" "goftpd")"
+
+    if ! ensure_service_account "${service_user}" "${service_group}"; then
+        say ""
+        say "Continuing without creating the service account."
+        say "The systemd unit will still be written with User=${service_user} Group=${service_group}."
+    fi
+
+    configure_slave_root_permissions "${service_user}" "${service_group}"
+
+    if prompt_yes_no "Enable and start services after installing the unit files?" "${start_now_default}"; then
+        enable_now="true"
+    fi
+
+    SETUP_SERVICE_USER="${service_user}"
+    SETUP_SERVICE_GROUP="${service_group}"
+
+    write_systemd_unit \
+        "${daemon_service_name}" \
+        "GoFTPd daemon" \
+        "${ROOT_DIR}" \
+        "${ROOT_DIR}/goftpd -config ${ROOT_DIR}/etc/config.yml" \
+        "${service_user}" \
+        "${service_group}"
+
+    say "Installed /etc/systemd/system/${daemon_service_name}.service"
+
+    local install_sitebot="false"
+    if [ -f "${ROOT_DIR}/sitebot/sitebot" ] && [ -f "${ROOT_DIR}/sitebot/etc/config.yml" ]; then
+        if [ "${SETUP_DAEMON_MODE:-master}" = "master" ] || [ "${SETUP_CONFIGURE_SITEBOT_ON_SLAVE:-false}" = "true" ]; then
+            if prompt_yes_no "Install a systemd service for the sitebot too?" "Y"; then
+                install_sitebot="true"
+            fi
+        fi
+    fi
+
+    if [ "${install_sitebot}" = "true" ]; then
+        sitebot_service_name="$(prompt_default "sitebot systemd service name" "gositebot")"
+        write_systemd_unit \
+            "${sitebot_service_name}" \
+            "GoFTPd sitebot" \
+            "${ROOT_DIR}/sitebot" \
+            "${ROOT_DIR}/sitebot/sitebot -config ${ROOT_DIR}/sitebot/etc/config.yml" \
+            "${service_user}" \
+            "${service_group}"
+        say "Installed /etc/systemd/system/${sitebot_service_name}.service"
+    fi
+
+    run_privileged systemctl daemon-reload
+
+    if [ "${enable_now}" = "true" ]; then
+        run_privileged systemctl enable --now "${daemon_service_name}.service"
+        if [ "${install_sitebot}" = "true" ]; then
+            run_privileged systemctl enable --now "${sitebot_service_name}.service"
+        fi
+        say ""
+        say "Services enabled and started."
+    else
+        say ""
+        say "Units installed but not enabled."
+        say "You can enable them later with:"
+        say "  sudo systemctl enable --now ${daemon_service_name}.service"
+        if [ "${install_sitebot}" = "true" ]; then
+            say "  sudo systemctl enable --now ${sitebot_service_name}.service"
+        fi
+    fi
+}
+
+offer_systemd_setup() {
+    if ! systemd_available; then
+        return 0
+    fi
+    if prompt_yes_no "Install Debian/Ubuntu systemd service files now?" "N"; then
+        configure_systemd_services
+    fi
+}
+
 save_state_file() {
     mkdir -p "$(dirname "${STATE_FILE}")"
     : > "${STATE_FILE}"
@@ -1484,6 +1701,8 @@ save_state_file() {
     write_state_var SETUP_FIFO_PATH "${SETUP_FIFO_PATH:-${FIFO_PATH_DEFAULT}}"
     write_state_var SETUP_SITEBOT_CONFIG_PATH "${SETUP_SITEBOT_CONFIG_PATH:-${SITEBOT_CONFIG_DEFAULT}}"
     write_state_var SETUP_DAEMON_MODE "${SETUP_DAEMON_MODE:-master}"
+    write_state_var SETUP_SERVICE_USER "${SETUP_SERVICE_USER:-goftpd}"
+    write_state_var SETUP_SERVICE_GROUP "${SETUP_SERVICE_GROUP:-goftpd}"
     write_state_var SETUP_LISTEN_PORT "${SETUP_LISTEN_PORT:-21212}"
     write_state_var SETUP_PUBLIC_IP "${SETUP_PUBLIC_IP:-1.2.3.4}"
     write_state_var SETUP_MASTER_LISTEN_HOST "${SETUP_MASTER_LISTEN_HOST:-0.0.0.0}"
@@ -1744,6 +1963,7 @@ show_usage() {
     say "  ./setup.sh install   Run guided install/config setup"
     say "  ./setup.sh build     Build daemon and sitebot only"
     say "  ./setup.sh certs     Generate fresh TLS certificates"
+    say "  ./setup.sh systemd   Install or refresh systemd service files"
     say "  ./setup.sh clean     Back up generated configs and reset install state"
     say "  ./setup.sh backup    Alias for clean"
     say "  ./setup.sh help      Show this help"
@@ -1752,6 +1972,7 @@ show_usage() {
     say "  - 'install' loads ${STATE_FILE} as defaults when you allow it."
     say "  - 'build' just runs the daemon and sitebot build scripts."
     say "  - 'certs' writes CA, server, and slave certs into ./etc/certs."
+    say "  - 'systemd' installs Debian/Ubuntu-friendly service files for the daemon and optional sitebot."
     say "  - 'clean' keeps ${STATE_FILE} but backs up generated configs, FIFO, and certs."
 }
 
@@ -1770,6 +1991,12 @@ case "${1:-help}" in
         build_everything
         say ""
         say "Build complete."
+        exit 0
+        ;;
+    systemd|--systemd|service|--service)
+        show_banner
+        ensure_script_permissions
+        configure_systemd_services
         exit 0
         ;;
     install|--install)
@@ -1806,6 +2033,7 @@ save_state_file
 ensure_script_permissions
 ensure_fifo
 build_everything
+offer_systemd_setup
 
 say ""
 say "Setup complete."
