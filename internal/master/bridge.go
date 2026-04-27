@@ -96,6 +96,28 @@ func (b *Bridge) GetLiveTransferStats() []core.LiveTransferStat {
 	return out
 }
 
+func (b *Bridge) GetAggregateDiskUsage() (freeBytes int64, totalBytes int64, ok bool) {
+	if b == nil || b.sm == nil {
+		return 0, 0, false
+	}
+	for _, slave := range b.sm.GetAllSlaves() {
+		if slave == nil || !slave.IsOnline() {
+			continue
+		}
+		if b.sm.IsSlaveReadOnly(slave.Name()) {
+			continue
+		}
+		status := slave.GetDiskStatus()
+		if status.SpaceCapacity <= 0 {
+			continue
+		}
+		freeBytes += status.SpaceAvailable
+		totalBytes += status.SpaceCapacity
+		ok = true
+	}
+	return freeBytes, totalBytes, ok
+}
+
 func (b *Bridge) AbortTransfer(slaveName string, transferIndex int32, reason string) bool {
 	if b == nil || b.sm == nil || transferIndex == 0 {
 		return false

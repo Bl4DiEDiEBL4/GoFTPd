@@ -114,6 +114,10 @@ type MasterBridge interface {
 	// GetLiveTransferStats asks connected slaves for current live transfer counters.
 	GetLiveTransferStats() []LiveTransferStat
 
+	// GetAggregateDiskUsage returns writable slave free/total bytes for global
+	// banner-style stats. ok=false means no usable slave disk stats were available.
+	GetAggregateDiskUsage() (freeBytes int64, totalBytes int64, ok bool)
+
 	// RunOnSlaveCommand runs a command on the owning or requested slave.
 	RunOnSlaveCommand(dirPath, command string, args []string, env map[string]string, timeoutSeconds int, preferredSlave string) (string, error)
 

@@ -184,7 +184,7 @@ func LoadConfig(filePath string) (*Config, error) {
 	if _, ok := raw["show_cwd_banner"]; !ok {
 		cfg.ShowCWDBanner = true
 	}
-	if err := resolvePluginConfigFiles(cfg.Plugins, filepath.Dir(filePath)); err != nil {
+	if err := resolvePluginConfigFiles(cfg.Mode, cfg.Plugins, filepath.Dir(filePath)); err != nil {
 		return nil, err
 	}
 	if !cfg.LogConsole {
@@ -329,7 +329,10 @@ func mapIntValue(m map[string]interface{}, key string, def int) (int, error) {
 	}
 }
 
-func resolvePluginConfigFiles(plugins map[string]map[string]interface{}, baseDir string) error {
+func resolvePluginConfigFiles(mode string, plugins map[string]map[string]interface{}, baseDir string) error {
+	if strings.EqualFold(strings.TrimSpace(mode), "slave") {
+		return nil
+	}
 	for name, inline := range plugins {
 		if inline == nil {
 			inline = map[string]interface{}{}

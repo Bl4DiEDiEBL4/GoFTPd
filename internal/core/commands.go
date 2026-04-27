@@ -1569,13 +1569,22 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 }
 
 func (s *Session) showGlobalStats(code string, final bool) {
-	var stat syscall.Statfs_t
-	wd, _ := os.Getwd()
-	if err := syscall.Statfs(s.Config.StoragePath, &stat); err != nil {
-		_ = syscall.Statfs(wd, &stat)
+	freeSpaceMB := uint64(0)
+	if s.Config.Mode == "master" && s.MasterManager != nil {
+		if bridge, ok := s.MasterManager.(MasterBridge); ok {
+			if freeBytes, _, ok := bridge.GetAggregateDiskUsage(); ok && freeBytes > 0 {
+				freeSpaceMB = uint64(freeBytes) / 1024 / 1024
+			}
+		}
 	}
-
-	freeSpaceMB := (stat.Bavail * uint64(stat.Bsize)) / 1024 / 1024
+	if freeSpaceMB == 0 {
+		var stat syscall.Statfs_t
+		wd, _ := os.Getwd()
+		if err := syscall.Statfs(s.Config.StoragePath, &stat); err != nil {
+			_ = syscall.Statfs(wd, &stat)
+		}
+		freeSpaceMB = (stat.Bavail * uint64(stat.Bsize)) / 1024 / 1024
+	}
 	siteSpeedMiB := 0.0
 
 	ulGiB := 0.0
