@@ -818,7 +818,7 @@ func (sm *SlaveManager) ensureBootstrapDirsOnSlave(rs *RemoteSlave) {
 			Group:        "GoFTPd",
 			Seen:         true,
 		})
-		index, err := IssueMakeDir(rs, dirPath)
+		index, err := IssueMakeDirAllRoots(rs, dirPath)
 		if err != nil {
 			log.Printf("[SlaveManager] Bootstrap mkdir %s on %s failed: %v", dirPath, rs.Name(), err)
 			continue

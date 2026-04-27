@@ -70,6 +70,14 @@ func IssueMakeDir(rs *RemoteSlave, path string) (string, error) {
 	return index, rs.SendCommand(&protocol.AsyncCommand{Index: index, Name: "makedir", Args: []string{path}})
 }
 
+func IssueMakeDirAllRoots(rs *RemoteSlave, path string) (string, error) {
+	index, err := rs.FetchIndex()
+	if err != nil {
+		return "", err
+	}
+	return index, rs.SendCommand(&protocol.AsyncCommand{Index: index, Name: "makedir", Args: []string{path, "all-roots"}})
+}
+
 func IssueChecksum(rs *RemoteSlave, path string) (string, error) {
 	index, err := rs.FetchIndex()
 	if err != nil {

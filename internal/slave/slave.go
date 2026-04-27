@@ -492,15 +492,22 @@ func (s *Slave) handleMakeDir(ac *protocol.AsyncCommand) interface{} {
 		return &protocol.AsyncResponseError{Index: ac.Index, Message: "makedir: missing path"}
 	}
 	dirPath := ac.Args[0]
+	createOnAllRoots := len(ac.Args) > 1 && strings.EqualFold(strings.TrimSpace(ac.Args[1]), "all-roots")
 
 	if len(s.roots) == 0 {
 		return &protocol.AsyncResponseError{Index: ac.Index, Message: "no roots available"}
 	}
 
-	// Always create empty folders (like banners) on the first root
-	fullPath := filepath.Join(s.roots[0], dirPath)
-	if err := os.MkdirAll(fullPath, 0755); err != nil {
-		return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("makedir failed: %v", err)}
+	roots := s.roots[:1]
+	if createOnAllRoots {
+		roots = s.roots
+	}
+
+	for _, root := range roots {
+		fullPath := filepath.Join(root, dirPath)
+		if err := os.MkdirAll(fullPath, 0755); err != nil {
+			return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("makedir failed: %v", err)}
+		}
 	}
 
 	log.Printf("[Slave] Created directory %s", dirPath)
