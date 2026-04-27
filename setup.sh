@@ -389,7 +389,7 @@ ensure_enabled_plugin_configs() {
     repair_legacy_daemon_plugin_names
 
 local daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request releaseguard pre pretime slowkick spacekeeper)
-    if [ -f "${daemon_config}" ]; then
+    if [ "${SETUP_DAEMON_MODE:-master}" != "slave" ] && [ -f "${daemon_config}" ]; then
         for plugin_name in "${daemon_plugins[@]}"; do
             enabled_value="$(daemon_plugin_enabled_in_config "${daemon_config}" "${plugin_name}")"
             if [ "${enabled_value}" != "true" ]; then
@@ -1048,29 +1048,41 @@ configure_daemon() {
     daemon_mode="${SETUP_DAEMON_MODE:-master}"
     if [ "${daemon_config_exists}" = "false" ]; then
         daemon_mode="$(prompt_mode "${SETUP_DAEMON_MODE:-master}")"
-        long_name="$(prompt_default 'Daemon site name' "${SETUP_SITE_NAME:-GoFTPd}")"
-        short_name="$(prompt_default 'Daemon short site tag' "${SETUP_SITE_SHORT:-${long_name}}")"
-        site_version="$(prompt_default 'Daemon version' "${SETUP_SITE_VERSION:-1.0.6b}")"
         system_timezone="$(detect_system_timezone)"
-        timezone="$(prompt_default 'Daemon timezone (IANA name, use Local to follow the OS)' "${SETUP_TIMEZONE:-${system_timezone}}")"
-        cert_name="$(prompt_default 'TLS certificate display name' "${SETUP_CERT_NAME:-${long_name}}")"
-
         SETUP_DAEMON_MODE="${daemon_mode}"
-        SETUP_SITE_NAME="${long_name}"
-        SETUP_SITE_SHORT="${short_name}"
-        SETUP_SITE_VERSION="${site_version}"
-        SETUP_TIMEZONE="${timezone}"
-        SETUP_CERT_NAME="${cert_name}"
         fifo_path="${SETUP_FIFO_PATH:-${FIFO_PATH_DEFAULT}}"
         SETUP_FIFO_PATH="${fifo_path}"
 
         replace_matching_line "${daemon_config}" '^mode:' "mode:         ${daemon_mode}"
-        replace_matching_line "${daemon_config}" '^sitename_long:' "sitename_long:  \"${long_name}\""
-        replace_matching_line "${daemon_config}" '^sitename_short:' "sitename_short: \"${short_name}\""
-        replace_matching_line "${daemon_config}" '^version:' "version:        \"${site_version}\""
-        replace_matching_line "${daemon_config}" '^timezone:' "timezone:       \"${timezone}\""
         replace_matching_line "${daemon_config}" '^event_fifo:' "event_fifo:     \"${fifo_path}\""
         replace_matching_line "${daemon_config}" '^sitebot_config:' "sitebot_config: \"${SETUP_SITEBOT_CONFIG_PATH:-${SITEBOT_CONFIG_DEFAULT}}\""
+
+        if [ "${daemon_mode}" = "master" ]; then
+            long_name="$(prompt_default 'Daemon site name' "${SETUP_SITE_NAME:-GoFTPd}")"
+            short_name="$(prompt_default 'Daemon short site tag' "${SETUP_SITE_SHORT:-${long_name}}")"
+            site_version="$(prompt_default 'Daemon version' "${SETUP_SITE_VERSION:-1.0.6b}")"
+            timezone="$(prompt_default 'Daemon timezone (IANA name, use Local to follow the OS)' "${SETUP_TIMEZONE:-${system_timezone}}")"
+            cert_name="$(prompt_default 'TLS certificate display name' "${SETUP_CERT_NAME:-${long_name}}")"
+
+            SETUP_SITE_NAME="${long_name}"
+            SETUP_SITE_SHORT="${short_name}"
+            SETUP_SITE_VERSION="${site_version}"
+            SETUP_TIMEZONE="${timezone}"
+            SETUP_CERT_NAME="${cert_name}"
+
+            replace_matching_line "${daemon_config}" '^sitename_long:' "sitename_long:  \"${long_name}\""
+            replace_matching_line "${daemon_config}" '^sitename_short:' "sitename_short: \"${short_name}\""
+            replace_matching_line "${daemon_config}" '^version:' "version:        \"${site_version}\""
+            replace_matching_line "${daemon_config}" '^timezone:' "timezone:       \"${timezone}\""
+        else
+            SETUP_SITE_NAME="${SETUP_SITE_NAME:-GoFTPd}"
+            SETUP_SITE_SHORT="${SETUP_SITE_SHORT:-GoFTPd}"
+            SETUP_SITE_VERSION="${SETUP_SITE_VERSION:-1.0.6b}"
+            SETUP_TIMEZONE="${SETUP_TIMEZONE:-${system_timezone}}"
+            SETUP_CERT_NAME="${SETUP_CERT_NAME:-${SETUP_SITE_NAME}}"
+            cert_name="${SETUP_CERT_NAME}"
+            replace_matching_line "${daemon_config}" '^timezone:' "timezone:       \"${SETUP_TIMEZONE}\""
+        fi
     else
         daemon_mode="$(awk '/^mode:/{print $2; exit}' "${daemon_config}")"
         daemon_mode="${daemon_mode:-${SETUP_DAEMON_MODE:-master}}"
@@ -1196,16 +1208,21 @@ daemon_plugins=(autonuke dateddirs tvmaze imdb mediainfo speedtest request relea
 configure_sitebot() {
     local sitebot_config="sitebot/etc/config.yml"
     local sitebot_config_exists="false"
+    if [ -f "${sitebot_config}" ]; then
+        sitebot_config_exists="true"
+    fi
     if [ "${SETUP_DAEMON_MODE:-master}" = "slave" ]; then
+        if [ "${SETUP_CONFIGURE_SITEBOT_ON_SLAVE:-false}" != "true" ] && [ "${sitebot_config_exists}" != "true" ]; then
+            SETUP_CONFIGURE_SITEBOT_ON_SLAVE="false"
+            say "Skipping sitebot setup for slave mode."
+            return
+        fi
         if ! prompt_yes_no "Configure sitebot on this slave too?" "$(bool_to_prompt_default "${SETUP_CONFIGURE_SITEBOT_ON_SLAVE:-false}")"; then
             SETUP_CONFIGURE_SITEBOT_ON_SLAVE="false"
             say "Skipping sitebot setup for slave mode."
             return
         fi
         SETUP_CONFIGURE_SITEBOT_ON_SLAVE="true"
-    fi
-    if [ -f "${sitebot_config}" ]; then
-        sitebot_config_exists="true"
     fi
 
     say ""
@@ -1438,6 +1455,10 @@ configure_sitebot() {
 }
 
 ensure_fifo() {
+    if [ "${SETUP_DAEMON_MODE:-master}" = "slave" ] && [ "${SETUP_CONFIGURE_SITEBOT_ON_SLAVE:-false}" != "true" ]; then
+        say "Skipping FIFO creation for a pure slave install."
+        return
+    fi
     local fifo_path="${SETUP_FIFO_PATH:-${FIFO_PATH_DEFAULT}}"
     local fifo_dir
     fifo_dir="$(dirname "${fifo_path}")"
@@ -1952,6 +1973,11 @@ build_sitebot_binary() {
 build_everything() {
     ensure_go_available
     build_daemon_binary
+    if [ "${SETUP_DAEMON_MODE:-master}" = "slave" ] && [ "${SETUP_CONFIGURE_SITEBOT_ON_SLAVE:-false}" != "true" ]; then
+        say ""
+        say "Skipping sitebot build for a pure slave install."
+        return
+    fi
     build_sitebot_binary
 }
 
