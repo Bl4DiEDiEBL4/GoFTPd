@@ -321,6 +321,7 @@ release in one or more configurable backends:
 
 - SQLite
 - MySQL
+- PostgreSQL
 - HTTP/JSON API providers such as `predb.club` or `predb.net`
 
 When a unix pre timestamp is found, it emits either `NEWPRETIME` or

@@ -39,7 +39,7 @@ ignore_dirs:
   - "subs"
   - "subtitles"
 
-provider_order: ["sqlite", "mysql", "api"]
+provider_order: ["sqlite", "mysql", "postgres", "api"]
 
 sqlite:
   enabled: true
@@ -51,6 +51,13 @@ sqlite:
 mysql:
   enabled: false
   dsn: "user:password@tcp(127.0.0.1:3306)/predb?charset=utf8mb4&parseTime=true"
+  table: "releases"
+  release_field: "release"
+  unixtime_field: "timestamp_unix"
+
+postgres:
+  enabled: false
+  dsn: "host=127.0.0.1 port=5432 user=predb password=secret dbname=predb sslmode=disable"
   table: "releases"
   release_field: "release"
   unixtime_field: "timestamp_unix"

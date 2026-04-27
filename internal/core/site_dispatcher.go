@@ -33,8 +33,10 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 		return s.HandleSiteHelp(remainingArgs)
 	case "RULES":
 		return s.HandleSiteRules(remainingArgs)
-	case "WHO", "SWHO":
-		return s.HandleSiteWho(remainingArgs)
+	case "WHO":
+		return s.HandleSiteWho(false, remainingArgs)
+	case "SWHO":
+		return s.HandleSiteWho(true, remainingArgs)
 	case "BW":
 		return s.HandleSiteBW(remainingArgs)
 	case "USERS":

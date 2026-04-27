@@ -20,7 +20,7 @@ GoFTPd Changelog
 - Hardened ACL reloads so malformed `permissions.yml` YAML fails cleanly
   instead of silently degrading into a broken live permissions view.
 - Added a `pretime` daemon plugin that can look up release pre times from
-  SQLite, MySQL, or HTTP/JSON sources and append `NEWPRETIME` /
+  SQLite, MySQL, PostgreSQL, or HTTP/JSON sources and append `NEWPRETIME` /
   `OLDPRETIME` announces for new release dirs.
 - Added a sitebot-side `quota` plugin for trial/quota tracking, staff
   `!quotactl` management, and disabled-user enforcement tied to flag `6`.

@@ -3,6 +3,7 @@ package pretime
 import (
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,10 +13,7 @@ import (
 func TestLookupSQLiteCustomFields(t *testing.T) {
 	tmp := t.TempDir()
 	dbPath := filepath.Join(tmp, "releases.db")
-	db, err := sql.Open("sqlite3", dbPath)
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
+	db := openSQLiteForTest(t, dbPath)
 	defer db.Close()
 	if _, err := db.Exec(`CREATE TABLE pretimes (rls TEXT PRIMARY KEY, unixts INTEGER)`); err != nil {
 		t.Fatalf("create table: %v", err)
@@ -33,6 +31,18 @@ func TestLookupSQLiteCustomFields(t *testing.T) {
 	}
 }
 
+func TestSQLPlaceholderByDriver(t *testing.T) {
+	if got := sqlPlaceholder("sqlite3", 1); got != "?" {
+		t.Fatalf("expected sqlite placeholder ?, got %q", got)
+	}
+	if got := sqlPlaceholder("mysql", 1); got != "?" {
+		t.Fatalf("expected mysql placeholder ?, got %q", got)
+	}
+	if got := sqlPlaceholder("postgres", 2); got != "$2" {
+		t.Fatalf("expected postgres placeholder $2, got %q", got)
+	}
+}
+
 func TestProcessJobEmitsOldPreTime(t *testing.T) {
 	h := New()
 	h.debug = true
@@ -41,10 +51,7 @@ func TestProcessJobEmitsOldPreTime(t *testing.T) {
 	h.sqlite.Table = "releases"
 	h.sqlite.ReleaseField = "release"
 	h.sqlite.UnixTimeField = "timestamp_unix"
-	db, err := sql.Open("sqlite3", h.sqlite.Path)
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
+	db := openSQLiteForTest(t, h.sqlite.Path)
 	if _, err := db.Exec(`CREATE TABLE releases (release TEXT PRIMARY KEY, timestamp_unix INTEGER)`); err != nil {
 		t.Fatalf("create table: %v", err)
 	}
@@ -93,7 +100,28 @@ func TestIsReleaseDirSupportsDatedLayout(t *testing.T) {
 	if !isReleaseDir("/0DAY/2026-04-27/Test.Release-GRP", "0DAY") {
 		t.Fatalf("expected dated release dir to match")
 	}
-	if isReleaseDir("/0DAY/2026-04-27/Sample", "0DAY") {
-		t.Fatalf("did not expect helper subdir to match as release root")
+	h := New()
+	if h.shouldHandle(&plugin.Event{
+		Type:     plugin.EventMKDir,
+		Path:     "/0DAY/2026-04-27/Sample",
+		Filename: "Sample",
+		Section:  "0DAY",
+	}) {
+		t.Fatalf("did not expect helper subdir to be handled as a release root")
 	}
+}
+
+func openSQLiteForTest(t *testing.T, dbPath string) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.Ping(); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "requires cgo") || strings.Contains(strings.ToLower(err.Error()), "this is a stub") {
+			t.Skipf("sqlite3 driver unavailable in this test environment: %v", err)
+		}
+		t.Fatalf("ping sqlite: %v", err)
+	}
+	return db
 }

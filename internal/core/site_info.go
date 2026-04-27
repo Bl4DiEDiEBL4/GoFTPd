@@ -78,19 +78,91 @@ var pluginSiteHelpEntries = map[string]siteHelpEntry{
 	"BANNED":   {Command: "BANNED", Usage: "[filter] | ALLOW [filter]", Summary: "Show releaseguard deny or allow rules", Area: "Plugins"},
 }
 
-func (s *Session) HandleSiteWho(args []string) bool {
-	fmt.Fprintf(s.Conn, "200- Currently Online:\r\n")
+func (s *Session) HandleSiteWho(detailed bool, args []string) bool {
+	label := "WHO"
+	if detailed {
+		label = "SWHO"
+	}
+	fmt.Fprintf(s.Conn, "200- Currently Online (%s):\r\n", label)
 	for _, snap := range listActiveSessions() {
 		user := snap.User
 		if user == "" {
 			user = "(login)"
 		}
-		idle := time.Since(snap.StartedAt).Round(time.Second)
-		fmt.Fprintf(s.Conn, "200- #%d User: %-12s | Flags: %-8s | IP: %-22s | Dir: %-20s | Online: %s\r\n",
-			snap.ID, user, snap.Flags, snap.Remote, snap.CurrentDir, idle)
+		group := snap.PrimaryGroup
+		if group == "" {
+			group = "-"
+		}
+		currentDir := snap.CurrentDir
+		if currentDir == "" {
+			currentDir = "/"
+		}
+		onlineFor := time.Since(snap.StartedAt).Round(time.Second)
+		idleFor := time.Since(lastSessionActivity(snap)).Round(time.Second)
+
+		if !detailed {
+			fmt.Fprintf(s.Conn, "200- #%d %-12s %-12s %-18s %-24s online:%s idle:%s\r\n",
+				snap.ID, user, group, sessionStateLabel(snap), currentDir, onlineFor, idleFor)
+			continue
+		}
+
+		flags := snap.Flags
+		if flags == "" {
+			flags = "-"
+		}
+		remote := snap.Remote
+		if remote == "" {
+			remote = "-"
+		}
+		xferState := sessionTransferLabel(snap)
+		fmt.Fprintf(s.Conn, "200- #%d User:%-12s Group:%-12s Flags:%-8s IP:%-22s Dir:%-24s State:%-18s Online:%-8s Idle:%-8s Xfer:%s\r\n",
+			snap.ID, user, group, flags, remote, currentDir, sessionStateLabel(snap), onlineFor, idleFor, xferState)
 	}
-	fmt.Fprintf(s.Conn, "200 End of WHO\r\n")
+	fmt.Fprintf(s.Conn, "200 End of %s\r\n", label)
 	return false
+}
+
+func lastSessionActivity(snap sessionSnapshot) time.Time {
+	last := snap.LastCommandAt
+	if last.IsZero() || snap.StartedAt.After(last) {
+		last = snap.StartedAt
+	}
+	if !snap.TransferStartedAt.IsZero() && snap.TransferStartedAt.After(last) {
+		last = snap.TransferStartedAt
+	}
+	return last
+}
+
+func sessionStateLabel(snap sessionSnapshot) string {
+	if !snap.LoggedIn {
+		return "login"
+	}
+	if snap.TransferDirection == "upload" {
+		return "uploading"
+	}
+	if snap.TransferDirection == "download" {
+		return "downloading"
+	}
+	return "idle"
+}
+
+func sessionTransferLabel(snap sessionSnapshot) string {
+	if snap.TransferDirection == "" {
+		return "-"
+	}
+	target := snap.TransferPath
+	if strings.TrimSpace(target) == "" {
+		target = "-"
+	}
+	bytesLabel := fmt.Sprintf("%dB", snap.TransferBytes)
+	switch snap.TransferDirection {
+	case "upload":
+		return fmt.Sprintf("upload %s (%s)", target, bytesLabel)
+	case "download":
+		return fmt.Sprintf("download %s (%s)", target, bytesLabel)
+	default:
+		return fmt.Sprintf("%s %s (%s)", snap.TransferDirection, target, bytesLabel)
+	}
 }
 
 func (s *Session) HandleSiteHelp(args []string) bool {

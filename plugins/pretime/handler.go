@@ -19,6 +19,7 @@ import (
 	"goftpd/internal/plugin"
 
 	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -48,9 +49,10 @@ type Handler struct {
 	ignoreDirs    []string
 	providerOrder []string
 
-	sqlite sqliteConfig
-	mysql  mysqlConfig
-	api    apiConfig
+	sqlite   sqliteConfig
+	mysql    mysqlConfig
+	postgres postgresConfig
+	api      apiConfig
 
 	client   *http.Client
 	jobs     chan job
@@ -69,6 +71,14 @@ type sqliteConfig struct {
 }
 
 type mysqlConfig struct {
+	Enabled       bool
+	DSN           string
+	Table         string
+	ReleaseField  string
+	UnixTimeField string
+}
+
+type postgresConfig struct {
 	Enabled       bool
 	DSN           string
 	Table         string
@@ -100,7 +110,7 @@ func New() *Handler {
 	return &Handler{
 		lateMinutes:   10,
 		ignoreDirs:    append([]string(nil), defaultIgnoreGlobs...),
-		providerOrder: []string{"sqlite", "mysql", "api"},
+		providerOrder: []string{"sqlite", "mysql", "postgres", "api"},
 		sqlite: sqliteConfig{
 			Path:          "plugins/pretime/releases.db",
 			Table:         "releases",
@@ -108,6 +118,11 @@ func New() *Handler {
 			UnixTimeField: "timestamp_unix",
 		},
 		mysql: mysqlConfig{
+			Table:         "releases",
+			ReleaseField:  "release",
+			UnixTimeField: "timestamp_unix",
+		},
+		postgres: postgresConfig{
 			Table:         "releases",
 			ReleaseField:  "release",
 			UnixTimeField: "timestamp_unix",
@@ -188,6 +203,21 @@ func (h *Handler) Init(svc *plugin.Services, cfg map[string]interface{}) error {
 	}
 	if s := stringConfig(mysqlCfg["unixtime_field"], ""); strings.TrimSpace(s) != "" {
 		h.mysql.UnixTimeField = strings.TrimSpace(s)
+	}
+
+	postgresCfg := configSection(cfg, "postgres")
+	h.postgres.Enabled = boolConfig(postgresCfg["enabled"], false)
+	if s := stringConfig(postgresCfg["dsn"], ""); strings.TrimSpace(s) != "" {
+		h.postgres.DSN = strings.TrimSpace(s)
+	}
+	if s := stringConfig(postgresCfg["table"], ""); strings.TrimSpace(s) != "" {
+		h.postgres.Table = strings.TrimSpace(s)
+	}
+	if s := stringConfig(postgresCfg["release_field"], ""); strings.TrimSpace(s) != "" {
+		h.postgres.ReleaseField = strings.TrimSpace(s)
+	}
+	if s := stringConfig(postgresCfg["unixtime_field"], ""); strings.TrimSpace(s) != "" {
+		h.postgres.UnixTimeField = strings.TrimSpace(s)
 	}
 
 	apiCfg := configSection(cfg, "api")
@@ -347,6 +377,17 @@ func (h *Handler) lookupRelease(release string) (int64, string, error) {
 			if err != nil && h.debug {
 				errs = append(errs, "mysql: "+err.Error())
 			}
+		case "postgres":
+			if !h.postgres.Enabled || strings.TrimSpace(h.postgres.DSN) == "" {
+				continue
+			}
+			ts, err := lookupSQL("postgres", h.postgres.DSN, h.postgres.Table, h.postgres.ReleaseField, h.postgres.UnixTimeField, release)
+			if err == nil && ts > 0 {
+				return ts, "postgres", nil
+			}
+			if err != nil && h.debug {
+				errs = append(errs, "postgres: "+err.Error())
+			}
 		case "api":
 			if !h.api.Enabled {
 				continue
@@ -428,10 +469,11 @@ func lookupSQL(driver, dsn, table, releaseField, unixTimeField, release string) 
 	db.SetConnMaxLifetime(30 * time.Second)
 
 	query := fmt.Sprintf(
-		"SELECT %s FROM %s WHERE %s = ? LIMIT 1",
-		quoteSQLIdentifier(unixTimeField),
-		quoteSQLTable(table),
-		quoteSQLIdentifier(releaseField),
+		"SELECT %s FROM %s WHERE %s = %s LIMIT 1",
+		quoteSQLIdentifier(driver, unixTimeField),
+		quoteSQLTable(driver, table),
+		quoteSQLIdentifier(driver, releaseField),
+		sqlPlaceholder(driver, 1),
 	)
 	var raw interface{}
 	if err := db.QueryRow(query, release).Scan(&raw); err != nil {
@@ -705,16 +747,27 @@ func validTableIdentifier(name string) bool {
 	return tableIdentifierRE.MatchString(strings.TrimSpace(name))
 }
 
-func quoteSQLIdentifier(name string) string {
-	return "`" + strings.TrimSpace(name) + "`"
+func quoteSQLIdentifier(driver, name string) string {
+	name = strings.TrimSpace(name)
+	if strings.EqualFold(strings.TrimSpace(driver), "postgres") {
+		return `"` + name + `"`
+	}
+	return "`" + name + "`"
 }
 
-func quoteSQLTable(name string) string {
+func quoteSQLTable(driver, name string) string {
 	parts := strings.Split(strings.TrimSpace(name), ".")
 	for i, part := range parts {
-		parts[i] = quoteSQLIdentifier(part)
+		parts[i] = quoteSQLIdentifier(driver, part)
 	}
 	return strings.Join(parts, ".")
+}
+
+func sqlPlaceholder(driver string, index int) string {
+	if strings.EqualFold(strings.TrimSpace(driver), "postgres") {
+		return fmt.Sprintf("$%d", index)
+	}
+	return "?"
 }
 
 func (h *Handler) logf(format string, args ...interface{}) {
