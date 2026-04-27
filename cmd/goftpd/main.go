@@ -171,6 +171,7 @@ func main() {
 		sm.SetSlavePolicies(policies)
 		sm.SetBootstrapDirs(configuredSectionDirs(cfg))
 		sm.SetProtectedDirs(protectedVFSDirs(cfg))
+		sm.SetHiddenPaths(cfg.HiddenVFSPaths)
 		if err := sm.Start(); err != nil {
 			log.Fatalf("SlaveManager failed: %v", err)
 		}
@@ -207,6 +208,7 @@ func main() {
 			sm.SetSlavePolicies(policies)
 			sm.SetBootstrapDirs(configuredSectionDirs(c))
 			sm.SetProtectedDirs(protectedVFSDirs(c))
+			sm.SetHiddenPaths(c.HiddenVFSPaths)
 			if err := sm.ConfigureAuthAllowlist(stringSliceFromCfg(c.Master, "slave_allowlist")); err != nil {
 				log.Printf("[REHASH] invalid master.slave_allowlist: %v", err)
 			}

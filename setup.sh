@@ -1981,6 +1981,305 @@ build_everything() {
     build_sitebot_binary
 }
 
+glftpd_group_name_by_gid() {
+    local group_file="$1"
+    local gid="$2"
+    awk -F: -v wanted_gid="${gid}" '
+        {
+            sub(/\r$/, "", $0)
+        }
+        NF >= 3 && $3 == wanted_gid {
+            print $1
+            exit
+        }
+    ' "${group_file}"
+}
+
+write_minimal_imported_group_file() {
+    local target_file="$1"
+    local group_name="$2"
+    local group_desc="$3"
+    cat > "${target_file}" <<EOF
+GROUP ${group_name}
+SLOTS -1 0 0 0
+GROUPNFO ${group_desc}
+SIMULT 0
+EOF
+}
+
+normalize_glftpd_group_file() {
+    local source_file="$1"
+    local target_file="$2"
+    local group_name="$3"
+    local group_desc="$4"
+
+    if [ -f "${source_file}" ]; then
+        awk '{ sub(/\r$/, ""); print }' "${source_file}" > "${target_file}"
+        if ! grep -Eq '^GROUP[[:space:]]+' "${target_file}"; then
+            local tmp_file
+            tmp_file="$(mktemp)"
+            {
+                printf 'GROUP %s\n' "${group_name}"
+                cat "${target_file}"
+            } > "${tmp_file}"
+            mv "${tmp_file}" "${target_file}"
+        fi
+    else
+        write_minimal_imported_group_file "${target_file}" "${group_name}" "${group_desc}"
+    fi
+}
+
+write_minimal_imported_user_file() {
+    local target_file="$1"
+    local primary_group="$2"
+    cat > "${target_file}" <<EOF
+USER Imported from glFTPD
+GENERAL 0,0 -1 0 0
+LOGINS 2 0 -1 -1
+TIMEFRAME 0 0
+FLAGS 3
+TAGLINE Imported from glFTPD
+DIR /
+ADDED 0
+EXPIRES 0
+CREDITS 0
+RATIO 3
+UPLOADSLOTS 0
+DOWNLOADSLOTS 0
+ALLUP 0 0 0
+ALLDN 0 0 0
+WKUP 0 0 0
+WKDN 0 0 0
+DAYUP 0 0 0
+DAYDN 0 0 0
+MONTHUP 0 0 0
+MONTHDN 0 0 0
+NUKE 0 0 0
+TIME 0 0 0 0
+PRIMARY_GROUP ${primary_group}
+GROUP ${primary_group} 0
+EOF
+}
+
+normalize_glftpd_user_file() {
+    local source_file="$1"
+    local target_file="$2"
+    local primary_group="$3"
+
+    if [ ! -f "${source_file}" ]; then
+        write_minimal_imported_user_file "${target_file}" "${primary_group}"
+        return
+    fi
+
+    awk '{ sub(/\r$/, ""); print }' "${source_file}" > "${target_file}"
+
+    if [ -n "${primary_group}" ]; then
+        if ! grep -Eq '^PRIMARY(_GROUP)?[[:space:]]+' "${target_file}"; then
+            printf 'PRIMARY_GROUP %s\n' "${primary_group}" >> "${target_file}"
+        fi
+        if ! grep -Eq "^GROUP[[:space:]]+${primary_group}([[:space:]]+|$)" "${target_file}"; then
+            printf 'GROUP %s 0\n' "${primary_group}" >> "${target_file}"
+        fi
+    fi
+}
+
+backup_glftpd_import_target() {
+    local backup_dir="$1"
+    mkdir -p "${backup_dir}/etc"
+    [ -f "${ROOT_DIR}/etc/passwd" ] && cp -a "${ROOT_DIR}/etc/passwd" "${backup_dir}/etc/passwd"
+    [ -f "${ROOT_DIR}/etc/group" ] && cp -a "${ROOT_DIR}/etc/group" "${backup_dir}/etc/group"
+    [ -d "${ROOT_DIR}/etc/users" ] && cp -a "${ROOT_DIR}/etc/users" "${backup_dir}/etc/users"
+    [ -d "${ROOT_DIR}/etc/groups" ] && cp -a "${ROOT_DIR}/etc/groups" "${backup_dir}/etc/groups"
+}
+
+merge_colon_records_by_name() {
+    local incoming_file="$1"
+    local target_file="$2"
+    local tmp_file
+
+    if [ ! -f "${target_file}" ]; then
+        cp -a "${incoming_file}" "${target_file}"
+        return 0
+    fi
+
+    tmp_file="$(mktemp)"
+    awk -F: '
+        NR == FNR {
+            sub(/\r$/, "", $0)
+            if ($0 == "" || $1 == "") {
+                next
+            }
+            incoming[$1] = $0
+            order[++incomingCount] = $1
+            next
+        }
+        {
+            sub(/\r$/, "", $0)
+            if ($0 == "" || $0 ~ /^[[:space:]]*#/) {
+                print $0
+                next
+            }
+            key = $1
+            if (key in incoming) {
+                print incoming[key]
+                seen[key] = 1
+            } else {
+                print $0
+            }
+        }
+        END {
+            for (i = 1; i <= incomingCount; i++) {
+                key = order[i]
+                if (!(key in seen)) {
+                    print incoming[key]
+                }
+            }
+        }
+    ' "${incoming_file}" "${target_file}" > "${tmp_file}"
+    mv "${tmp_file}" "${target_file}"
+}
+
+import_glftpd_accounts() {
+    local gl_root="${2:-}"
+    local staged_root stage_users stage_groups stage_passwd stage_group
+    local import_dir import_backup import_log
+    local target_passwd target_group target_users_dir target_groups_dir
+    local passwd_src_tmp passwd_out_tmp group_tmp
+
+    show_banner
+    say_color "${C_YELLOW}${C_BOLD}" "Import glFTPD users/groups"
+
+    if [ -z "${gl_root}" ]; then
+        gl_root="$(prompt_default 'Enter glFTPD root' '/glftpd')"
+    fi
+    gl_root="${gl_root%/}"
+
+    stage_passwd="${gl_root}/etc/passwd"
+    stage_group="${gl_root}/etc/group"
+    stage_users="${gl_root}/ftp-data/users"
+    stage_groups="${gl_root}/ftp-data/groups"
+
+    if [ ! -f "${stage_passwd}" ] || [ ! -f "${stage_group}" ] || [ ! -d "${stage_users}" ]; then
+        say "Could not find a valid glFTPD layout under ${gl_root}"
+        say "Expected:"
+        say "  ${gl_root}/etc/passwd"
+        say "  ${gl_root}/etc/group"
+        say "  ${gl_root}/ftp-data/users/"
+        exit 1
+    fi
+
+    import_dir="${ROOT_DIR}/imports/glftpd-${TIMESTAMP}"
+    staged_root="${import_dir}/source"
+    import_backup="${ROOT_DIR}/backups/import-glftpd-${TIMESTAMP}"
+    import_log="${import_dir}/import.log"
+    mkdir -p "${staged_root}/etc" "${staged_root}/ftp-data" "${import_backup}"
+
+    say ""
+    say "Staging glFTPD source into:"
+    say "  ${staged_root}"
+    cp -a "${stage_passwd}" "${staged_root}/etc/passwd"
+    cp -a "${stage_group}" "${staged_root}/etc/group"
+    cp -a "${stage_users}" "${staged_root}/ftp-data/users"
+    if [ -d "${stage_groups}" ]; then
+        cp -a "${stage_groups}" "${staged_root}/ftp-data/groups"
+    fi
+
+    say ""
+    say "Current GoFTPd account files will be backed up to:"
+    say "  ${import_backup}"
+    say ""
+    if ! prompt_yes_no "Import staged glFTPD accounts into GoFTPd now?" "Y"; then
+        say "Import cancelled. Staged copy kept at ${staged_root}."
+        exit 0
+    fi
+
+    backup_glftpd_import_target "${import_backup}"
+
+    target_passwd="${ROOT_DIR}/etc/passwd"
+    target_group="${ROOT_DIR}/etc/group"
+    target_users_dir="${ROOT_DIR}/etc/users"
+    target_groups_dir="${ROOT_DIR}/etc/groups"
+    mkdir -p "${target_users_dir}" "${target_groups_dir}"
+
+    passwd_src_tmp="$(mktemp)"
+    passwd_out_tmp="$(mktemp)"
+    group_tmp="$(mktemp)"
+    : > "${passwd_src_tmp}"
+    : > "${passwd_out_tmp}"
+    : > "${group_tmp}"
+    : > "${import_log}"
+
+    awk -F: '
+        {
+            sub(/\r$/, "", $0)
+        }
+        NF >= 3 && $1 != "" {
+            desc = $2
+            gid = $3
+            printf "%s:%s:%s:\n", $1, desc, gid
+        }
+    ' "${staged_root}/etc/group" > "${group_tmp}"
+
+    if ! grep -Eq '^NoGroup:' "${group_tmp}"; then
+        printf 'NoGroup:No Group:100:\n' >> "${group_tmp}"
+    fi
+
+    while IFS=: read -r group_name group_desc group_gid _rest; do
+        [ -z "${group_name}" ] && continue
+        normalize_glftpd_group_file "${staged_root}/ftp-data/groups/${group_name}" "${target_groups_dir}/${group_name}" "${group_name}" "${group_desc}"
+        printf 'group:%s gid:%s desc:%s\n' "${group_name}" "${group_gid}" "${group_desc}" >> "${import_log}"
+    done < "${group_tmp}"
+
+    awk -F: '
+        {
+            sub(/\r$/, "", $0)
+        }
+        NF >= 4 && $1 != "" {
+            gecos = (NF >= 5 && $5 != "" ? $5 : "0")
+            home = (NF >= 6 && $6 != "" ? $6 : "/site")
+            shell = (NF >= 7 && $7 != "" ? $7 : "/bin/false")
+            printf "%s:%s:%s:%s:%s:%s:%s\n", $1, $2, $3, $4, gecos, home, shell
+        }
+    ' "${staged_root}/etc/passwd" > "${passwd_src_tmp}"
+
+    while IFS=: read -r username hash uid gid gecos home shell; do
+        local primary_group user_source user_target
+        [ -z "${username}" ] && continue
+        primary_group="$(glftpd_group_name_by_gid "${group_tmp}" "${gid}")"
+        if [ -z "${primary_group}" ]; then
+            primary_group="NoGroup"
+        fi
+        printf '%s:%s:%s:%s:%s:%s:%s\n' "${username}" "${hash}" "${uid}" "${gid}" "${gecos:-0}" "${home:-/site}" "${shell:-/bin/false}" >> "${passwd_out_tmp}"
+        user_source="${staged_root}/ftp-data/users/${username}"
+        user_target="${target_users_dir}/${username}"
+        normalize_glftpd_user_file "${user_source}" "${user_target}" "${primary_group}"
+        printf 'user:%s uid:%s gid:%s primary:%s userfile:%s\n' "${username}" "${uid}" "${gid}" "${primary_group}" "${user_source}" >> "${import_log}"
+    done < "${passwd_src_tmp}"
+
+    merge_colon_records_by_name "${group_tmp}" "${target_group}"
+    merge_colon_records_by_name "${passwd_out_tmp}" "${target_passwd}"
+    chmod 0644 "${target_group}" || true
+    chmod 0600 "${target_passwd}" || true
+    rm -f "${passwd_src_tmp}" "${passwd_out_tmp}" "${group_tmp}"
+
+    say ""
+    say "glFTPD import complete."
+    say "Staged source copy:"
+    say "  ${staged_root}"
+    say "Backup of prior GoFTPd account files:"
+    say "  ${import_backup}"
+    say "Import log:"
+    say "  ${import_log}"
+    say ""
+    say "Imported files:"
+    say "  ${target_passwd}"
+    say "  ${target_group}"
+    say "  ${target_users_dir}/"
+    say "  ${target_groups_dir}/"
+    say ""
+    say "Legacy glFTPD password hashes are now accepted by GoFTPd."
+}
+
 show_usage() {
     show_banner
     say_color "${C_BOLD}" "GoFTPd setup"
@@ -1989,6 +2288,7 @@ show_usage() {
     say "  ./setup.sh install   Run guided install/config setup"
     say "  ./setup.sh build     Build daemon and sitebot only"
     say "  ./setup.sh certs     Generate fresh TLS certificates"
+    say "  ./setup.sh import-glftpd [root]  Import users/groups from a glFTPD tree"
     say "  ./setup.sh systemd   Install or refresh systemd service files"
     say "  ./setup.sh clean     Back up generated configs and reset install state"
     say "  ./setup.sh backup    Alias for clean"
@@ -1998,6 +2298,7 @@ show_usage() {
     say "  - 'install' loads ${STATE_FILE} as defaults when you allow it."
     say "  - 'build' just runs the daemon and sitebot build scripts."
     say "  - 'certs' writes CA, server, and slave certs into ./etc/certs."
+    say "  - 'import-glftpd' stages a copy of /glftpd-style account files, backs up current GoFTPd account data, then converts passwd/group/user/group files."
     say "  - 'systemd' installs Debian/Ubuntu-friendly service files for the daemon and optional sitebot."
     say "  - 'clean' keeps ${STATE_FILE} but backs up generated configs, FIFO, and certs."
 }
@@ -2017,6 +2318,11 @@ case "${1:-help}" in
         build_everything
         say ""
         say "Build complete."
+        exit 0
+        ;;
+    import-glftpd|--import-glftpd)
+        ensure_script_permissions
+        import_glftpd_accounts "$@"
         exit 0
         ;;
     systemd|--systemd|service|--service)

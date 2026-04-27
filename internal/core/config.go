@@ -44,6 +44,9 @@ type Config struct {
 	// VFS and create on matching writable slaves. Nested dirs such as
 	// "/FOREIGN/TV-NL" are supported.
 	Sections []string `yaml:"sections"`
+	// HiddenVFSPaths are master-side virtual paths/subtrees that should be
+	// suppressed from the VFS even if they exist on a slave.
+	HiddenVFSPaths []string `yaml:"hidden_vfs_paths"`
 
 	// InviteChannels maps channel names to required user flags. Channels
 	// not listed here are considered public and returned to every user

@@ -2,12 +2,16 @@ package core
 
 import (
 	"bufio"
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/crypto/pbkdf2"
 )
 
 // LoadPasswdFile reads standard /etc/passwd
@@ -41,6 +45,7 @@ func LoadPasswdFile(path string) (map[string]string, error) {
 // VerifyPassword checks plaintext password against a hash.
 // Supported format:
 //   - bcrypt: $2a$/$2b$/$2y$
+//   - glFTPD PBKDF2-HMAC-SHA1: $<8 hex salt>$<40 hex digest>
 //
 // Everything else is rejected. Older builds accepted unknown $-prefixed
 // hashes, but that effectively let any password through for those accounts.
@@ -48,7 +53,30 @@ func VerifyPassword(plaintext, hash string) bool {
 	if strings.HasPrefix(hash, "$2") {
 		return bcrypt.CompareHashAndPassword([]byte(hash), []byte(plaintext)) == nil
 	}
+	if verifyLegacyGlftpdHash(plaintext, hash) {
+		return true
+	}
 	return false
+}
+
+func verifyLegacyGlftpdHash(plaintext, hash string) bool {
+	if len(hash) != 50 || !strings.HasPrefix(hash, "$") {
+		return false
+	}
+	parts := strings.Split(hash, "$")
+	if len(parts) != 3 || parts[0] != "" || len(parts[1]) != 8 || len(parts[2]) != 40 {
+		return false
+	}
+	salt, err := hex.DecodeString(parts[1])
+	if err != nil || len(salt) != 4 {
+		return false
+	}
+	want, err := hex.DecodeString(parts[2])
+	if err != nil || len(want) != sha1.Size {
+		return false
+	}
+	got := pbkdf2.Key([]byte(plaintext), salt, 100, sha1.Size, sha1.New)
+	return hmac.Equal(got, want)
 }
 
 // HashPassword creates a bcrypt hash (default cost 10).

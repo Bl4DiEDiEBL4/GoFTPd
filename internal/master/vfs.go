@@ -61,6 +61,7 @@ type VirtualFileSystem struct {
 	dirMeta       map[string]*VFSDirMeta // dir path -> metadata (SFV cache etc)
 	raceState     map[string]*VFSRaceCache
 	protectedDirs map[string]bool
+	hiddenPaths   map[string]bool
 	mu            sync.RWMutex
 }
 
@@ -71,6 +72,7 @@ func NewVirtualFileSystem() *VirtualFileSystem {
 		dirMeta:       make(map[string]*VFSDirMeta),
 		raceState:     make(map[string]*VFSRaceCache),
 		protectedDirs: make(map[string]bool),
+		hiddenPaths:   make(map[string]bool),
 	}
 	vfs.files["/"] = &VFSFile{Path: "/", IsDir: true, Seen: true}
 	vfs.children["/"] = make(map[string]struct{})
@@ -89,6 +91,13 @@ func (vfs *VirtualFileSystem) AddFile(path string, file VFSFile) {
 	}
 	if vfs.protectedDirs == nil {
 		vfs.protectedDirs = make(map[string]bool)
+	}
+	if vfs.hiddenPaths == nil {
+		vfs.hiddenPaths = make(map[string]bool)
+	}
+	if vfs.isHiddenPathLocked(path) {
+		delete(vfs.files, path)
+		return
 	}
 	if vfs.protectedDirs[path] {
 		file.IsDir = true
@@ -114,6 +123,21 @@ func (vfs *VirtualFileSystem) AddFile(path string, file VFSFile) {
 	}
 	vfs.touchAncestorsLocked(path, file.LastModified)
 	vfs.refreshRaceStateForPathLocked(path)
+}
+
+func (vfs *VirtualFileSystem) SetHiddenPaths(paths []string) {
+	vfs.mu.Lock()
+	defer vfs.mu.Unlock()
+
+	vfs.hiddenPaths = make(map[string]bool, len(paths))
+	for _, p := range paths {
+		p = cleanVFSPath(p)
+		if p == "" || p == "." || p == "/" {
+			continue
+		}
+		vfs.hiddenPaths[p] = true
+	}
+	vfs.pruneHiddenPathsLocked()
 }
 
 func (vfs *VirtualFileSystem) AddSymlink(linkPath, targetPath string) {
@@ -234,7 +258,11 @@ func (vfs *VirtualFileSystem) SetProtectedDirs(paths []string) {
 func (vfs *VirtualFileSystem) GetFile(path string) *VFSFile {
 	vfs.mu.RLock()
 	defer vfs.mu.RUnlock()
-	return vfs.files[filepath.Clean(path)]
+	path = cleanVFSPath(path)
+	if vfs.isHiddenPathLocked(path) {
+		return nil
+	}
+	return vfs.files[path]
 }
 
 func (vfs *VirtualFileSystem) ResolvePath(p string) string {
@@ -295,6 +323,9 @@ func (vfs *VirtualFileSystem) ListDirectory(dirPath string) []*VFSFile {
 
 	results := make([]*VFSFile, 0, len(childPaths))
 	for childPath := range childPaths {
+		if vfs.isHiddenPathLocked(childPath) {
+			continue
+		}
 		if file := vfs.files[childPath]; file != nil {
 			results = append(results, file)
 		}
@@ -601,11 +632,44 @@ func (vfs *VirtualFileSystem) LoadFromDisk(filePath string) error {
 	if vfs.protectedDirs == nil {
 		vfs.protectedDirs = make(map[string]bool)
 	}
+	if vfs.hiddenPaths == nil {
+		vfs.hiddenPaths = make(map[string]bool)
+	}
+	vfs.pruneHiddenPathsLocked()
 	vfs.rebuildChildrenLocked()
 	vfs.rebuildAllRaceStatesLocked()
 
 	log.Printf("[VFS] Loaded %d entries from %s", len(vfs.files), filePath)
 	return nil
+}
+
+func (vfs *VirtualFileSystem) isHiddenPathLocked(p string) bool {
+	p = cleanVFSPath(p)
+	if p == "/" || p == "" {
+		return false
+	}
+	for hidden := range vfs.hiddenPaths {
+		if p == hidden || strings.HasPrefix(p, hidden+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func (vfs *VirtualFileSystem) pruneHiddenPathsLocked() {
+	changed := false
+	for p := range vfs.files {
+		if vfs.isHiddenPathLocked(p) {
+			delete(vfs.files, p)
+			delete(vfs.dirMeta, p)
+			delete(vfs.raceState, p)
+			changed = true
+		}
+	}
+	if changed {
+		vfs.rebuildChildrenLocked()
+		vfs.rebuildAllRaceStatesLocked()
+	}
 }
 
 func cleanVFSPath(p string) string {

@@ -1,5 +1,7 @@
 # GoFTPd
 
+> Still under active development. Things may change or break.
+
 GoFTPd is a distributed FTP daemon written in Go. It uses a master/slave
 architecture with a VFS, CRC/SFV checking, race stats, TLS data transfers,
 SITE commands, plugin hooks, and an IRC sitebot.

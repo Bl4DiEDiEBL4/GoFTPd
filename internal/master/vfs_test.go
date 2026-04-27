@@ -258,6 +258,28 @@ func TestSetProtectedDirsPrunesStaleUnownedRootDirs(t *testing.T) {
 	}
 }
 
+func TestSetHiddenPathsPrunesAndHidesSubtrees(t *testing.T) {
+	vfs := NewVirtualFileSystem()
+	vfs.AddFile("/ARCHiVE", VFSFile{Path: "/ARCHiVE", IsDir: true, Seen: true})
+	vfs.AddFile("/ARCHiVE/_incoming", VFSFile{Path: "/ARCHiVE/_incoming", IsDir: true, Seen: true})
+	vfs.AddFile("/ARCHiVE/_incoming/release", VFSFile{Path: "/ARCHiVE/_incoming/release", IsDir: true, Seen: true})
+	vfs.AddFile("/ARCHiVE/visible", VFSFile{Path: "/ARCHiVE/visible", IsDir: true, Seen: true})
+
+	vfs.SetHiddenPaths([]string{"/ARCHiVE/_incoming"})
+
+	if got := vfs.GetFile("/ARCHiVE/_incoming"); got != nil {
+		t.Fatalf("expected hidden path to be absent from VFS, got %+v", got)
+	}
+	if got := vfs.GetFile("/ARCHiVE/_incoming/release"); got != nil {
+		t.Fatalf("expected hidden subtree path to be absent from VFS, got %+v", got)
+	}
+
+	children := vfs.ListDirectory("/ARCHiVE")
+	if len(children) != 1 || children[0].Path != "/ARCHiVE/visible" {
+		t.Fatalf("expected only visible child after hide, got %+v", children)
+	}
+}
+
 func TestVFSResolvePathFollowsSymlinkSegments(t *testing.T) {
 	vfs := NewVirtualFileSystem()
 

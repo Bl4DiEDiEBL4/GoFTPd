@@ -170,6 +170,19 @@ sections:
   - "/XXX-IMAGESETS"
   - "/XXX-SD"
 
+# =============================================================================
+#  Hidden VFS paths - master-only
+#  These virtual paths are ignored during slave remerge and kept out of LIST/STAT
+#  results, even if they physically exist on a slave root. Use this to keep
+#  private helper folders or local-only storage trees out of the FTP view.
+#
+#  Hiding a parent path hides everything below it too.
+#  This does not delete anything from the slave disk.
+# =============================================================================
+hidden_vfs_paths:
+  # - "/ARCHiVE/_incoming"
+  # - "/private-tools"
+
 
 # =============================================================================
 #  Storage + paths

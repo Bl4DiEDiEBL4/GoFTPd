@@ -207,6 +207,10 @@ func (sm *SlaveManager) SetProtectedDirs(paths []string) {
 	sm.vfs.SetProtectedDirs(paths)
 }
 
+func (sm *SlaveManager) SetHiddenPaths(paths []string) {
+	sm.vfs.SetHiddenPaths(paths)
+}
+
 func (sm *SlaveManager) SetBootstrapDirs(paths []string) {
 	sm.bootstrapDirsMu.Lock()
 	defer sm.bootstrapDirsMu.Unlock()
