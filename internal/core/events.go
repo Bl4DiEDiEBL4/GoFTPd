@@ -43,6 +43,9 @@ const (
 	EventDiskStatus       EventType = "DISKSTATUS"
 	EventSpeedtest        EventType = "SPEEDTEST"
 	EventPre              EventType = "PRE"           // release pre'd — relname, section, group, files, mbytes
+	EventPreAudioInfo     EventType = "PREAUDIOINFO"  // extra music metadata line for PRE
+	EventPreMovieInfo     EventType = "PREMOVIEINFO"  // extra movie metadata line for PRE
+	EventPreTVInfo        EventType = "PRETVINFO"     // extra tv metadata line for PRE
 	EventPreBW            EventType = "PREBW"         // race-bw totals after pre
 	EventPreBWUser        EventType = "PREBWUSER"     // per-user race-bw after pre
 	EventPreBWInterval    EventType = "PREBWINTERVAL" // interval snapshots after pre

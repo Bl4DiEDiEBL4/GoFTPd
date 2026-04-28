@@ -742,6 +742,69 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 		}
 		fallback := fmt.Sprintf("PRE: [%s] %s by %s (%s) - %s/%s%s", section, rel, group, user, vars["t_mbytes"], vars["t_files"], vars["pre_suffix"])
 		outs = append(outs, plugin.Output{Type: "PRE", Text: p.render("PRE", vars, fallback)})
+	case event.EventPreAudioInfo:
+		meta := []string{}
+		if head := strings.TrimSpace(vars["pre_audio_head"]); head != "" {
+			meta = append(meta, head)
+		}
+		if value := strings.TrimSpace(vars["genre"]); value != "" && !strings.EqualFold(value, "N/A") {
+			meta = append(meta, value)
+		}
+		if value := strings.TrimSpace(vars["year"]); value != "" && !strings.EqualFold(value, "N/A") {
+			meta = append(meta, value)
+		}
+		if value := strings.TrimSpace(vars["bitrate"]); value != "" && !strings.EqualFold(value, "N/A") {
+			meta = append(meta, value)
+		}
+		suffix := ""
+		if len(meta) > 0 {
+			suffix = " :: " + strings.Join(meta, " :: ")
+		}
+		fallback := fmt.Sprintf("PRE: [%s] %s%s", section, rel, suffix)
+		outs = append(outs, plugin.Output{Type: "PRE", Text: p.render("PREAUDIOINFO", vars, fallback)})
+	case event.EventPreMovieInfo:
+		title := strings.TrimSpace(vars["title"])
+		year := strings.TrimSpace(vars["year"])
+		genre := strings.TrimSpace(vars["genre"])
+		rating := strings.TrimSpace(vars["rating"])
+		head := rel
+		if title != "" {
+			head = title
+			if year != "" && !strings.EqualFold(year, "N/A") {
+				head = fmt.Sprintf("%s (%s)", title, year)
+			}
+		}
+		parts := []string{head}
+		if genre != "" && !strings.EqualFold(genre, "N/A") {
+			parts = append(parts, genre)
+		}
+		if rating != "" && !strings.EqualFold(rating, "N/A") {
+			parts = append(parts, rating)
+		}
+		fallback := fmt.Sprintf("PRE: [%s] %s :: %s", section, rel, strings.Join(parts, " :: "))
+		outs = append(outs, plugin.Output{Type: "PRE", Text: p.render("PREMOVIEINFO", vars, fallback)})
+	case event.EventPreTVInfo:
+		parts := []string{}
+		if episode := strings.TrimSpace(vars["episode"]); episode != "" && !strings.EqualFold(episode, "N/A") {
+			parts = append(parts, episode)
+		}
+		if genre := strings.TrimSpace(vars["genre"]); genre != "" && !strings.EqualFold(genre, "N/A") {
+			parts = append(parts, genre)
+		}
+		if tvType := strings.TrimSpace(vars["type"]); tvType != "" && !strings.EqualFold(tvType, "N/A") {
+			parts = append(parts, tvType)
+		}
+		if network := strings.TrimSpace(vars["network"]); network != "" && !strings.EqualFold(network, "N/A") {
+			parts = append(parts, network)
+		}
+		if language := strings.TrimSpace(vars["language"]); language != "" && !strings.EqualFold(language, "N/A") {
+			parts = append(parts, language)
+		}
+		fallback := fmt.Sprintf("PRE: [%s] %s", section, rel)
+		if len(parts) > 0 {
+			fallback += " :: " + strings.Join(parts, " :: ")
+		}
+		outs = append(outs, plugin.Output{Type: "PRE", Text: p.render("PRETVINFO", vars, fallback)})
 	case event.EventPreBW:
 		fallback := fmt.Sprintf("PREBW: [%s] %s :: %s%s @ %s%s :: Highest %s%s",
 			section, rel,

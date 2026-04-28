@@ -248,6 +248,13 @@ func (p *Plugin) HandleSiteCommand(ctx plugin.SiteContext, command string, args 
 		eventData[k] = v
 	}
 	p.emit("PRE", dst, relname, canonicalSection, totalBytes, 0, eventData)
+	if isMusicPreMeta(metaVars) {
+		p.emit("PREAUDIOINFO", dst, relname, canonicalSection, totalBytes, 0, eventData)
+	} else if isTVPreMeta(metaVars) {
+		p.emit("PRETVINFO", dst, relname, canonicalSection, totalBytes, 0, eventData)
+	} else if isMoviePreMeta(metaVars) {
+		p.emit("PREMOVIEINFO", dst, relname, canonicalSection, totalBytes, 0, eventData)
+	}
 
 	go p.runBWSampler(dst, relname, canonicalSection, match.rule.Group)
 
@@ -1047,10 +1054,23 @@ func (p *Plugin) preMetadataVars(srcDir, section, relname string) map[string]str
 	switch {
 	case sectionUpper == "MP3" || sectionUpper == "FLAC":
 		if info := p.svc.Bridge.GetDirMediaInfo(srcDir); len(info) > 0 {
+			artist := firstNonEmpty(info, "artist", "g_performer", "g_album_performer")
+			title := firstNonEmpty(info, "title", "g_title", "g_album", "g_complete_name", "g_track_name")
 			genre := firstNonEmpty(info, "genre", "g_genre")
 			year := normalizeYearForPre(firstNonEmpty(info, "year", "g_recordeddate", "g_recorded_date", "g_originalreleaseddate", "g_original_released_date"))
+			bitrate := firstNonEmpty(info, "bitrate")
+			bitrateMode := firstNonEmpty(info, "bitrate_mode")
+			sampleRate := firstNonEmpty(info, "sample_rate")
+			channels := firstNonEmpty(info, "channels")
+			vars["artist"] = strings.TrimSpace(artist)
+			vars["title"] = strings.TrimSpace(title)
+			vars["pre_audio_head"] = buildMusicPreHead(artist, title, relname)
 			vars["genre"] = genreOrNA(genre)
 			vars["year"] = valueOrNA(year)
+			vars["bitrate"] = valueOrNA(bitrate)
+			vars["bitrate_mode"] = valueOrNA(bitrateMode)
+			vars["sample_rate"] = valueOrNA(sampleRate)
+			vars["channels"] = valueOrNA(channels)
 			vars["pre_suffix"] = buildMusicPreSuffix(genre, year)
 		}
 	default:
@@ -1149,6 +1169,57 @@ func buildMusicPreSuffix(genre, year string) string {
 	default:
 		return ""
 	}
+}
+
+func buildMusicPreHead(artist, title, relname string) string {
+	artist = strings.TrimSpace(artist)
+	title = strings.TrimSpace(title)
+	switch {
+	case artist != "" && title != "":
+		return artist + " - " + title
+	case title != "":
+		return title
+	case artist != "":
+		return artist
+	default:
+		return strings.TrimSpace(relname)
+	}
+}
+
+func isMusicPreMeta(vars map[string]string) bool {
+	if len(vars) == 0 {
+		return false
+	}
+	for _, key := range []string{"artist", "title", "genre", "year", "bitrate"} {
+		if value := strings.TrimSpace(vars[key]); value != "" && !strings.EqualFold(value, "N/A") {
+			return true
+		}
+	}
+	return false
+}
+
+func isMoviePreMeta(vars map[string]string) bool {
+	if len(vars) == 0 {
+		return false
+	}
+	for _, key := range []string{"director", "rating", "metacritic", "link"} {
+		if value := strings.TrimSpace(vars[key]); value != "" && !strings.EqualFold(value, "N/A") {
+			return true
+		}
+	}
+	return false
+}
+
+func isTVPreMeta(vars map[string]string) bool {
+	if len(vars) == 0 {
+		return false
+	}
+	for _, key := range []string{"episode", "network", "tvmaze_link", "type", "language"} {
+		if value := strings.TrimSpace(vars[key]); value != "" && !strings.EqualFold(value, "N/A") {
+			return true
+		}
+	}
+	return false
 }
 
 func buildMoviePreSuffix(fields map[string]string, relname string) string {

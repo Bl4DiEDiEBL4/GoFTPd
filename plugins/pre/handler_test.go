@@ -192,6 +192,45 @@ func TestBuildMusicPreSuffix(t *testing.T) {
 	}
 }
 
+func TestBuildMusicPreHead(t *testing.T) {
+	if got := buildMusicPreHead("Some Artist", "Album Title", "Rel-GRP"); got != "Some Artist - Album Title" {
+		t.Fatalf("buildMusicPreHead full = %q", got)
+	}
+	if got := buildMusicPreHead("", "Album Title", "Rel-GRP"); got != "Album Title" {
+		t.Fatalf("buildMusicPreHead title-only = %q", got)
+	}
+	if got := buildMusicPreHead("", "", "Rel-GRP"); got != "Rel-GRP" {
+		t.Fatalf("buildMusicPreHead fallback = %q", got)
+	}
+}
+
+func TestIsMusicPreMeta(t *testing.T) {
+	if isMusicPreMeta(map[string]string{"genre": "N/A", "year": "N/A", "bitrate": "N/A"}) {
+		t.Fatal("expected all-N/A metadata to be ignored")
+	}
+	if !isMusicPreMeta(map[string]string{"artist": "Some Artist", "bitrate": "320kbps"}) {
+		t.Fatal("expected real metadata to count as music PRE info")
+	}
+}
+
+func TestIsMoviePreMeta(t *testing.T) {
+	if isMoviePreMeta(map[string]string{"director": "N/A", "rating": "N/A"}) {
+		t.Fatal("expected all-N/A movie metadata to be ignored")
+	}
+	if !isMoviePreMeta(map[string]string{"director": "J. Michael Muro"}) {
+		t.Fatal("expected real movie metadata to count")
+	}
+}
+
+func TestIsTVPreMeta(t *testing.T) {
+	if isTVPreMeta(map[string]string{"episode": "N/A", "network": "N/A"}) {
+		t.Fatal("expected all-N/A tv metadata to be ignored")
+	}
+	if !isTVPreMeta(map[string]string{"episode": "S01E01 - Pilot"}) {
+		t.Fatal("expected real tv metadata to count")
+	}
+}
+
 func TestBuildMoviePreSuffix(t *testing.T) {
 	fields := map[string]string{
 		"title":  "The Boxer",

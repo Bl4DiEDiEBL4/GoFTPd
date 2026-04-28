@@ -431,6 +431,9 @@ announce.NUKE_NUKEES = "%b{%c04{NUKED:}} %c01{[nukees]} %c14{-->} %c07{%nukees}"
 announce.UNNUKE = "%b{%c01{UNNUKE:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{by} %c04{%u_name}"
 
 announce.PRE = "%b{%c01{PRE:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{by} %c04{%b{%group}} %c01{(}%c04{%user}%c01{)} %c01{-} %c05{%t_mbytes}%c01{/}%c05{%t_files}%pre_suffix"
+announce.PREAUDIOINFO = "%b{%c01{PRE:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{::} %c04{%pre_audio_head} %c01{::} %c05{%genre} %c01{::} %c05{%year} %c01{::} %c05{%bitrate}"
+announce.PREMOVIEINFO = "%b{%c01{PRE:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{::} %c04{%title} %c01{(}%c04{%year}%c01{) ::} %c05{%genre} %c01{::} %c05{%rating}"
+announce.PRETVINFO = "%b{%c01{PRE:}} %c01{[}%section_colored%c01{]} %c06{%b{%relname}} %c01{::} %c04{%episode} %c01{::} %c05{%genre} %c01{::} %c05{%type} %c01{::} %c05{%network} %c01{::} %c05{%language}"
 
 announce.PREBW = "%b{%c01{PREBW:}} %c01{[}%section_colored%c01{]} %c01{::} %c06{%b{%relname}} %c01{::} %c03{%b{%traffic_val}}%c01{%traffic_unit} %c01{@} %c03{%b{%avg_val}}%c01{%avg_unit} %c01{:: Highest} %c03{%b{%peak_val}}%c01{%peak_unit}"
 
