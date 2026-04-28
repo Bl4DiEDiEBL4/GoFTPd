@@ -267,3 +267,21 @@ func refreshAudioSortLinks(bridge MasterBridge, cfg zipscript.Config, releasePat
 	}
 	return ensureAudioSortLinks(bridge, currentLinks)
 }
+
+func cleanupAudioSortLinksForRelease(bridge MasterBridge, cfg zipscript.Config, releasePath string) error {
+	if bridge == nil {
+		return nil
+	}
+	fields := bridge.GetDirMediaInfo(releasePath)
+	if len(fields) == 0 {
+		return nil
+	}
+	for _, link := range zipscript.AudioSortLinks(cfg, releasePath, fields) {
+		if bridge.GetFileSize(link.LinkPath) >= 0 {
+			if err := bridge.DeleteFile(link.LinkPath); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}

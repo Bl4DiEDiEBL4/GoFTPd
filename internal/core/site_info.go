@@ -50,7 +50,7 @@ var baseSiteHelpEntries = []siteHelpEntry{
 	{Command: "NUKE", Usage: "<release> <multiplier> <reason>", Summary: "Nuke a release", Area: "Release/admin"},
 	{Command: "UNNUKE", Usage: "<release> [reason]", Summary: "Unnuke a release", Area: "Release/admin"},
 	{Command: "UNDUPE", Usage: "<release>", Summary: "Remove a release from the dupe DB", Area: "Release/admin"},
-	{Command: "WIPE", Usage: "<path>", Summary: "Wipe a path", Area: "Release/admin"},
+	{Command: "WIPE", Usage: "[-r] <path>", Summary: "Wipe a path", Area: "Release/admin"},
 	{Command: "KICK", Usage: "<user>", Summary: "Disconnect a user", Area: "Release/admin"},
 	{Command: "REHASH", Usage: "", Summary: "Reload permissions and config-backed state", Area: "Release/admin"},
 	{Command: "REMERGE", Usage: "[slave]", Summary: "Refresh slave VFS index", Area: "Release/admin"},

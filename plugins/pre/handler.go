@@ -848,6 +848,20 @@ func (p *Plugin) resolveSection(section string) (string, string, bool) {
 			return canonical, cleanAbs(cfg), true
 		}
 	}
+	if p.svc != nil && p.svc.Bridge != nil {
+		for _, entry := range p.svc.Bridge.PluginListDir("/") {
+			if !entry.IsDir || entry.IsSymlink {
+				continue
+			}
+			name := strings.TrimSpace(entry.Name)
+			if name == "" {
+				continue
+			}
+			if strings.EqualFold(name, section) {
+				return name, cleanAbs("/" + name), true
+			}
+		}
+	}
 	if len(p.sections) == 0 {
 		clean := strings.TrimPrefix(cleanAbs(section), "/")
 		return clean, cleanAbs(section), true
@@ -991,7 +1005,7 @@ func (p *Plugin) printPreHelpRow(ctx plugin.SiteContext, group string, predirs, 
 			predirCol = predirs[i]
 		}
 		if i < len(sections) {
-			sectionCol = strings.ToLower(strings.TrimSpace(sections[i]))
+			sectionCol = strings.TrimSpace(sections[i])
 		}
 		ctx.Reply("200- %-15s %-40s %-25s %-6s\r\n", groupCol, predirCol, sectionCol, rewardCol)
 	}

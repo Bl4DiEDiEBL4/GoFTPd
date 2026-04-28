@@ -500,6 +500,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
 				dirPath := path.Join(s.CurrentDir, args[0])
+				if err := cleanupAudioSortLinksForRelease(bridge, s.Config.Zipscript, dirPath); err != nil && s.Config.Debug {
+					log.Printf("[MASTER-ZS] audio sort cleanup skipped for %s: %v", dirPath, err)
+				}
 				bridge.DeleteFile(dirPath)
 			}
 		}

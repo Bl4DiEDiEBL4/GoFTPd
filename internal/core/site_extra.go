@@ -3,6 +3,7 @@ package core
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -230,7 +231,7 @@ func (s *Session) HandleSiteUndupe(args []string) bool {
 
 func (s *Session) HandleSiteWipe(args []string) bool {
 	if len(args) < 1 || strings.TrimSpace(strings.Join(args, " ")) == "" {
-		fmt.Fprintf(s.Conn, "501 Usage: SITE WIPE <path>\r\n")
+		fmt.Fprintf(s.Conn, "501 Usage: SITE WIPE [-r] <path>\r\n")
 		return false
 	}
 	if s.Config.Mode != "master" || s.MasterManager == nil {
@@ -242,7 +243,18 @@ func (s *Session) HandleSiteWipe(args []string) bool {
 		fmt.Fprintf(s.Conn, "550 Master not initialized.\r\n")
 		return false
 	}
-	target := resolveSitePath(s.CurrentDir, strings.TrimSpace(strings.Join(args, " ")))
+	filtered := make([]string, 0, len(args))
+	for _, arg := range args {
+		if strings.EqualFold(strings.TrimSpace(arg), "-r") {
+			continue
+		}
+		filtered = append(filtered, arg)
+	}
+	if len(filtered) == 0 || strings.TrimSpace(strings.Join(filtered, " ")) == "" {
+		fmt.Fprintf(s.Conn, "501 Usage: SITE WIPE [-r] <path>\r\n")
+		return false
+	}
+	target := resolveSitePath(s.CurrentDir, strings.TrimSpace(strings.Join(filtered, " ")))
 	if target == "/" {
 		fmt.Fprintf(s.Conn, "550 Refusing to wipe root.\r\n")
 		return false
@@ -251,6 +263,9 @@ func (s *Session) HandleSiteWipe(args []string) bool {
 	if s.ACLEngine != nil && !s.ACLEngine.CanPerform(s.User, "DELETE", aclPath) {
 		fmt.Fprintf(s.Conn, "550 Access Denied: Cannot wipe here.\r\n")
 		return false
+	}
+	if err := cleanupAudioSortLinksForRelease(bridge, s.Config.Zipscript, target); err != nil && s.Config.Debug {
+		log.Printf("[MASTER-ZS] audio sort cleanup skipped for %s: %v", target, err)
 	}
 	if err := bridge.DeleteFile(target); err != nil {
 		fmt.Fprintf(s.Conn, "550 Wipe failed: %v\r\n", err)

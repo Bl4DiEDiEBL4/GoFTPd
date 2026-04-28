@@ -401,6 +401,14 @@ func main() {
 	if cfg.Debug {
 		log.Printf("[PLUGINS] All plugins initialized")
 	}
+	if freshACL, err := acl.LoadEngine("etc/permissions.yml"); err != nil {
+		log.Printf("[ACL] post-plugin reload skipped: %v", err)
+	} else {
+		aclEngine = freshACL
+		if cfg.Debug {
+			log.Printf("[ACL] reloaded ACL engine after plugin initialization")
+		}
+	}
 
 	// 8. Initialize dupe checker (duplicate detection)
 	var dupeChecker interface{}
