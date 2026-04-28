@@ -814,10 +814,14 @@ func (sm *SlaveManager) ensureBootstrapDirsOnSlave(rs *RemoteSlave) {
 	}
 	dirs := sm.getBootstrapDirsForSlave(rs.Name())
 	for _, dirPath := range dirs {
+		lastModified := time.Now().Unix()
+		if existing := sm.vfs.GetFile(dirPath); existing != nil && existing.IsDir && existing.LastModified > 0 {
+			lastModified = existing.LastModified
+		}
 		sm.vfs.AddFile(dirPath, VFSFile{
 			Path:         dirPath,
 			IsDir:        true,
-			LastModified: time.Now().Unix(),
+			LastModified: lastModified,
 			Owner:        "GoFTPd",
 			Group:        "GoFTPd",
 			Seen:         true,
