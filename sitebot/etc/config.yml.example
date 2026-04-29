@@ -78,7 +78,6 @@ announce:
   # Pretime inline/newline mode lives in plugins/announce/config.yml:
   #   pretime:
   #     mode: "inline"
-  #     inline_wait_ms: 1500
 
 help:
   channels: *chan_chat

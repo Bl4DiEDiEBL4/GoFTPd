@@ -68,20 +68,6 @@ func (p *AnnouncePlugin) Initialize(config map[string]interface{}) error {
 	if mode, ok := pretimeCfg["mode"].(string); ok && strings.TrimSpace(mode) != "" {
 		p.pretimeMode = strings.ToLower(strings.TrimSpace(mode))
 	}
-	switch v := pretimeCfg["inline_wait_ms"].(type) {
-	case int:
-		if v > 0 {
-			p.pretimeInlineWait = time.Duration(v) * time.Millisecond
-		}
-	case int64:
-		if v > 0 {
-			p.pretimeInlineWait = time.Duration(v) * time.Millisecond
-		}
-	case float64:
-		if v > 0 {
-			p.pretimeInlineWait = time.Duration(int(v)) * time.Millisecond
-		}
-	}
 	if themeFile, ok := config["theme_file"].(string); ok && strings.TrimSpace(themeFile) != "" {
 		th, err := tmpl.LoadTheme(themeFile)
 		if err == nil {

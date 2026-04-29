@@ -96,6 +96,37 @@ func TestProcessJobEmitsOldPreTime(t *testing.T) {
 	}
 }
 
+func TestProcessJobPreservesOriginalSection(t *testing.T) {
+	h := New()
+	h.sqlite.Enabled = true
+	h.sqlite.Path = filepath.Join(t.TempDir(), "releases.db")
+	db := openSQLiteForTest(t, h.sqlite.Path)
+	if _, err := db.Exec(`CREATE TABLE releases (release TEXT PRIMARY KEY, timestamp_unix INTEGER)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO releases (release, timestamp_unix) VALUES (?, ?)`, "Es.Welcome.To.Derry.S01E01.German.DL.2160p.UHD.BluRay.HEVC-AIDA", time.Now().Add(-10*time.Second).Unix()); err != nil {
+		t.Fatalf("insert row: %v", err)
+	}
+	_ = db.Close()
+
+	gotSection := ""
+	h.svc = &plugin.Services{
+		EmitEvent: func(eventType, p, filename, section string, size int64, speed float64, data map[string]string) {
+			gotSection = section
+		},
+	}
+
+	h.processJob(job{
+		path:    "/FOREIGN/X265-FOREIGN/2026-04-29/Es.Welcome.To.Derry.S01E01.German.DL.2160p.UHD.BluRay.HEVC-AIDA",
+		relname: "Es.Welcome.To.Derry.S01E01.German.DL.2160p.UHD.BluRay.HEVC-AIDA",
+		section: "TV-DE",
+	})
+
+	if gotSection != "TV-DE" {
+		t.Fatalf("expected original section TV-DE, got %q", gotSection)
+	}
+}
+
 func TestIsReleaseDirSupportsDatedLayout(t *testing.T) {
 	if !isReleaseDir("/0DAY/2026-04-27/Test.Release-GRP", "0DAY") {
 		t.Fatalf("expected dated release dir to match")

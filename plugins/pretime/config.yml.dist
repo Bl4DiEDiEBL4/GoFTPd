@@ -23,7 +23,7 @@ proxy: ""
 
 # Optional section substring matches, same style as tvmaze/imdb. If both
 # sections and paths are empty, every release dir is eligible.
-sections: ["0DAY", "APPS", "ARCHiVE", "BLURAY", "BLURAY-UHD", "DVDR", "EBOOKS", "FLAC", "FOREIGN", "GAMES", "iNFO", "MBLURAY", "MDVDR", "MP3", "MVID", "NSW", "PRE", "PS5", "REQUESTS", "SPEEDTEST", "TV-1080P", "TV-2160P", "TV-720P", "TV-BLURAY", "TV-HDRIP", "TV-SD", "TV-SPORTS", "X264-HD-1080P", "X264-HD-720P", "X264-SD", "X265", "XXX-0DAY", "XXX-HD", "XXX-IMAGESETS", "XXX-SD"]
+sections: ["0DAY", "APPS", "BLURAY", "BLURAY-UHD", "DVDR", "EBOOKS", "FLAC", "GAMES", "MBLURAY", "MDVDR", "MP3", "MVID", "NSW", "PS5", "TV-1080P", "TV-2160P", "TV-720P", "TV-BLURAY", "TV-HDRIP", "TV-SD", "TV-SPORTS", "TV-CZ", "TV-DE", "TV-DK", "TV-ES", "TV-FI", "TV-FR", "TV-IT", "TV-NL", "TV-NO", "TV-PL", "TV-SE", "TV-SK", "X264-HD-1080P", "X264-HD-720P", "X264-SD", "X264-HD-FOREIGN", "X264-SD-FOREIGN", "X265", "X265-FOREIGN", "XXX-0DAY", "XXX-HD", "XXX-IMAGESETS", "XXX-SD"]
 
 # Optional stricter path filters.
 paths: []

@@ -60,10 +60,11 @@ type EncConfig struct {
 }
 
 type AnnounceConfig struct {
-	ConfigFile     string              `yaml:"config_file"`
-	DefaultChannel string              `yaml:"default_channel"`
-	TypeRoutes     map[string][]string `yaml:"type_routes"`
-	ThemeFile      string              `yaml:"theme_file"`
+	ConfigFile     string                 `yaml:"config_file"`
+	DefaultChannel string                 `yaml:"default_channel"`
+	TypeRoutes     map[string][]string    `yaml:"type_routes"`
+	ThemeFile      string                 `yaml:"theme_file"`
+	Pretime        map[string]interface{} `yaml:"pretime"`
 }
 
 type SectionRoute struct {
@@ -169,6 +170,9 @@ func resolveAnnounceConfigFile(cfg *AnnounceConfig, baseDir string) error {
 	}
 	if cfg.ThemeFile != "" {
 		loaded.ThemeFile = cfg.ThemeFile
+	}
+	if len(cfg.Pretime) > 0 {
+		loaded.Pretime = cfg.Pretime
 	}
 	if len(cfg.TypeRoutes) > 0 {
 		loaded.TypeRoutes = cfg.TypeRoutes

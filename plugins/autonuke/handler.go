@@ -41,6 +41,7 @@ type config struct {
 	NukedPrefix              string
 	UseZipscriptReleaseCheck bool
 	ReleasePatterns          []string
+	SectionRoots             []string
 	AffilsDirs               []string
 	Excludes                 []string
 	ApprovalMarkers          []string
@@ -197,6 +198,11 @@ func (h *Handler) runOnce() {
 }
 
 func (h *Handler) processRelease(rel releaseCandidate) {
+	if h.isSectionRoot(rel.Path) {
+		h.logf("skipping section root %s from autonuke scan", rel.Path)
+		h.clearAllWarnings(rel)
+		return
+	}
 	if h.skipRelease(rel) {
 		h.clearAllWarnings(rel)
 		return
@@ -533,6 +539,16 @@ func (h *Handler) excludeTokens() []string {
 	return out
 }
 
+func (h *Handler) isSectionRoot(dirPath string) bool {
+	clean := path.Clean(dirPath)
+	for _, root := range h.cfg.SectionRoots {
+		if path.Clean(root) == clean {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *Handler) walkVisibleFiles(dirPath string, maxDepth int) []fileInfo {
 	if maxDepth < 0 {
 		return nil
@@ -844,6 +860,7 @@ func loadConfig(raw map[string]interface{}) config {
 	if cfg.UseZipscriptReleaseCheck && len(cfg.ReleasePatterns) == 0 {
 		cfg.ReleasePatterns = normalizeReleasePatterns(stringSliceValue(raw, "zipscript_release_check"))
 	}
+	cfg.SectionRoots = normalizeBasePaths(stringSliceValue(raw, "sections"))
 	cfg.AffilsDirs = normalizeBasePaths(stringSliceValue(raw, "affils_dirs", "AFFILSDIRS"))
 	cfg.Excludes = stringSliceValue(raw, "exclude_name_contains", "excludes", "EXCLUDES")
 	cfg.ApprovalMarkers = stringSliceValue(raw, "approval_markers")

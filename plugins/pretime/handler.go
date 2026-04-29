@@ -336,7 +336,14 @@ func (h *Handler) processJob(j job) {
 		"u_name":         j.user,
 		"g_name":         j.group,
 	}
-	h.svc.EmitEvent(eventType, j.path, j.relname, j.section, 0, 0, data)
+	section := strings.TrimSpace(j.section)
+	if section == "" || strings.EqualFold(section, "DEFAULT") {
+		section = strings.TrimSpace(path.Base(path.Dir("/" + strings.TrimSpace(j.path))))
+		if dateDirRE.MatchString(section) {
+			section = strings.TrimSpace(path.Base(path.Dir(path.Dir("/" + strings.TrimSpace(j.path)))))
+		}
+	}
+	h.svc.EmitEvent(eventType, j.path, j.relname, section, 0, 0, data)
 	h.logf("found pretime for %s via %s -> %s ago", j.relname, provider, data["preage"])
 }
 

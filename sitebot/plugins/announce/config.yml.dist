@@ -22,8 +22,5 @@ type_routes:
 # Pretime rendering mode:
 #   newline = emit a second PRETiME line with OK/BAD
 #   inline  = hold NEW briefly and replace it with a single NEW ... released ...
-# In inline mode, if no pretime lookup arrives before inline_wait_ms, the
-# normal NEW line is sent unchanged and the late pretime line is dropped.
 pretime:
   mode: "newline"
-  inline_wait_ms: 1500

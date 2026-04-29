@@ -113,10 +113,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 
 		if s.Config.Passthrough && s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
-				targetPath := s.CurrentDir
-				if strings.TrimSpace(s.PretArg) != "" {
-					targetPath = path.Join(s.CurrentDir, s.PretArg)
-				}
+				targetPath := s.resolvePretTargetPath(bridge)
 
 				var slaveIP string
 				var port int
@@ -632,10 +629,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		if s.Config.Passthrough && s.Config.Mode == "master" && s.MasterManager != nil {
 			if s.PretCmd == "STOR" || s.PretCmd == "RETR" {
 				if bridge, ok := s.MasterManager.(MasterBridge); ok {
-					targetPath := s.CurrentDir
-					if strings.TrimSpace(s.PretArg) != "" {
-						targetPath = path.Join(s.CurrentDir, s.PretArg)
-					}
+					targetPath := s.resolvePretTargetPath(bridge)
 
 					var slaveIP string
 					var port int
@@ -2636,4 +2630,19 @@ func shouldEmitZipRaceEnd(cfg *Config, dirPath, fileName string) bool {
 		return false
 	}
 	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(fileName)), ".zip")
+}
+
+func (s *Session) resolvePretTargetPath(bridge MasterBridge) string {
+	targetPath := s.CurrentDir
+	if strings.TrimSpace(s.PretArg) != "" {
+		if path.IsAbs(strings.TrimSpace(s.PretArg)) {
+			targetPath = path.Clean(s.PretArg)
+		} else {
+			targetPath = path.Clean(path.Join(s.CurrentDir, s.PretArg))
+		}
+	}
+	if bridge != nil {
+		targetPath = bridge.ResolvePath(targetPath)
+	}
+	return targetPath
 }

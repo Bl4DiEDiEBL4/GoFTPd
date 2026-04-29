@@ -95,6 +95,7 @@ func (b *Bot) initializePlugins() error {
 			"theme_file":      b.Config.Announce.ThemeFile,
 			"default_channel": b.Config.Announce.DefaultChannel,
 			"type_routes":     b.Config.Announce.TypeRoutes,
+			"pretime":         b.Config.Announce.Pretime,
 		}
 		for k, v := range b.Config.Plugins.Config {
 			cfg[k] = v
