@@ -302,32 +302,6 @@ func (r *RaceDB) RenamePath(from, to string, isDir bool) error {
 }
 
 func (r *RaceDB) Reconcile(vfs *VirtualFileSystem) error {
-	rows, err := r.db.Query(`SELECT path FROM releases`)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	var stale []string
-	for rows.Next() {
-		var dirPath string
-		if err := rows.Scan(&dirPath); err != nil {
-			return err
-		}
-		f := vfs.GetFile(dirPath)
-		if f == nil || !f.IsDir {
-			stale = append(stale, dirPath)
-		}
-	}
-
-	for _, dirPath := range stale {
-		if _, err := r.db.Exec(`DELETE FROM releases WHERE path = ?`, dirPath); err != nil {
-			log.Printf("[RaceDB] Failed to purge stale release %s: %v", dirPath, err)
-		} else {
-			log.Printf("[RaceDB] Purged stale release %s", dirPath)
-		}
-	}
-
 	sfvRows, err := r.db.Query(`
         SELECT rel.path, rel.sfv_name, rf.filename, rf.expected_crc32
         FROM releases rel
