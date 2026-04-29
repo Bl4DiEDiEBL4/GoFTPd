@@ -79,3 +79,31 @@ func TestRaceDBSearchDirsRespectsLimit(t *testing.T) {
 		t.Fatalf("unexpected limited result order: %+v", results)
 	}
 }
+
+func TestRaceDBReconcileDoesNotPurgeWhenVFSIsEmpty(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "race.db")
+	rdb, err := NewRaceDB(dbPath)
+	if err != nil {
+		t.Fatalf("NewRaceDB failed: %v", err)
+	}
+	defer rdb.Close()
+
+	releasePath := "/site/TV/Some.Release-GRP"
+	if err := rdb.SaveSFV(releasePath, "release.sfv", map[string]uint32{
+		"file.r00": 1,
+	}); err != nil {
+		t.Fatalf("SaveSFV failed: %v", err)
+	}
+
+	if err := rdb.Reconcile(NewVirtualFileSystem()); err != nil {
+		t.Fatalf("Reconcile failed: %v", err)
+	}
+
+	results := rdb.SearchDirs("Some.Release", 10)
+	if len(results) != 1 {
+		t.Fatalf("expected release to remain after reconcile, got %d results", len(results))
+	}
+	if results[0].Path != releasePath {
+		t.Fatalf("expected release path %s, got %s", releasePath, results[0].Path)
+	}
+}
