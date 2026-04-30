@@ -2280,6 +2280,225 @@ import_glftpd_accounts() {
     say "Legacy glFTPD password hashes are now accepted by GoFTPd."
 }
 
+import_drftpd_v3_accounts() {
+    local dr_root="${2:-}"
+    local stage_userdata import_dir staged_root import_backup import_log generated_root
+    local target_passwd target_group target_users_dir target_groups_dir
+    local generated_passwd generated_group generated_users_dir generated_groups_dir
+
+    show_banner
+    say_color "${C_YELLOW}${C_BOLD}" "Import DrFTPD v3 users/groups"
+
+    if [ -z "${dr_root}" ]; then
+        dr_root="$(prompt_default 'Enter DrFTPD v3 root' '/drftpd')"
+    fi
+    dr_root="${dr_root%/}"
+    stage_userdata="${dr_root}/userdata"
+
+    if [ ! -d "${stage_userdata}/users/javabeans" ]; then
+        say "Could not find a valid DrFTPD v3 userdata layout under ${dr_root}"
+        say "Expected:"
+        say "  ${dr_root}/userdata/users/javabeans/"
+        exit 1
+    fi
+
+    import_dir="${ROOT_DIR}/imports/drftpd3-${TIMESTAMP}"
+    staged_root="${import_dir}/source"
+    generated_root="${import_dir}/generated"
+    import_backup="${ROOT_DIR}/backups/import-drftpd3-${TIMESTAMP}"
+    import_log="${import_dir}/import.log"
+    mkdir -p "${staged_root}" "${generated_root}" "${import_backup}"
+
+    say ""
+    say "Staging DrFTPD v3 userdata into:"
+    say "  ${staged_root}/userdata"
+    cp -a "${stage_userdata}" "${staged_root}/userdata"
+
+    say ""
+    say "Current GoFTPd account files will be backed up to:"
+    say "  ${import_backup}"
+    say ""
+    if ! prompt_yes_no "Import staged DrFTPD v3 accounts into GoFTPd now?" "Y"; then
+        say "Import cancelled. Staged copy kept at ${staged_root}/userdata."
+        exit 0
+    fi
+
+    backup_glftpd_import_target "${import_backup}"
+
+    target_passwd="${ROOT_DIR}/etc/passwd"
+    target_group="${ROOT_DIR}/etc/group"
+    target_users_dir="${ROOT_DIR}/etc/users"
+    target_groups_dir="${ROOT_DIR}/etc/groups"
+    generated_passwd="${generated_root}/etc/passwd"
+    generated_group="${generated_root}/etc/group"
+    generated_users_dir="${generated_root}/etc/users"
+    generated_groups_dir="${generated_root}/etc/groups"
+
+    mkdir -p "${target_users_dir}" "${target_groups_dir}" "${generated_users_dir}" "${generated_groups_dir}" "${generated_root}/etc"
+
+    ensure_go_available
+    go run ./cmd/drftpd3import \
+        --userdata "${staged_root}/userdata" \
+        --out "${generated_root}" \
+        --log "${import_log}" \
+        --existing-passwd "${target_passwd}" \
+        --existing-group "${target_group}"
+
+    if [ ! -f "${generated_passwd}" ] || [ ! -f "${generated_group}" ]; then
+        say "DrFTPD v3 import generation failed."
+        exit 1
+    fi
+
+    merge_colon_records_by_name "${generated_group}" "${target_group}"
+    merge_colon_records_by_name "${generated_passwd}" "${target_passwd}"
+
+    if [ -d "${generated_groups_dir}" ]; then
+        while IFS= read -r group_file; do
+            [ -f "${group_file}" ] || continue
+            cp -f "${group_file}" "${target_groups_dir}/$(basename "${group_file}")"
+        done < <(find "${generated_groups_dir}" -maxdepth 1 -type f | sort)
+    fi
+
+    if [ -d "${generated_users_dir}" ]; then
+        while IFS= read -r user_file; do
+            [ -f "${user_file}" ] || continue
+            cp -f "${user_file}" "${target_users_dir}/$(basename "${user_file}")"
+        done < <(find "${generated_users_dir}" -maxdepth 1 -type f | sort)
+    fi
+
+    chmod 0644 "${target_group}" || true
+    chmod 0600 "${target_passwd}" || true
+
+    say ""
+    say "DrFTPD v3 import complete."
+    say "Staged source copy:"
+    say "  ${staged_root}/userdata"
+    say "Generated import files:"
+    say "  ${generated_root}"
+    say "Backup of prior GoFTPd account files:"
+    say "  ${import_backup}"
+    say "Import log:"
+    say "  ${import_log}"
+    say ""
+    say "Imported files:"
+    say "  ${target_passwd}"
+    say "  ${target_group}"
+    say "  ${target_users_dir}/"
+    say "  ${target_groups_dir}/"
+    say ""
+    say "Passwords were not preserved. Imported users now need a siteop password reset (for example with SITE CHPASS)."
+}
+
+import_drftpd_v4_accounts() {
+    local dr_root="${2:-}"
+    local stage_userdata import_dir staged_root import_backup import_log generated_root
+    local target_passwd target_group target_users_dir target_groups_dir
+    local generated_passwd generated_group generated_users_dir generated_groups_dir
+
+    show_banner
+    say_color "${C_YELLOW}${C_BOLD}" "Import DrFTPD v4 users/groups"
+
+    if [ -z "${dr_root}" ]; then
+        dr_root="$(prompt_default 'Enter DrFTPD v4 root' '/drftpd')"
+    fi
+    dr_root="${dr_root%/}"
+    stage_userdata="${dr_root}/userdata"
+
+    if [ ! -d "${stage_userdata}/users/javabeans" ] || [ ! -d "${stage_userdata}/groups/javabeans" ]; then
+        say "Could not find a valid DrFTPD v4 userdata layout under ${dr_root}"
+        say "Expected:"
+        say "  ${dr_root}/userdata/users/javabeans/"
+        say "  ${dr_root}/userdata/groups/javabeans/"
+        exit 1
+    fi
+
+    import_dir="${ROOT_DIR}/imports/drftpd4-${TIMESTAMP}"
+    staged_root="${import_dir}/source"
+    generated_root="${import_dir}/generated"
+    import_backup="${ROOT_DIR}/backups/import-drftpd4-${TIMESTAMP}"
+    import_log="${import_dir}/import.log"
+    mkdir -p "${staged_root}" "${generated_root}" "${import_backup}"
+
+    say ""
+    say "Staging DrFTPD v4 userdata into:"
+    say "  ${staged_root}/userdata"
+    cp -a "${stage_userdata}" "${staged_root}/userdata"
+
+    say ""
+    say "Current GoFTPd account files will be backed up to:"
+    say "  ${import_backup}"
+    say ""
+    if ! prompt_yes_no "Import staged DrFTPD v4 accounts into GoFTPd now?" "Y"; then
+        say "Import cancelled. Staged copy kept at ${staged_root}/userdata."
+        exit 0
+    fi
+
+    backup_glftpd_import_target "${import_backup}"
+
+    target_passwd="${ROOT_DIR}/etc/passwd"
+    target_group="${ROOT_DIR}/etc/group"
+    target_users_dir="${ROOT_DIR}/etc/users"
+    target_groups_dir="${ROOT_DIR}/etc/groups"
+    generated_passwd="${generated_root}/etc/passwd"
+    generated_group="${generated_root}/etc/group"
+    generated_users_dir="${generated_root}/etc/users"
+    generated_groups_dir="${generated_root}/etc/groups"
+
+    mkdir -p "${target_users_dir}" "${target_groups_dir}" "${generated_users_dir}" "${generated_groups_dir}" "${generated_root}/etc"
+
+    ensure_go_available
+    go run ./cmd/drftpd4import \
+        --userdata "${staged_root}/userdata" \
+        --out "${generated_root}" \
+        --log "${import_log}" \
+        --existing-passwd "${target_passwd}" \
+        --existing-group "${target_group}"
+
+    if [ ! -f "${generated_passwd}" ] || [ ! -f "${generated_group}" ]; then
+        say "DrFTPD v4 import generation failed."
+        exit 1
+    fi
+
+    merge_colon_records_by_name "${generated_group}" "${target_group}"
+    merge_colon_records_by_name "${generated_passwd}" "${target_passwd}"
+
+    if [ -d "${generated_groups_dir}" ]; then
+        while IFS= read -r group_file; do
+            [ -f "${group_file}" ] || continue
+            cp -f "${group_file}" "${target_groups_dir}/$(basename "${group_file}")"
+        done < <(find "${generated_groups_dir}" -maxdepth 1 -type f | sort)
+    fi
+
+    if [ -d "${generated_users_dir}" ]; then
+        while IFS= read -r user_file; do
+            [ -f "${user_file}" ] || continue
+            cp -f "${user_file}" "${target_users_dir}/$(basename "${user_file}")"
+        done < <(find "${generated_users_dir}" -maxdepth 1 -type f | sort)
+    fi
+
+    chmod 0644 "${target_group}" || true
+    chmod 0600 "${target_passwd}" || true
+
+    say ""
+    say "DrFTPD v4 import complete."
+    say "Staged source copy:"
+    say "  ${staged_root}/userdata"
+    say "Generated import files:"
+    say "  ${generated_root}"
+    say "Backup of prior GoFTPd account files:"
+    say "  ${import_backup}"
+    say "Import log:"
+    say "  ${import_log}"
+    say ""
+    say "Imported files:"
+    say "  ${target_passwd}"
+    say "  ${target_group}"
+    say "  ${target_users_dir}/"
+    say "  ${target_groups_dir}/"
+    say ""
+    say "Supported DrFTPD v4 passwords were preserved when possible; unsupported formats still need a siteop password reset."
+}
+
 show_usage() {
     show_banner
     say_color "${C_BOLD}" "GoFTPd setup"
@@ -2289,6 +2508,8 @@ show_usage() {
     say "  ./setup.sh build     Build daemon and sitebot only"
     say "  ./setup.sh certs     Generate fresh TLS certificates"
     say "  ./setup.sh import-glftpd [root]  Import users/groups from a glFTPD tree"
+    say "  ./setup.sh import-drftpd3 [root] Import users/groups from a DrFTPD v3 tree"
+    say "  ./setup.sh import-drftpd4 [root] Import users/groups from a DrFTPD v4 tree"
     say "  ./setup.sh systemd   Install or refresh systemd service files"
     say "  ./setup.sh clean     Back up generated configs and reset install state"
     say "  ./setup.sh backup    Alias for clean"
@@ -2299,6 +2520,8 @@ show_usage() {
     say "  - 'build' just runs the daemon and sitebot build scripts."
     say "  - 'certs' writes CA, server, and slave certs into ./etc/certs."
     say "  - 'import-glftpd' stages a copy of /glftpd-style account files, backs up current GoFTPd account data, then converts passwd/group/user/group files."
+    say "  - 'import-drftpd3' stages userdata/users/javabeans, derives groups, merges into GoFTPd, and requires siteop password resets afterward."
+    say "  - 'import-drftpd4' stages DrFTPD v4 users/groups JSON, preserves supported password formats when possible, and merges into GoFTPd."
     say "  - 'systemd' installs Debian/Ubuntu-friendly service files for the daemon and optional sitebot."
     say "  - 'clean' keeps ${STATE_FILE} but backs up generated configs, FIFO, and certs."
 }
@@ -2323,6 +2546,16 @@ case "${1:-help}" in
     import-glftpd|--import-glftpd)
         ensure_script_permissions
         import_glftpd_accounts "$@"
+        exit 0
+        ;;
+    import-drftpd3|--import-drftpd3|drftpd3import|--drftpd3import)
+        ensure_script_permissions
+        import_drftpd_v3_accounts "$@"
+        exit 0
+        ;;
+    import-drftpd4|--import-drftpd4|drftpd4import|--drftpd4import)
+        ensure_script_permissions
+        import_drftpd_v4_accounts "$@"
         exit 0
         ;;
     systemd|--systemd|service|--service)
