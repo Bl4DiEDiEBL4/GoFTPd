@@ -158,6 +158,71 @@ func TestEvaluateSkipsExcludedPath(t *testing.T) {
 	}
 }
 
+func TestEvaluateSkipsExcludedExtension(t *testing.T) {
+	var aborted bool
+
+	h := New()
+	h.svc = &plugin.Services{
+		Logger: log.New(os.Stderr, "", 0),
+		ListActiveSessions: func() []plugin.ActiveSession {
+			return []plugin.ActiveSession{
+				{
+					ID:                1,
+					User:              "slowpoke",
+					PrimaryGroup:      "USERS",
+					LoggedIn:          true,
+					TransferDirection: "upload",
+					TransferPath:      "/XXX-0DAY/0502/Test.Release-GRP/test.release.sfv",
+					TransferSlaveName: "SLAVE1",
+					TransferSlaveIdx:  42,
+				},
+				{
+					ID:       2,
+					User:     "other",
+					LoggedIn: true,
+				},
+			}
+		},
+		GetLiveTransferStats: func() []plugin.LiveTransferStat {
+			return []plugin.LiveTransferStat{
+				{
+					SlaveName:     "SLAVE1",
+					TransferIndex: 42,
+					Direction:     "upload",
+					Transferred:   1024,
+					SpeedBytes:    10 * 1024,
+				},
+			}
+		},
+		AbortTransfer: func(slaveName string, transferIndex int32, reason string) bool {
+			aborted = true
+			return true
+		},
+		DisconnectSession: func(id uint64) bool { return true },
+	}
+	h.monitorUploads = true
+	h.monitorDownloads = true
+	h.uploadVerifyDelay = 5 * time.Second
+	h.minUploadSpeedBytes = 25 * 1024
+	h.minUsersOnline = 2
+	h.tempbanAfterKick = true
+	h.tempbanDuration = 15 * time.Second
+	h.excludeUsers = map[string]struct{}{}
+	h.excludeGroups = map[string]struct{}{}
+	h.excludePaths = normalizePaths([]string{"/PRE", "/REQUESTS", "/SPEEDTEST"})
+	h.excludeExtensions = lowerSet([]string{"sfv"})
+	h.candidates = map[uint64]candidate{}
+
+	h.evaluate(time.Now())
+
+	if aborted {
+		t.Fatalf("did not expect excluded extension to be kicked")
+	}
+	if len(h.candidates) != 0 {
+		t.Fatalf("did not expect excluded extension to enter candidate tracking")
+	}
+}
+
 func TestEvaluateKicksVerifiedSlowDownload(t *testing.T) {
 	var aborted bool
 	var disconnected bool
@@ -311,8 +376,8 @@ func TestEvaluateSkipsFreshZeroSpeedTransfer(t *testing.T) {
 		EmitEvent: func(eventType, eventPath, filename, user string, size int64, speed float64, data map[string]string) {
 			warned = true
 		},
-		AbortTransfer:      func(slaveName string, transferIndex int32, reason string) bool { return true },
-		DisconnectSession:  func(id uint64) bool { return true },
+		AbortTransfer:     func(slaveName string, transferIndex int32, reason string) bool { return true },
+		DisconnectSession: func(id uint64) bool { return true },
 	}
 	h.interval = 5 * time.Second
 	h.monitorUploads = true
@@ -373,7 +438,9 @@ func TestEvaluateSkipsZeroSpeedTransferWithoutAnyProgress(t *testing.T) {
 				},
 			}
 		},
-		EmitEvent:         func(eventType, eventPath, filename, user string, size int64, speed float64, data map[string]string) { warned = true },
+		EmitEvent: func(eventType, eventPath, filename, user string, size int64, speed float64, data map[string]string) {
+			warned = true
+		},
 		AbortTransfer:     func(slaveName string, transferIndex int32, reason string) bool { return true },
 		DisconnectSession: func(id uint64) bool { return true },
 	}
@@ -436,7 +503,9 @@ func TestEvaluateWarnsForZeroSpeedTransferAfterProgress(t *testing.T) {
 				},
 			}
 		},
-		EmitEvent:         func(eventType, eventPath, filename, user string, size int64, speed float64, data map[string]string) { warned = true },
+		EmitEvent: func(eventType, eventPath, filename, user string, size int64, speed float64, data map[string]string) {
+			warned = true
+		},
 		AbortTransfer:     func(slaveName string, transferIndex int32, reason string) bool { return true },
 		DisconnectSession: func(id uint64) bool { return true },
 	}
