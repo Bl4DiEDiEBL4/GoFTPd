@@ -94,6 +94,20 @@ Cleanup mode:
 - backs up and removes generated TLS certs in `etc/certs`
 - keeps `etc/setup-interactive.env` so your saved answers survive the reset
 
+Account import helpers are also built into `setup.sh`:
+
+```bash
+./setup.sh import-glftpd /glftpd
+./setup.sh import-drftpd3 /drftpd
+./setup.sh import-drftpd4 /drftpd
+```
+
+`import-drftpd3` derives groups from DrFTPD v3 user JSON and preserves
+plaintext passwords only when they are actually present, rehashing them to
+bcrypt during import. Masked values such as `*` still require a siteop reset.
+`import-drftpd4` reads both user and group javabeans and preserves only
+supported password formats safely.
+
 Edit `etc/config.yml` before running it for real. The same config file is used
 for master and slave mode; `mode: master` or `mode: slave` decides which blocks
 are active.
@@ -456,14 +470,15 @@ be changed once at the top and reused across sections and plugin config. By
 default, race and section announces stay in `#goftpd`, while user `!` commands
 are meant for `#goftpd-chat`.
 
-For FiSH keys, the final config file uses `cbc:<key>`. The interactive
-`setup.sh` prompt expects raw keys only and writes the `cbc:` prefix for you.
-`encryption.keys` are used per channel, while `encryption.private_key` is used
-for encrypted PM/NOTICE replies and encrypted commands sent directly to the
-bot nick. If `encryption.auto_exchange` is enabled, the sitebot will also do
-DH1080 auto key exchange for private PM/NOTICE traffic with users. That
-auto-exchange is peer-to-peer only; channel and topic FiSH still use the
-static per-channel keys from `encryption.keys`.
+For FiSH keys, the sitebot accepts either a plain key or `cbc:<key>`. Plain
+keys default to CBC. `ecb:` is intentionally rejected. The interactive
+`setup.sh` prompt still expects raw keys and may write the `cbc:` prefix for
+clarity. `encryption.keys` are used per channel, while
+`encryption.private_key` is used for encrypted PM/NOTICE replies and encrypted
+commands sent directly to the bot nick. If `encryption.auto_exchange` is
+enabled, the sitebot will also do DH1080 auto key exchange for private
+PM/NOTICE traffic with users. That auto-exchange is peer-to-peer only; channel
+and topic FiSH still use the static per-channel keys from `encryption.keys`.
 
 Sitebot command plugins can use the same split config layout:
 

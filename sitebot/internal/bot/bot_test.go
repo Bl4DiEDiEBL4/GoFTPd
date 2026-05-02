@@ -57,6 +57,56 @@ func TestCommandEventFromPrivmsgDecryptsNegotiatedPMKey(t *testing.T) {
 	}
 }
 
+func TestCommandEventFromPrivmsgDecryptsChannelCommandWithPlainCBCKey(t *testing.T) {
+	cfg := &Config{
+		IRC: IRCConfig{Nick: "GoSitebot"},
+	}
+	b := &Bot{
+		Config: cfg,
+		IRC:    irc.NewBot("irc.example.net", 6697, "GoSitebot", "sitebot", "GoSitebot"),
+	}
+	if err := b.IRC.SetChannelKey("#goftpd", "SuperSecretChannelKey123"); err != nil {
+		t.Fatalf("SetChannelKey: %v", err)
+	}
+	enc, err := irc.NewBlowfishEncryptor("cbc:SuperSecretChannelKey123")
+	if err != nil {
+		t.Fatalf("NewBlowfishEncryptor: %v", err)
+	}
+	line := ":Alice!user@example PRIVMSG #goftpd :+OK *" + enc.Encrypt("!refresh")
+	evt := b.commandEventFromPrivmsg(line)
+	if evt == nil {
+		t.Fatalf("expected decrypted channel command event")
+	}
+	if got := evt.Data["command"]; got != "refresh" {
+		t.Fatalf("command = %q, want %q", got, "refresh")
+	}
+	if got := evt.Data["channel"]; got != "#goftpd" {
+		t.Fatalf("channel = %q, want %q", got, "#goftpd")
+	}
+}
+
+func TestCommandEventFromPrivmsgDoesNotPanicOnMalformedEncryptedChannelCommand(t *testing.T) {
+	cfg := &Config{
+		IRC: IRCConfig{Nick: "GoSitebot"},
+	}
+	b := &Bot{
+		Config: cfg,
+		IRC:    irc.NewBot("irc.example.net", 6697, "GoSitebot", "sitebot", "GoSitebot"),
+	}
+	if err := b.IRC.SetChannelKey("#goftpd", "SuperSecretChannelKey123"); err != nil {
+		t.Fatalf("SetChannelKey: %v", err)
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("commandEventFromPrivmsg panicked: %v", r)
+		}
+	}()
+	line := ":Alice!user@example PRIVMSG #goftpd :+OK *AAAA"
+	if evt := b.commandEventFromPrivmsg(line); evt != nil {
+		t.Fatalf("expected malformed encrypted line to be ignored")
+	}
+}
+
 func TestLoadConfigPreservesAnnouncePretimeConfig(t *testing.T) {
 	tmp := t.TempDir()
 	announceCfg := filepath.Join(tmp, "announce.yml")
