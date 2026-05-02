@@ -58,8 +58,10 @@ encryption:
   # below because DH1080 does not negotiate a shared channel key.
   # If this setting is omitted, the sitebot defaults it to true.
   auto_exchange: true
-  # Enter keys in "cbc:<key>" format in the final config file.
-  # setup.sh asks for raw keys and writes the cbc: prefix for you.
+  # Plain keys default to CBC.
+  # You can also force the mode explicitly with:
+  #   cbc:<key>
+  # setup.sh may still write the cbc: prefix for clarity.
   # private_key is used for PM/NOTICE replies to users and for decrypting
   # incoming encrypted PM commands sent directly to the bot nick.
   # Leave this empty if you want to rely on DH1080 auto-exchange instead.
