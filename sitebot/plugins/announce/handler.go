@@ -230,10 +230,15 @@ func (p *AnnouncePlugin) vars(evt *event.Event) map[string]string {
 		"reldir":      rel,
 		"u_name":      evt.User,
 		"g_name":      evt.Group,
+		"user":        evt.User,
+		"group":       evt.Group,
 		"filename":    evt.Filename,
+		"file":        evt.Filename,
 		"path":        evt.Path,
 		"u_speed":     speedMB(evt),
+		"speed":       speedMB(evt),
 		"file_mbytes": mb(evt.Size),
+		"size":        mb(evt.Size),
 	}
 	for k, val := range evt.Data {
 		v[k] = val
@@ -256,6 +261,51 @@ func (p *AnnouncePlugin) vars(evt *event.Event) map[string]string {
 		v["subtitle_format"] = "None"
 	}
 	p.addSectionPalette(v, v["section"])
+	if v["user"] == "" {
+		v["user"] = v["u_name"]
+	}
+	if v["group"] == "" {
+		v["group"] = v["g_name"]
+	}
+	if v["file"] == "" {
+		v["file"] = v["filename"]
+	}
+	if v["speed"] == "" {
+		v["speed"] = v["u_speed"]
+	}
+	if v["t_mbytes"] != "" {
+		v["size"] = v["t_mbytes"]
+	} else if v["size"] == "" {
+		v["size"] = v["file_mbytes"]
+	}
+	if v["files"] == "" {
+		if v["t_files"] != "" {
+			v["files"] = v["t_files"]
+		} else if v["t_filecount"] != "" {
+			v["files"] = v["t_filecount"]
+		}
+	}
+	if v["racers"] == "" && v["u_count"] != "" {
+		v["racers"] = v["u_count"]
+	}
+	if v["leaduser"] == "" && v["leader_name"] != "" {
+		v["leaduser"] = v["leader_name"]
+	}
+	if v["leadsize"] == "" && v["leader_mb"] != "" {
+		v["leadsize"] = v["leader_mb"] + "MB"
+	}
+	if v["leadfiles"] == "" {
+		v["leadfiles"] = v["leader_files"]
+	}
+	if v["leadpercent"] == "" && v["leader_pct"] != "" {
+		v["leadpercent"] = v["leader_pct"] + "%"
+	}
+	if v["leadspeed"] == "" {
+		v["leadspeed"] = v["leader_speed"]
+	}
+	if v["filesleft"] == "" {
+		v["filesleft"] = v["t_filesleft"]
+	}
 	return v
 }
 
@@ -265,6 +315,7 @@ func (p *AnnouncePlugin) addSectionPalette(vars map[string]string, section strin
 		vars[key] = p.sectionColor(section, i)
 	}
 	vars["section_colored"] = "\x03" + vars["sec_c2"] + section + "\x03"
+	vars["sectioncolor"] = vars["sec_c2"]
 }
 
 func (p *AnnouncePlugin) sectionColor(section string, slot int) string {

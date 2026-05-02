@@ -2,6 +2,9 @@
 default_channel: "#goftpd-staff"
 
 # Shared theme file used to render formatted announce lines.
+# Bundled presets:
+#   ./etc/templates/pzsng.theme
+#   ./etc/templates/drftpd.theme
 theme_file: "./etc/templates/pzsng.theme"
 
 # Explicit type -> channel routes.

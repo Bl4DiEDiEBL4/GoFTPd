@@ -77,6 +77,9 @@ encryption:
 
 announce:
   config_file: "plugins/announce/config.yml"
+  # To use the bundled DrFTPD-like announce preset, set in
+  # plugins/announce/config.yml:
+  #   theme_file: "./etc/templates/drftpd.theme"
   # Pretime inline/newline mode lives in plugins/announce/config.yml:
   #   pretime:
   #     mode: "inline"
