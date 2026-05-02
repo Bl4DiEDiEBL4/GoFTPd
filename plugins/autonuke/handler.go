@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -200,6 +201,11 @@ func (h *Handler) runOnce() {
 func (h *Handler) processRelease(rel releaseCandidate) {
 	if h.isSectionRoot(rel.Path) {
 		h.logf("skipping section root %s from autonuke scan", rel.Path)
+		h.clearAllWarnings(rel)
+		return
+	}
+	if isDatedBucketName(rel.Name) {
+		h.logf("skipping dated bucket %s from autonuke scan", rel.Path)
 		h.clearAllWarnings(rel)
 		return
 	}
@@ -1179,4 +1185,24 @@ func (h *Handler) logf(format string, args ...interface{}) {
 		return
 	}
 	log.Printf("[AUTONUKE] "+format, args...)
+}
+
+var (
+	datedBucketMMDD       = regexp.MustCompile(`^\d{4}$`)
+	datedBucketYYYYMMDD   = regexp.MustCompile(`^\d{8}$`)
+	datedBucketYYYY_MM_DD = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+	datedBucketWW_YYYY    = regexp.MustCompile(`^\d{2}-\d{4}$`)
+	datedBucketYYYY_WW    = regexp.MustCompile(`^\d{4}-\d{2}$`)
+)
+
+func isDatedBucketName(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	return datedBucketMMDD.MatchString(name) ||
+		datedBucketYYYYMMDD.MatchString(name) ||
+		datedBucketYYYY_MM_DD.MatchString(name) ||
+		datedBucketWW_YYYY.MatchString(name) ||
+		datedBucketYYYY_WW.MatchString(name)
 }
