@@ -211,7 +211,7 @@ type Event struct {
 
 ## Theme files
 
-The announce plugin reads templates from `sitebot/etc/templates/pzsng.theme` (or whatever `announce.theme_file` points to). Format is one key per block:
+The announce plugin reads templates from `sitebot/etc/templates/pzsng.theme` by default (or whatever `announce.theme_file` points to). A bundled `sitebot/etc/templates/drftpd.theme` preset is also available for a DrFTPD-like announce style. Format is one key per block:
 
 ```
 NEWDIR
@@ -222,6 +222,8 @@ RACE: [%section] %relname got its first rar from %u_name at %u_speed
 ```
 
 Variables come from `vars()` in the announce plugin - anything in `evt.Data` is also exposed as `%key`. Templates are pure substitution, no logic.
+
+For easier theme translation, the announce plugin also exposes a small DrFTPD-style alias set in addition to GoFTPd's native names: `%user`, `%group`, `%file`, `%path`, `%speed`, `%size`, `%files`, `%racers`, `%leaduser`, `%leadsize`, `%leadfiles`, `%leadpercent`, `%leadspeed`, `%filesleft`, and `%sectioncolor`.
 
 ## Examples to study
 
