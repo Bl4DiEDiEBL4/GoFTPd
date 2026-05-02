@@ -33,6 +33,7 @@ type Handler struct {
 	excludeUsers          map[string]struct{}
 	excludeGroups         map[string]struct{}
 	excludePaths          []string
+	excludeExtensions     map[string]struct{}
 	announceWarn          bool
 	announceKick          bool
 	tempbanAfterKick      bool
@@ -58,6 +59,7 @@ func New() *Handler {
 		excludeUsers:          map[string]struct{}{},
 		excludeGroups:         map[string]struct{}{},
 		excludePaths:          []string{"/PRE", "/REQUESTS", "/SPEEDTEST"},
+		excludeExtensions:     lowerSet([]string{"sfv"}),
 		stopCh:                make(chan struct{}),
 		candidates:            map[uint64]candidate{},
 		tempBans:              map[string]time.Time{},
@@ -80,6 +82,9 @@ func (h *Handler) Init(svc *plugin.Services, cfg map[string]interface{}) error {
 	h.excludeGroups = lowerSet(stringSliceConfig(cfg["exclude_groups"]))
 	if paths := stringSliceConfig(cfg["exclude_paths"]); len(paths) > 0 {
 		h.excludePaths = normalizePaths(paths)
+	}
+	if exts := stringSliceConfig(cfg["exclude_extensions"]); len(exts) > 0 {
+		h.excludeExtensions = lowerSet(normalizeExtensions(exts))
 	}
 	h.announceWarn = boolConfig(cfg, "announce_warn", true)
 	h.announceKick = boolConfig(cfg, "announce_kick", true)
@@ -271,6 +276,12 @@ func (h *Handler) shouldCheckSession(snap plugin.ActiveSession) bool {
 	cleanPath := strings.ToLower(path.Clean("/" + strings.TrimSpace(snap.TransferPath)))
 	for _, prefix := range h.excludePaths {
 		if cleanPath == prefix || strings.HasPrefix(cleanPath, prefix+"/") {
+			return false
+		}
+	}
+	ext := strings.TrimPrefix(strings.ToLower(path.Ext(strings.TrimSpace(snap.TransferPath))), ".")
+	if ext != "" {
+		if _, excluded := h.excludeExtensions[ext]; excluded {
 			return false
 		}
 	}
@@ -518,6 +529,18 @@ func normalizePaths(values []string) []string {
 			continue
 		}
 		out = append(out, value)
+	}
+	return out
+}
+
+func normalizeExtensions(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(strings.ToLower(value))
+		value = strings.TrimPrefix(value, ".")
+		if value != "" {
+			out = append(out, value)
+		}
 	}
 	return out
 }
