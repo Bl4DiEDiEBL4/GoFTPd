@@ -142,3 +142,347 @@ rules:
     max_actions_per_cycle: 5
 
 debug: false
+
+# -----------------------------------------------------------------------------
+# HiGH VOLTAGE style profile
+# -----------------------------------------------------------------------------
+# This profile mirrors the section layout from the example main config and is
+# meant as a practical starting point for a live site that archives into
+# mounted paths under /ARCHiVE. Replace "SLAVE" with your actual live slave
+# name and trim paths you do not use.
+#
+# The intended flow is:
+# - live site "/" -> /ARCHiVE/*
+# - optional second-stage offsite handling stays external (for example fin-space
+#   + rclone) unless /OFFSITE is also mounted into GoFTPd
+#
+# Copy the rules below into plugins/spacekeeper/config.yml and enable the plugin
+# from etc/config.yml when you want to start testing.
+#
+# Example thresholds:
+# - incoming_disk_threshold_min_gb: 500
+#     start archiving when live free space drops under 500 GiB
+# - incoming_disk_threshold_target_gb: 650
+#     stop once live free space is back above 650 GiB
+#
+# Example live-site archive profile:
+#
+# interval_seconds: 60
+# enable_freespace_actions: false
+# enable_archive_actions: true
+# debug: false
+#
+# rules:
+#   - name: "0day-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/0DAY"
+#     destination_dated: true
+#     destination_date_format: "MMDD"
+#     paths:
+#       - "/0DAY/*/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 2
+#
+#   - name: "ebooks-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/EBOOKS"
+#     destination_dated: true
+#     destination_date_format: "MMDD"
+#     paths:
+#       - "/EBOOKS/*/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 2
+#
+#   - name: "flac-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/FLAC"
+#     destination_dated: true
+#     destination_date_format: "MMDD"
+#     paths:
+#       - "/FLAC/*/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 2
+#
+#   - name: "mp3-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/MP3"
+#     destination_dated: true
+#     destination_date_format: "MMDD"
+#     paths:
+#       - "/MP3/*/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 2
+#
+#   - name: "xxx-0day-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/XXX-0DAY"
+#     destination_dated: true
+#     destination_date_format: "MMDD"
+#     paths:
+#       - "/XXX-0DAY/*/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 2
+#
+#   - name: "apps-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/APPS"
+#     paths:
+#       - "/APPS/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 1
+#
+#   - name: "bluray-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/BLURAY"
+#     paths:
+#       - "/BLURAY/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 1
+#
+#   - name: "bluray-uhd-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/BLURAY-UHD"
+#     paths:
+#       - "/BLURAY-UHD/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 1
+#
+#   - name: "dvdr-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/DVDR"
+#     paths:
+#       - "/DVDR/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 1
+#
+#   - name: "games-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/GAMES"
+#     paths:
+#       - "/GAMES/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 1
+#
+#   - name: "mbluray-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/MBLURAY"
+#     paths:
+#       - "/MBLURAY/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 1
+#
+#   - name: "mdvdr-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/MDVDR"
+#     paths:
+#       - "/MDVDR/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 1
+#
+#   - name: "mvid-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/MVID"
+#     paths:
+#       - "/MVID/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 1
+#
+#   - name: "nsw-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/NSW"
+#     paths:
+#       - "/NSW/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 1
+#
+#   - name: "ps5-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/PS5"
+#     paths:
+#       - "/PS5/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 1
+#
+#   - name: "tv-main-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/TV"
+#     paths:
+#       - "/TV-1080P/*"
+#       - "/TV-2160P/*"
+#       - "/TV-720P/*"
+#       - "/TV-BLURAY/*"
+#       - "/TV-HDRiP/*"
+#       - "/TV-SD/*"
+#       - "/TV-SPORTS/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 2
+#
+#   - name: "x264-x265-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/VIDEO"
+#     paths:
+#       - "/X264-HD-1080P/*"
+#       - "/X264-HD-720P/*"
+#       - "/X264-SD/*"
+#       - "/X265/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 2
+#
+#   - name: "foreign-tv-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/FOREIGN-TV"
+#     paths:
+#       - "/FOREIGN/TV-CZ/*"
+#       - "/FOREIGN/TV-DE/*"
+#       - "/FOREIGN/TV-DK/*"
+#       - "/FOREIGN/TV-ES/*"
+#       - "/FOREIGN/TV-FI/*"
+#       - "/FOREIGN/TV-FR/*"
+#       - "/FOREIGN/TV-IT/*"
+#       - "/FOREIGN/TV-NL/*"
+#       - "/FOREIGN/TV-NO/*"
+#       - "/FOREIGN/TV-PL/*"
+#       - "/FOREIGN/TV-SE/*"
+#       - "/FOREIGN/TV-SK/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 2
+#
+#   - name: "foreign-x264-x265-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/FOREIGN-VIDEO"
+#     paths:
+#       - "/FOREIGN/X264-HD-FOREIGN/*"
+#       - "/FOREIGN/X264-SD-FOREIGN/*"
+#       - "/FOREIGN/X265-FOREIGN/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 2
+#
+#   - name: "xxx-hd-sd-archive"
+#     slave: "SLAVE"
+#     action: "archive_oldest"
+#     watch_mount_path: "/"
+#     destination: "/ARCHiVE/XXX"
+#     paths:
+#       - "/XXX-HD/*"
+#       - "/XXX-SD/*"
+#       - "/XXX-IMAGESETS/*"
+#     incoming_disk_threshold_min_gb: 500
+#     incoming_disk_threshold_target_gb: 650
+#     min_age_seconds: 21600
+#     skip_incomplete: true
+#     skip_active_races: true
+#     max_actions_per_cycle: 2
