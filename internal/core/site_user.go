@@ -606,20 +606,52 @@ func (s *Session) loadSitebotBlowfishConfig() (*sitebotBlowfishConfig, error) {
 func renderSiteInfoBlock(w io.Writer, version, title string, lines []string) {
 	width := 70
 
-	raw(w, line(cpTL, cpHZ, cpTR, width))
-	text(w, "   ____       _____ _____ ____     _  ", width)
-	text(w, "  / ___| ___ |  ___|_   _|  _ \\ __| | ", width)
-	text(w, " | |  _ / _ \\| |_    | | | |_) / _` | ", width)
-	text(w, " | |_| | (_) |  _|   | | |  __/ (_| | ", width)
-	text(w, "  \\____|\\___/|_|     |_| |_|   \\__,_| ", width)
-	text(w, fmt.Sprintf(" You are using GoFTPd v%s ", version), width)
-	raw(w, line(cpLT, cpHZ, cpRT, width))
-	text(w, fmt.Sprintf(" %s ", title), width)
-	raw(w, line(cpLT, cpHZ, cpRT, width))
+	infoRaw(w, infoLine(infoCpTL, infoCpHZ, infoCpTR, width))
+	infoText(w, "   ____       _____ _____ ____     _  ", width)
+	infoText(w, "  / ___| ___ |  ___|_   _|  _ \\ __| | ", width)
+	infoText(w, " | |  _ / _ \\| |_    | | | |_) / _` | ", width)
+	infoText(w, " | |_| | (_) |  _|   | | |  __/ (_| | ", width)
+	infoText(w, "  \\____|\\___/|_|     |_| |_|   \\__,_| ", width)
+	infoText(w, fmt.Sprintf(" You are using GoFTPd v%s ", version), width)
+	infoRaw(w, infoLine(infoCpLT, infoCpHZ, infoCpRT, width))
+	infoText(w, fmt.Sprintf(" %s ", title), width)
+	infoRaw(w, infoLine(infoCpLT, infoCpHZ, infoCpRT, width))
 	for _, lineText := range lines {
-		text(w, " "+strings.TrimSpace(lineText), width)
+		infoText(w, " "+strings.TrimSpace(lineText), width)
 	}
-	raw(w, line(cpBL, cpHZ, cpBR, width))
+	infoRaw(w, infoLine(infoCpBL, infoCpHZ, infoCpBR, width))
+}
+
+const (
+	infoCpTL = byte(0xDA)
+	infoCpTR = byte(0xBF)
+	infoCpBL = byte(0xC0)
+	infoCpBR = byte(0xD9)
+	infoCpHZ = byte(0xC4)
+	infoCpVT = byte(0xB3)
+	infoCpLT = byte(0xC3)
+	infoCpRT = byte(0xB4)
+)
+
+func infoLine(l, fill, r byte, n int) []byte {
+	b := make([]byte, 0, n+2)
+	b = append(b, l)
+	for i := 0; i < n; i++ {
+		b = append(b, fill)
+	}
+	b = append(b, r)
+	return b
+}
+
+func infoRaw(w io.Writer, b []byte) {
+	w.Write(append(b, '\r', '\n'))
+}
+
+func infoText(w io.Writer, s string, width int) {
+	buf := []byte{infoCpVT}
+	buf = append(buf, []byte(fmt.Sprintf("%-*s", width, s))...)
+	buf = append(buf, infoCpVT, '\r', '\n')
+	w.Write(buf)
 }
 
 func (s *Session) HandleSiteBlowfish(args []string) bool {

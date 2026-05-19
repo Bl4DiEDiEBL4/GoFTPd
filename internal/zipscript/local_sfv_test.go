@@ -1,4 +1,4 @@
-package core
+package zipscript
 
 import (
 	"os"
@@ -7,7 +7,7 @@ import (
 )
 
 func TestParseLocalSFVEntryLine(t *testing.T) {
-	fileName, crc, ok := parseLocalSFVEntryLine("release.r00  A1B2C3D4")
+	fileName, crc, ok := ParseLocalSFVEntryLine("release.r00  A1B2C3D4")
 	if !ok {
 		t.Fatalf("expected SFV line to parse")
 	}
@@ -28,7 +28,7 @@ func TestLocalExpectedCRCForFile(t *testing.T) {
 		t.Fatalf("write payload: %v", err)
 	}
 
-	crc, ok := localExpectedCRCForFile(filepath.Join(root, "sample.rar"))
+	crc, ok := LocalExpectedCRCForFile(filepath.Join(root, "sample.rar"))
 	if !ok {
 		t.Fatalf("expected local SFV lookup to find payload entry")
 	}
@@ -43,11 +43,11 @@ func TestLocalSFVEntriesForDir(t *testing.T) {
 		t.Fatalf("write sfv: %v", err)
 	}
 
-	entries := localSFVEntriesForDir(root)
+	entries := LocalSFVEntriesForDir(root)
 	if len(entries) != 2 {
 		t.Fatalf("expected two parsed SFV entries, got %d", len(entries))
 	}
-	if crc, ok := cachedExpectedCRC(entries, "sample.rar"); !ok || crc != 0x11223344 {
+	if crc, ok := CachedExpectedCRC(entries, "sample.rar"); !ok || crc != 0x11223344 {
 		t.Fatalf("expected case-insensitive lookup to work, got %08X %v", crc, ok)
 	}
 }

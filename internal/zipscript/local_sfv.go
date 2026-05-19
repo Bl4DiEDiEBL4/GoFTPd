@@ -1,4 +1,4 @@
-package core
+package zipscript
 
 import (
 	"fmt"
@@ -10,11 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
-
-	"goftpd/internal/zipscript"
 )
 
-func writeUploadSFVStatus(conn io.Writer, checksum uint32, expectedCRC uint32, hasExpected bool, fileSize int64) {
+func WriteUploadSFVStatus(conn io.Writer, checksum uint32, expectedCRC uint32, hasExpected bool, fileSize int64) {
 	if !hasExpected {
 		return
 	}
@@ -27,23 +25,31 @@ func writeUploadSFVStatus(conn io.Writer, checksum uint32, expectedCRC uint32, h
 	}
 }
 
-func writeUploadNoSFVEntryStatus(conn io.Writer, sfvEntries map[string]uint32, fileName string) {
+func WriteUploadNoSFVEntryStatus(conn io.Writer, sfvEntries map[string]uint32, fileName string) {
 	if sfvEntries == nil {
 		return
 	}
-	if _, ok := cachedExpectedCRC(sfvEntries, fileName); ok {
+	if _, ok := CachedExpectedCRC(sfvEntries, fileName); ok {
 		return
 	}
 	fmt.Fprintf(conn, "226- zipscript - no entry in sfv for file\r\n")
 }
 
-func localExpectedCRCForFile(localPath string) (uint32, bool) {
-	dirPath := filepath.Dir(localPath)
-	baseName := filepath.Base(localPath)
-	return cachedExpectedCRC(localSFVEntriesForDir(dirPath), baseName)
+func CachedExpectedCRC(sfvEntries map[string]uint32, fileName string) (uint32, bool) {
+	if sfvEntries == nil {
+		return 0, false
+	}
+	crc, ok := sfvEntries[raceEntryKey(fileName)]
+	return crc, ok
 }
 
-func localSFVEntriesForDir(dirPath string) map[string]uint32 {
+func LocalExpectedCRCForFile(localPath string) (uint32, bool) {
+	dirPath := filepath.Dir(localPath)
+	baseName := filepath.Base(localPath)
+	return CachedExpectedCRC(LocalSFVEntriesForDir(dirPath), baseName)
+}
+
+func LocalSFVEntriesForDir(dirPath string) map[string]uint32 {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return nil
@@ -65,11 +71,11 @@ func localSFVEntriesForDir(dirPath string) map[string]uint32 {
 			continue
 		}
 		for _, line := range strings.Split(string(data), "\n") {
-			entryName, crc, ok := parseLocalSFVEntryLine(line)
+			entryName, crc, ok := ParseLocalSFVEntryLine(line)
 			if !ok {
 				continue
 			}
-			parsed[raceCRCKey(entryName)] = crc
+			parsed[raceEntryKey(entryName)] = crc
 		}
 	}
 	if len(parsed) == 0 {
@@ -78,11 +84,11 @@ func localSFVEntriesForDir(dirPath string) map[string]uint32 {
 	return parsed
 }
 
-func syncLocalSFVMissingMarkers(cfg *Config, dirPath string) {
-	if cfg == nil || !zipscript.ShowMissingFilesForDir(cfg.Zipscript, filepath.ToSlash(dirPath)) {
+func SyncLocalSFVMissingMarkers(cfg Config, dirPath string) {
+	if !ShowMissingFilesForDir(cfg, filepath.ToSlash(dirPath)) {
 		return
 	}
-	sfvEntries := localSFVEntriesForDir(dirPath)
+	sfvEntries := LocalSFVEntriesForDir(dirPath)
 	if sfvEntries == nil {
 		return
 	}
@@ -98,12 +104,12 @@ func syncLocalSFVMissingMarkers(cfg *Config, dirPath string) {
 	}
 }
 
-func clearLocalSFVMissingMarker(dirPath, fileName string) {
+func ClearLocalSFVMissingMarker(dirPath, fileName string) {
 	_ = os.Remove(filepath.Join(dirPath, fileName+"-MISSING"))
 }
 
-func createLocalSFVMissingMarker(cfg *Config, dirPath, fileName string) {
-	if cfg == nil || !zipscript.ShowMissingFilesForDir(cfg.Zipscript, filepath.ToSlash(dirPath)) {
+func CreateLocalSFVMissingMarker(cfg Config, dirPath, fileName string) {
+	if !ShowMissingFilesForDir(cfg, filepath.ToSlash(dirPath)) {
 		return
 	}
 	missingPath := filepath.Join(dirPath, fileName+"-MISSING")
@@ -113,7 +119,7 @@ func createLocalSFVMissingMarker(cfg *Config, dirPath, fileName string) {
 	_ = os.WriteFile(missingPath, []byte{}, 0644)
 }
 
-func parseLocalSFVEntryLine(line string) (string, uint32, bool) {
+func ParseLocalSFVEntryLine(line string) (string, uint32, bool) {
 	line = strings.TrimRight(line, "\r\n")
 	if strings.TrimSpace(line) == "" {
 		return "", 0, false
@@ -155,16 +161,13 @@ func parseLocalSFVEntryLine(line string) (string, uint32, bool) {
 	return fileName, uint32(crc), true
 }
 
-func localShouldTreatDownloadAsMissing(cfg *Config, filePath, localPath string) bool {
-	if cfg == nil {
-		return false
-	}
-	expectedCRC, exists := localExpectedCRCForFile(localPath)
+func LocalShouldTreatDownloadAsMissing(cfg Config, filePath, localPath string) bool {
+	expectedCRC, exists := LocalExpectedCRCForFile(localPath)
 	if !exists || expectedCRC == 0 {
 		return false
 	}
 
-	checksum, err := localFileCRC(localPath)
+	checksum, err := LocalFileCRC(localPath)
 	if err != nil {
 		return false
 	}
@@ -172,14 +175,14 @@ func localShouldTreatDownloadAsMissing(cfg *Config, filePath, localPath string) 
 		return false
 	}
 
-	if zipscript.ShouldDeleteBadCRCForDir(cfg.Zipscript, filepath.ToSlash(filepath.Dir(localPath))) {
+	if ShouldDeleteBadCRCForDir(cfg, filepath.ToSlash(filepath.Dir(localPath))) {
 		_ = os.Remove(localPath)
 	}
 	_ = filePath
 	return true
 }
 
-func localFileCRC(localPath string) (uint32, error) {
+func LocalFileCRC(localPath string) (uint32, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
 		return 0, err

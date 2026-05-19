@@ -751,16 +751,16 @@ func rescanZipPostProcess(cfg *Config, bridge MasterBridge, dirPath string, opts
 	}
 
 	if bridge.GetFileSize(path.Join(dirPath, "file_id.diz")) < 0 {
-		if _, err := recoverZipDIZFromDirectory(bridge, dirPath); err == nil {
+		if _, err := zipscript.RecoverZipDIZFromDirectory(zipBridge(bridge), dirPath); err == nil {
 			result.DIZRecovered = true
 		} else if len(zipArchives) > 0 && cfg.Debug {
 			result.Errors = append(result.Errors, fmt.Sprintf("file_id.diz recover skipped: %v", err))
 		}
 	}
 	dirEntries := bridge.ListDir(dirPath)
-	if expected := zipExpectedPartsFromDIZ(bridge, dirPath, true); expected > 0 {
+	if expected := zipscript.ZipExpectedPartsFromDIZ(zipBridge(bridge), dirPath, true); expected > 0 {
 		_, _, present := zipDirRaceStats(bridge, dirPath, dirEntries, expected)
-		cacheZipReleaseProgress(bridge, dirPath, present, expected)
+		zipscript.CacheZipReleaseProgress(zipBridge(bridge), dirPath, present, expected)
 	}
 	return result
 }

@@ -1,4 +1,4 @@
-package core
+package zipscript
 
 import "testing"
 
@@ -9,15 +9,15 @@ func TestZipExpectedPartsFromDIZContentMatchesDrFTPDStyleMarkers(t *testing.T) {
 		want    int
 	}{
 		{name: "square brackets", content: "[01/15]", want: 15},
-		{name: "angle brackets with o/x digits", content: "<ox/o9>", want: 9},
+		{name: "angle brackets with o x digits", content: "<ox/o9>", want: 9},
 		{name: "spaces around separator", content: "( 1 / 12 )", want: 12},
 		{name: "missing marker", content: "no file count here", want: 0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := zipExpectedPartsFromDIZContent([]byte(tt.content)); got != tt.want {
-				t.Fatalf("zipExpectedPartsFromDIZContent(%q) = %d, want %d", tt.content, got, tt.want)
+			if got := ParseZipExpectedPartsFromDIZ([]byte(tt.content)); got != tt.want {
+				t.Fatalf("ParseZipExpectedPartsFromDIZ(%q) = %d, want %d", tt.content, got, tt.want)
 			}
 		})
 	}
@@ -26,13 +26,13 @@ func TestZipExpectedPartsFromDIZContentMatchesDrFTPDStyleMarkers(t *testing.T) {
 func TestZipDirCompleteFollowsDIZCountStyle(t *testing.T) {
 	tests := []struct {
 		name     string
-		entries  []MasterFileEntry
+		entries  []ZipEntryInfo
 		expected int
 		want     bool
 	}{
 		{
 			name: "exact expected count",
-			entries: []MasterFileEntry{
+			entries: []ZipEntryInfo{
 				{Name: "a.zip", Size: 5000},
 				{Name: "b.zip", Size: 3200},
 				{Name: "c.zip", Size: 2800},
@@ -42,7 +42,7 @@ func TestZipDirCompleteFollowsDIZCountStyle(t *testing.T) {
 		},
 		{
 			name: "more zip files than expected still complete",
-			entries: []MasterFileEntry{
+			entries: []ZipEntryInfo{
 				{Name: "a.zip", Size: 5000},
 				{Name: "b.zip", Size: 3200},
 				{Name: "c.zip", Size: 2800},
@@ -53,7 +53,7 @@ func TestZipDirCompleteFollowsDIZCountStyle(t *testing.T) {
 		},
 		{
 			name: "missing a zip file",
-			entries: []MasterFileEntry{
+			entries: []ZipEntryInfo{
 				{Name: "a.zip", Size: 5000},
 				{Name: "b.zip", Size: 5000},
 			},
@@ -64,8 +64,8 @@ func TestZipDirCompleteFollowsDIZCountStyle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := zipDirComplete(nil, "/0DAY/test", tt.entries, tt.expected); got != tt.want {
-				t.Fatalf("zipDirComplete() = %v, want %v", got, tt.want)
+			if got := ZipDirComplete(tt.entries, tt.expected); got != tt.want {
+				t.Fatalf("ZipDirComplete() = %v, want %v", got, tt.want)
 			}
 		})
 	}

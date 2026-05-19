@@ -794,8 +794,41 @@ func IsZipPayloadName(name string) bool {
 	return zipPayloadNameRE.MatchString(strings.ToLower(strings.TrimSpace(name)))
 }
 
+func IsZipRecoverableArchiveName(name string) bool {
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(name)), ".zip")
+}
+
 func IsZipManifestName(name string) bool {
 	return strings.EqualFold(path.Base(strings.ReplaceAll(strings.TrimSpace(name), "\\", "/")), "file_id.diz")
+}
+
+var zipDIZTotalRE = regexp.MustCompile(`[][()<>:[:space:]][[:space:]]*[0-9oOxX*]*[[:space:]]*/[[:space:]]*([0-9oOxX]*[0-9oO])[[:space:]]*[][()<>[:space:]]`)
+
+func ParseZipExpectedPartsFromDIZ(content []byte) int {
+	if len(content) == 0 {
+		return 0
+	}
+	match := zipDIZTotalRE.FindSubmatch(content)
+	if len(match) < 2 {
+		return 0
+	}
+	raw := strings.TrimSpace(string(match[1]))
+	if raw == "" {
+		return 0
+	}
+	raw = strings.NewReplacer("o", "0", "O", "0", "x", "0", "X", "0").Replace(raw)
+	total, err := strconv.Atoi(raw)
+	if err != nil || total <= 0 {
+		return 0
+	}
+	return total
+}
+
+func ShouldBlockZipDIZUpload(cfg Config, dirPath, fileName string) bool {
+	if !UsesZip(cfg, dirPath) {
+		return false
+	}
+	return IsZipManifestName(fileName)
 }
 
 func UsesZipUploadMode(cfg Config, dirPath, fileName string, existingNames []string) bool {

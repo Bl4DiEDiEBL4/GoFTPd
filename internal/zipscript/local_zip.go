@@ -1,4 +1,4 @@
-package core
+package zipscript
 
 import (
 	"archive/zip"
@@ -6,12 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"goftpd/internal/zipscript"
 )
 
-func localCheckUploadedZipIntegrity(cfg *Config, dirPath, localPath, fileName string) (bool, error) {
-	if cfg == nil || !zipscript.CheckZipIntegrityForDir(cfg.Zipscript, dirPath) {
+func LocalCheckUploadedZipIntegrity(cfg Config, dirPath, localPath, fileName string) (bool, error) {
+	if !CheckZipIntegrityForDir(cfg, dirPath) {
 		return false, nil
 	}
 	if !strings.HasSuffix(strings.ToLower(strings.TrimSpace(fileName)), ".zip") {
@@ -27,8 +25,8 @@ func localCheckUploadedZipIntegrity(cfg *Config, dirPath, localPath, fileName st
 	return false, nil
 }
 
-func localRefreshZipDIZFromArchive(dirPath, archivePath, fileName string) error {
-	if !isZipRecoverableArchiveName(fileName) {
+func LocalRefreshZipDIZFromArchive(dirPath, archivePath, fileName string) error {
+	if !IsZipRecoverableArchiveName(fileName) {
 		return nil
 	}
 	dizPath := filepath.Join(dirPath, "file_id.diz")
