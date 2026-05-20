@@ -32,6 +32,15 @@ type releaseRaceWindow struct {
 	UpdatedAtMs int64
 }
 
+type backgroundRemergeConfig struct {
+	interval     time.Duration
+	initialDelay time.Duration
+	stagger      time.Duration
+	basePath     string
+	rootsOnly    bool
+	skipBusy     bool
+}
+
 type SlaveManager struct {
 	listenHost       string
 	listenPort       int
@@ -88,6 +97,10 @@ type SlaveManager struct {
 
 	enableRemergeChecksums atomic.Bool
 
+	backgroundRemergeMu   sync.RWMutex
+	backgroundRemerge     backgroundRemergeConfig
+	backgroundRemergeWake chan struct{}
+
 	startupCachedSlaves sync.Map
 }
 
@@ -121,20 +134,21 @@ func NewSlaveManager(host string, port int, tlsEnabled bool, tlsCert, tlsKey str
 		heartbeatTimeout = 60 * time.Second
 	}
 	sm := &SlaveManager{
-		listenHost:           host,
-		listenPort:           port,
-		tlsEnabled:           tlsEnabled,
-		tlsCert:              tlsCert,
-		tlsKey:               tlsKey,
-		heartbeatTimeout:     heartbeatTimeout,
-		slaves:               make(map[string]*RemoteSlave),
-		policies:             make(map[string]SlaveRoutePolicy),
-		vfs:                  NewVirtualFileSystem(),
-		releaseMedia:         make(map[string]map[string]string),
-		releaseAnnouncements: make(map[string]map[string]bool),
-		releaseRaceWindows:   make(map[string]*releaseRaceWindow),
-		authState:            make(map[string]*slaveAuthState),
-		remergeCRCSem:        make(chan struct{}, 16),
+		listenHost:            host,
+		listenPort:            port,
+		tlsEnabled:            tlsEnabled,
+		tlsCert:               tlsCert,
+		tlsKey:                tlsKey,
+		heartbeatTimeout:      heartbeatTimeout,
+		slaves:                make(map[string]*RemoteSlave),
+		policies:              make(map[string]SlaveRoutePolicy),
+		vfs:                   NewVirtualFileSystem(),
+		releaseMedia:          make(map[string]map[string]string),
+		releaseAnnouncements:  make(map[string]map[string]bool),
+		releaseRaceWindows:    make(map[string]*releaseRaceWindow),
+		authState:             make(map[string]*slaveAuthState),
+		remergeCRCSem:         make(chan struct{}, 16),
+		backgroundRemergeWake: make(chan struct{}, 1),
 	}
 	sm.remergeMode.Store("off")
 	sm.manualRemergeMode.Store("instant")
@@ -287,6 +301,54 @@ func (sm *SlaveManager) SetRemergeFlowControl(pauseThreshold, resumeThreshold in
 	sm.remergeResumeAt.Store(int64(resumeThreshold))
 }
 
+func (sm *SlaveManager) ConfigureBackgroundRemerge(interval, initialDelay, stagger time.Duration, basePath string, rootsOnly bool, skipBusy bool) {
+	if interval < 0 {
+		interval = 0
+	}
+	if initialDelay < 0 {
+		initialDelay = 0
+	}
+	if stagger < 0 {
+		stagger = 0
+	}
+	basePath = path.Clean("/" + strings.TrimSpace(basePath))
+	if basePath == "." || basePath == "" {
+		basePath = "/"
+	}
+
+	sm.backgroundRemergeMu.Lock()
+	sm.backgroundRemerge = backgroundRemergeConfig{
+		interval:     interval,
+		initialDelay: initialDelay,
+		stagger:      stagger,
+		basePath:     basePath,
+		rootsOnly:    rootsOnly,
+		skipBusy:     skipBusy,
+	}
+	sm.backgroundRemergeMu.Unlock()
+	sm.notifyBackgroundRemergeLoop()
+}
+
+func (sm *SlaveManager) backgroundRemergeSnapshot() backgroundRemergeConfig {
+	sm.backgroundRemergeMu.RLock()
+	defer sm.backgroundRemergeMu.RUnlock()
+	cfg := sm.backgroundRemerge
+	if cfg.basePath == "" {
+		cfg.basePath = "/"
+	}
+	return cfg
+}
+
+func (sm *SlaveManager) notifyBackgroundRemergeLoop() {
+	if sm.backgroundRemergeWake == nil {
+		return
+	}
+	select {
+	case sm.backgroundRemergeWake <- struct{}{}:
+	default:
+	}
+}
+
 func (sm *SlaveManager) SetRemergeMode(mode string) {
 	mode = strings.ToLower(strings.TrimSpace(mode))
 	switch mode {
@@ -411,6 +473,7 @@ func (sm *SlaveManager) Start() error {
 	go sm.acceptLoop()
 	go sm.vfsPersistLoop()
 	go sm.diskStatusLoop()
+	go sm.backgroundRemergeLoop()
 
 	return nil
 }
@@ -1196,6 +1259,11 @@ func (sm *SlaveManager) ProcessRemerge(rs *RemoteSlave, resp *protocol.AsyncResp
 		sm.scheduleRemergeSFVParse(rs, sfvPath)
 	}
 
+	// Each remerge response is a complete snapshot of one physical directory.
+	// Prune stale direct children now so slow/background remerges update the VFS
+	// as they walk instead of leaving ghosts until the full tree finishes.
+	sm.vfs.PurgeUnseenChildren(rs.name, resp.Path)
+
 	touchedParents[path.Clean(resp.Path)] = struct{}{}
 	for dirPath := range touchedParents {
 		sm.pruneStaleStatusMarkersForDir(dirPath)
@@ -1842,6 +1910,7 @@ func isIgnorableDeleteError(err error) bool {
 
 func (sm *SlaveManager) Stop() {
 	sm.running.Store(false)
+	sm.notifyBackgroundRemergeLoop()
 
 	// Save VFS to disk before shutting down
 	if err := sm.vfs.SaveToDisk(vfsFilePath); err != nil {
@@ -1886,4 +1955,102 @@ func (sm *SlaveManager) diskStatusLoop() {
 		<-ticker.C
 		sm.PublishAllDiskStatuses()
 	}
+}
+
+func (sm *SlaveManager) backgroundRemergeLoop() {
+	var nextRun time.Time
+	for sm.running.Load() {
+		cfg := sm.backgroundRemergeSnapshot()
+		if cfg.interval <= 0 {
+			nextRun = time.Time{}
+			sm.waitBackgroundRemergeLoop(30 * time.Second)
+			continue
+		}
+
+		if nextRun.IsZero() {
+			delay := cfg.initialDelay
+			if delay <= 0 {
+				delay = cfg.interval
+			}
+			nextRun = time.Now().Add(delay)
+			log.Printf("[SlaveManager] Background remerge enabled: interval=%s first_run_in=%s base=%s rootsOnly=%v stagger=%s skipBusy=%v",
+				cfg.interval, delay, cfg.basePath, cfg.rootsOnly, cfg.stagger, cfg.skipBusy)
+		}
+
+		if wait := time.Until(nextRun); wait > 0 {
+			if !sm.waitBackgroundRemergeLoop(wait) {
+				nextRun = time.Time{}
+			}
+			continue
+		}
+
+		sm.runBackgroundRemergeRound(cfg)
+		nextRun = time.Now().Add(cfg.interval)
+	}
+}
+
+func (sm *SlaveManager) waitBackgroundRemergeLoop(delay time.Duration) bool {
+	if delay <= 0 {
+		return true
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-sm.backgroundRemergeWake:
+		return false
+	}
+}
+
+func (sm *SlaveManager) runBackgroundRemergeRound(cfg backgroundRemergeConfig) {
+	slaves := sm.GetAllSlaves()
+	if len(slaves) == 0 {
+		log.Printf("[SlaveManager] Background remerge skipped: no slaves connected")
+		return
+	}
+
+	started := 0
+	skipped := 0
+	log.Printf("[SlaveManager] Background remerge round starting: slaves=%d base=%s rootsOnly=%v skipBusy=%v", len(slaves), cfg.basePath, cfg.rootsOnly, cfg.skipBusy)
+	for i, rs := range slaves {
+		if !sm.running.Load() {
+			return
+		}
+		if rs == nil || !rs.IsOnline() {
+			skipped++
+			continue
+		}
+		if rs.IsRemerging() {
+			skipped++
+			log.Printf("[SlaveManager] Background remerge skipped for %s: remerge already running", rs.Name())
+			continue
+		}
+		if cfg.skipBusy && rs.ActiveTransfers() > 0 {
+			skipped++
+			log.Printf("[SlaveManager] Background remerge skipped for %s: %d active transfer(s)", rs.Name(), rs.ActiveTransfers())
+			continue
+		}
+
+		var err error
+		if cfg.rootsOnly || cfg.basePath != "/" {
+			err = sm.StartRemergePath(rs.Name(), cfg.basePath, cfg.rootsOnly)
+		} else {
+			err = sm.StartRemerge(rs.Name())
+		}
+		if err != nil {
+			skipped++
+			log.Printf("[SlaveManager] Background remerge skipped for %s: %v", rs.Name(), err)
+		} else {
+			started++
+			log.Printf("[SlaveManager] Background remerge started for %s", rs.Name())
+		}
+
+		if cfg.stagger > 0 && i < len(slaves)-1 {
+			if !sm.waitBackgroundRemergeLoop(cfg.stagger) {
+				return
+			}
+		}
+	}
+	log.Printf("[SlaveManager] Background remerge round queued: started=%d skipped=%d", started, skipped)
 }

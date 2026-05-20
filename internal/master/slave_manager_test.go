@@ -195,6 +195,57 @@ func TestShouldRefreshRemergeChecksumDisabledByDefault(t *testing.T) {
 	}
 }
 
+func TestProcessRemergePrunesGhostChildrenPerScannedDirectory(t *testing.T) {
+	sm := NewSlaveManager("127.0.0.1", 1099, false, "", "", 60*time.Second)
+	rs := NewRemoteSlave("LOCAL", nil, nil, 60*time.Second, nil)
+
+	sm.vfs.AddFile("/X265", VFSFile{IsDir: true, Seen: true, SlaveName: "LOCAL"})
+	sm.vfs.AddFile("/X265/keep", VFSFile{IsDir: true, Seen: true, SlaveName: "LOCAL"})
+	sm.vfs.AddFile("/X265/ghost", VFSFile{IsDir: true, Seen: true, SlaveName: "LOCAL"})
+	sm.vfs.AddFile("/X265/ghost/file.r00", VFSFile{Size: 100, Seen: true, SlaveName: "LOCAL"})
+
+	sm.vfs.MarkAllUnseen("LOCAL")
+	sm.ProcessRemerge(rs, &protocol.AsyncResponseRemerge{
+		Path: "/X265",
+		Files: []protocol.LightRemoteInode{
+			{Name: "keep", IsDir: true, LastModified: time.Now().Unix()},
+		},
+	})
+
+	if got := sm.vfs.GetFile("/X265/ghost"); got != nil {
+		t.Fatalf("expected stale direct child dir to be pruned during remerge, got %+v", got)
+	}
+	if got := sm.vfs.GetFile("/X265/ghost/file.r00"); got != nil {
+		t.Fatalf("expected stale child subtree to be pruned during remerge, got %+v", got)
+	}
+	if got := sm.vfs.GetFile("/X265/keep"); got == nil {
+		t.Fatalf("expected re-seen child dir to remain")
+	}
+}
+
+func TestConfigureBackgroundRemergeNormalizesConfig(t *testing.T) {
+	sm := NewSlaveManager("127.0.0.1", 1099, false, "", "", 60*time.Second)
+
+	sm.ConfigureBackgroundRemerge(time.Hour, time.Minute, time.Second, "ARCHiVE", false, true)
+	cfg := sm.backgroundRemergeSnapshot()
+
+	if cfg.interval != time.Hour {
+		t.Fatalf("interval = %s, want 1h", cfg.interval)
+	}
+	if cfg.initialDelay != time.Minute {
+		t.Fatalf("initialDelay = %s, want 1m", cfg.initialDelay)
+	}
+	if cfg.stagger != time.Second {
+		t.Fatalf("stagger = %s, want 1s", cfg.stagger)
+	}
+	if cfg.basePath != "/ARCHiVE" {
+		t.Fatalf("basePath = %q, want /ARCHiVE", cfg.basePath)
+	}
+	if !cfg.skipBusy {
+		t.Fatalf("expected skipBusy to be enabled")
+	}
+}
+
 func TestReleaseRaceWindowStartsAtMkdir(t *testing.T) {
 	sm := NewSlaveManager("127.0.0.1", 1099, false, "", "", 60*time.Second)
 	sm.StartReleaseRaceWindowAt("/X265/release", 1000)

@@ -69,6 +69,16 @@ master:
                                 # pending per-slave remerge queue grows past this size.
   remerge_resume_threshold: 50  # Resume slave-side remerge streaming when the master's
                                 # pending per-slave remerge queue falls back to this size.
+  background_remerge_interval_seconds: 0 # Optional slow VFS patrol. 0 disables it.
+                                # When enabled, the master periodically starts a
+                                # background SITE REMERGE so deleted physical
+                                # files/dirs are pruned from userdata/vfs.dat.
+  background_remerge_start_delay_seconds: 300 # Wait after boot before first patrol.
+  background_remerge_stagger_seconds: 60 # Delay between starting each slave patrol.
+  background_remerge_path: "/"     # Scope to remerge, e.g. "/" or "/ARCHiVE".
+  background_remerge_roots_only: false # Keep false for stale cleanup. true skips mounted_roots.
+  background_remerge_skip_busy_slaves: true # Skip starting patrol on a slave
+                                # that already has active transfers.
 
 
 # =============================================================================

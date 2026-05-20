@@ -198,6 +198,7 @@ func main() {
 			intFromCfg(cfg.Master, "remerge_pause_threshold", 250),
 			intFromCfg(cfg.Master, "remerge_resume_threshold", 50),
 		)
+		configureBackgroundRemerge(sm, cfg.Master)
 		if err := sm.Start(); err != nil {
 			log.Fatalf("SlaveManager failed: %v", err)
 		}
@@ -244,6 +245,7 @@ func main() {
 				intFromCfg(c.Master, "remerge_pause_threshold", 250),
 				intFromCfg(c.Master, "remerge_resume_threshold", 50),
 			)
+			configureBackgroundRemerge(sm, c.Master)
 			if err := sm.ConfigureAuthAllowlist(stringSliceFromCfg(c.Master, "slave_allowlist")); err != nil {
 				log.Printf("[REHASH] invalid master.slave_allowlist: %v", err)
 			}
@@ -622,6 +624,27 @@ func boolFromCfg(m map[string]interface{}, key string, def bool) bool {
 		return def
 	}
 	return b
+}
+
+func configureBackgroundRemerge(sm *master.SlaveManager, masterCfg map[string]interface{}) {
+	if sm == nil {
+		return
+	}
+	intervalSeconds := intFromCfg(masterCfg, "background_remerge_interval_seconds", 0)
+	startDelaySeconds := intFromCfg(masterCfg, "background_remerge_start_delay_seconds", 300)
+	staggerSeconds := intFromCfg(masterCfg, "background_remerge_stagger_seconds", 60)
+	basePath := stringFromCfg(masterCfg, "background_remerge_path", "/")
+	rootsOnly := boolFromCfg(masterCfg, "background_remerge_roots_only", false)
+	skipBusy := boolFromCfg(masterCfg, "background_remerge_skip_busy_slaves", true)
+
+	sm.ConfigureBackgroundRemerge(
+		time.Duration(intervalSeconds)*time.Second,
+		time.Duration(startDelaySeconds)*time.Second,
+		time.Duration(staggerSeconds)*time.Second,
+		basePath,
+		rootsOnly,
+		skipBusy,
+	)
 }
 
 func parseSlaveRoots(slaveCfg map[string]interface{}) ([]string, []slave.MountedRoot) {

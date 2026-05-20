@@ -318,6 +318,27 @@ current VFS entry does not already have a stored checksum. Unchanged files with
 preserved checksum state should not be re-CRC'd just because the master was
 restarted.
 
+For sites where files can disappear outside GoFTPd, for example external archive
+or cleanup scripts, enable the master's slow background VFS patrol:
+
+```yml
+master:
+  background_remerge_interval_seconds: 21600 # every 6 hours, 0 disables
+  background_remerge_start_delay_seconds: 300
+  background_remerge_stagger_seconds: 60
+  background_remerge_path: "/"
+  background_remerge_roots_only: false # keep false when the goal is stale cleanup
+  background_remerge_skip_busy_slaves: true
+
+slave:
+  remerge_delay_ms: 10
+  remerge_pause_on_active_transfers: 1
+```
+
+The master only schedules the patrol; the slave-side knobs make it gentle. As
+each scanned directory reports back, stale direct VFS children are pruned right
+away, so old directories do not need to wait for the whole tree to finish.
+
 ## ACL Rules
 
 ACLs live in `etc/permissions.yml`. Rules are checked top to bottom inside each
