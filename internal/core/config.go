@@ -474,7 +474,6 @@ func (c *Config) Rehash() (string, error) {
 	}
 
 	c.rehashMu.Lock()
-	defer c.rehashMu.Unlock()
 
 	// Identity / cosmetic
 	c.SiteName = fresh.SiteName
@@ -506,6 +505,7 @@ func (c *Config) Rehash() (string, error) {
 	if c.PluginManager != nil {
 		c.PluginManager.SetConfig(c)
 		if err := c.PluginManager.ReloadConfigs(c.Plugins); err != nil {
+			c.rehashMu.Unlock()
 			return path, fmt.Errorf("plugin config reload failed: %w", err)
 		}
 	}
@@ -532,9 +532,13 @@ func (c *Config) Rehash() (string, error) {
 	c.LogDeleteAfterDays = fresh.LogDeleteAfterDays
 	c.LogConsole = fresh.LogConsole
 
-	// Fire post-rehash hook if set (e.g. reapply slave policies to SlaveManager).
-	if c.RehashHook != nil {
-		c.RehashHook(c)
+	rehashHook := c.RehashHook
+	c.rehashMu.Unlock()
+
+	// Fire post-rehash hook after releasing c.rehashMu. Hooks may publish
+	// events or touch helpers that need the same config lock.
+	if rehashHook != nil {
+		rehashHook(c)
 	}
 
 	return path, nil

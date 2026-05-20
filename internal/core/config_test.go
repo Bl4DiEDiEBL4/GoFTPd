@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeConfigFixture(t *testing.T, body string) string {
@@ -122,5 +123,53 @@ master:
 	}
 	if cfg.Version != "9.9.9" {
 		t.Fatalf("LoadConfig() version = %q, want %q", cfg.Version, "9.9.9")
+	}
+}
+
+func TestRehashHookCanPublishEvents(t *testing.T) {
+	path := writeConfigFixture(t, `
+sitename_long: "GoFTPd"
+sitename_short: "GoFTPd"
+version: "1.0.6b"
+timezone: "Europe/Amsterdam"
+mode: "master"
+listen_port: 21
+storage_path: "./site"
+acl_base_path: "/"
+tls_enabled: false
+master:
+  listen_host: "0.0.0.0"
+  control_port: 1099
+`)
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	hookCalled := make(chan struct{})
+	cfg.RehashHook = func(reloaded *Config) {
+		PublishEvent(reloaded, Event{Type: EventDiskStatus})
+		close(hookCalled)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := cfg.Rehash()
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Rehash() error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("Rehash() timed out; hook likely deadlocked on config lock")
+	}
+
+	select {
+	case <-hookCalled:
+	default:
+		t.Fatalf("expected rehash hook to run")
 	}
 }
