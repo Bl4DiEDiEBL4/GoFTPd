@@ -1256,10 +1256,12 @@ func (sm *SlaveManager) scheduleRemergeChecksumRefresh(rs *RemoteSlave, filePath
 				log.Printf("[SlaveManager] Remerge CRC mismatch for %s on %s: got %08X expected %08X - keeping file and marking it unverified",
 					filePath, rs.Name(), checksumResp.Checksum, expectedCRC)
 				sm.vfs.UpdateFileVerification(filePath, checksumResp.Checksum)
+				sm.SyncStatusMarkersForPath(filePath, false)
 				return
 			}
 		}
 		sm.vfs.UpdateFileVerification(filePath, checksumResp.Checksum)
+		sm.SyncStatusMarkersForPath(filePath, false)
 	}()
 }
 
@@ -1615,6 +1617,9 @@ func (sm *SlaveManager) SelectSlaveForUpload(uploadPath string) *RemoteSlave {
 	weights := make(map[string]int, len(slaves))
 
 	for _, rs := range slaves {
+		if !slaveCanStorePath(rs, uploadPath) {
+			continue
+		}
 		policy, hasPolicy := sm.getPolicy(rs.Name())
 		if hasPolicy && policy.ReadOnly {
 			continue
@@ -1635,6 +1640,9 @@ func (sm *SlaveManager) SelectSlaveForUpload(uploadPath string) *RemoteSlave {
 	// slaves. Read-only archive slaves must never receive uploads.
 	if len(eligible) == 0 {
 		for _, rs := range slaves {
+			if !slaveCanStorePath(rs, uploadPath) {
+				continue
+			}
 			if policy, ok := sm.getPolicy(rs.Name()); ok && policy.ReadOnly {
 				continue
 			}
@@ -1683,7 +1691,7 @@ func (sm *SlaveManager) selectOwnedAncestorSlaveForUpload(uploadPath string) *Re
 		entry := sm.vfs.GetFile(dirPath)
 		if entry != nil && entry.IsDir && !entry.IsSymlink && strings.TrimSpace(entry.SlaveName) != "" {
 			rs := sm.GetSlave(entry.SlaveName)
-			if rs != nil && rs.IsAvailable() && !sm.IsSlaveReadOnly(rs.Name()) {
+			if rs != nil && rs.IsAvailable() && !sm.IsSlaveReadOnly(rs.Name()) && slaveCanStorePath(rs, cleanPath) {
 				return rs
 			}
 		}
@@ -1692,6 +1700,33 @@ func (sm *SlaveManager) selectOwnedAncestorSlaveForUpload(uploadPath string) *Re
 		}
 	}
 	return nil
+}
+
+func slaveCanStorePath(rs *RemoteSlave, uploadPath string) bool {
+	if rs == nil {
+		return false
+	}
+	uploadPath = path.Clean("/" + strings.TrimSpace(uploadPath))
+	if uploadPath == "." || uploadPath == "/" || strings.TrimSpace(uploadPath) == "" {
+		return true
+	}
+	status := rs.GetDiskStatus()
+	if len(status.Roots) == 0 {
+		// Older or not-yet-refreshed slaves did not advertise per-root mount
+		// paths. Keep them eligible for compatibility and let the slave reject
+		// impossible writes if needed.
+		return true
+	}
+	for _, root := range status.Roots {
+		mountPath := path.Clean("/" + strings.TrimSpace(root.MountPath))
+		if mountPath == "." || mountPath == "" {
+			mountPath = "/"
+		}
+		if mountPath == "/" || uploadPath == mountPath || strings.HasPrefix(uploadPath, mountPath+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // sectionFromUploadPath returns the first path component uppercased,

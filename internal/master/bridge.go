@@ -497,7 +497,7 @@ func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group s
 		return 0, 0, fmt.Errorf("unexpected response from slave")
 	}
 
-	slaveAddr := fmt.Sprintf("%s:%d", slave.GetPASVIP(), transferResp.Info.Port)
+	slaveAddr := net.JoinHostPort(slave.GetPASVIP(), strconv.Itoa(transferResp.Info.Port))
 	log.Printf("[Bridge] Connecting to slave %s at %s for upload of %s", slave.Name(), slaveAddr, filePath)
 
 	// Connect to slave's data port
@@ -633,7 +633,7 @@ func (b *Bridge) DownloadFile(filePath string, clientData net.Conn, username, pr
 		return 0, fmt.Errorf("unexpected response from slave")
 	}
 
-	slaveAddr := fmt.Sprintf("%s:%d", slave.GetPASVIP(), transferResp.Info.Port)
+	slaveAddr := net.JoinHostPort(slave.GetPASVIP(), strconv.Itoa(transferResp.Info.Port))
 	log.Printf("[Bridge] Connecting to slave %s at %s for download of %s", slave.Name(), slaveAddr, filePath)
 
 	slaveConn, err := net.DialTimeout("tcp", slaveAddr, 10*time.Second)
@@ -677,7 +677,10 @@ func (b *Bridge) DownloadFile(filePath string, clientData net.Conn, username, pr
 	}
 
 	log.Printf("[Bridge] Downloaded %s from slave %s (%d bytes, offset=%d)", filePath, slave.Name(), written, position)
-	return 0, nil
+	if position > 0 {
+		return 0, nil
+	}
+	return status.Checksum, nil
 }
 
 // DeleteFile deletes from all slaves and VFS.
@@ -972,7 +975,7 @@ func (b *Bridge) selectWritableSlaveForCreate(path string) (*RemoteSlave, error)
 		if err != nil {
 			return nil, err
 		}
-		if slave != nil {
+		if slave != nil && slaveCanStorePath(slave, vfsPath) {
 			return slave, nil
 		}
 		if file.IsDir || file.IsSymlink {
@@ -985,7 +988,7 @@ func (b *Bridge) selectWritableSlaveForCreate(path string) (*RemoteSlave, error)
 			if err != nil {
 				return nil, err
 			}
-			if slave != nil {
+			if slave != nil && slaveCanStorePath(slave, vfsPath) {
 				return slave, nil
 			}
 			if !file.IsDir || file.IsSymlink {

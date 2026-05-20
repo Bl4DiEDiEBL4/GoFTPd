@@ -1,6 +1,7 @@
 package zipscript
 
 import (
+	"hash/crc32"
 	"os"
 	"path/filepath"
 	"testing"
@@ -50,4 +51,46 @@ func TestLocalSFVEntriesForDir(t *testing.T) {
 	if crc, ok := CachedExpectedCRC(entries, "sample.rar"); !ok || crc != 0x11223344 {
 		t.Fatalf("expected case-insensitive lookup to work, got %08X %v", crc, ok)
 	}
+}
+
+func TestLocalShouldTreatDownloadAsMissingCreatesMarkerWithoutDeleting(t *testing.T) {
+	root := t.TempDir()
+	payload := []byte("bad payload")
+	expected := crc32.ChecksumIEEE([]byte("good payload"))
+	if err := os.WriteFile(filepath.Join(root, "release.sfv"), []byte("sample.rar "+crcHex(expected)+"\n"), 0644); err != nil {
+		t.Fatalf("write sfv: %v", err)
+	}
+	localPath := filepath.Join(root, "sample.rar")
+	if err := os.WriteFile(localPath, payload, 0644); err != nil {
+		t.Fatalf("write payload: %v", err)
+	}
+	cfg := Config{
+		Enabled: true,
+		Sections: SectionsConfig{
+			SFV: []string{filepath.ToSlash(root)},
+		},
+		List: ListConfig{
+			MissingFiles: boolPtr(true),
+		},
+	}
+
+	if !LocalShouldTreatDownloadAsMissing(cfg, "/X265/release/sample.rar", localPath) {
+		t.Fatalf("expected bad local checksum to be treated as missing")
+	}
+	if _, err := os.Stat(localPath); err != nil {
+		t.Fatalf("expected payload to remain when delete-bad is disabled: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "sample.rar-MISSING")); err != nil {
+		t.Fatalf("expected missing marker to be created: %v", err)
+	}
+}
+
+func crcHex(crc uint32) string {
+	const digits = "0123456789ABCDEF"
+	out := make([]byte, 8)
+	for i := 7; i >= 0; i-- {
+		out[i] = digits[crc&0xF]
+		crc >>= 4
+	}
+	return string(out)
 }

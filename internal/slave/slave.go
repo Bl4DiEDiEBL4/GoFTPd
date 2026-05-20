@@ -331,7 +331,7 @@ func (s *Slave) Boot() error {
 func (s *Slave) connectAndRun() error {
 	log.Printf("[Slave] %s connecting to master at %s:%d", s.name, s.masterHost, s.masterPort)
 
-	addr := fmt.Sprintf("%s:%d", s.masterHost, s.masterPort)
+	addr := net.JoinHostPort(s.masterHost, strconv.Itoa(s.masterPort))
 
 	var conn net.Conn
 	var err error

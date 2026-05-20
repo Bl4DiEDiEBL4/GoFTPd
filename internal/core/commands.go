@@ -209,7 +209,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				if s.Config.Debug {
 					log.Printf("[CPSV] Passthrough to slave %s: %s (port: %d)", slaveName, strings.TrimSpace(response), port)
 				}
-				fmt.Fprintf(s.Conn, response)
+				fmt.Fprint(s.Conn, response)
 				return false
 			}
 		}
@@ -916,7 +916,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					if s.Config.Debug {
 						log.Printf("[PASV] Passthrough to slave %s: %s (port: %d, xferIdx: %d)", slaveName, strings.TrimSpace(response), port, xferIdx)
 					}
-					fmt.Fprintf(s.Conn, response)
+					fmt.Fprint(s.Conn, response)
 					return false
 				}
 			}
@@ -956,7 +956,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		if s.Config.Debug {
 			log.Printf("[PASV] Sending response: %s (port: %d)", strings.TrimSpace(response), port)
 		}
-		fmt.Fprintf(s.Conn, response)
+		fmt.Fprint(s.Conn, response)
 		return false
 
 	case "PORT":
@@ -2028,10 +2028,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						return false
 					}
 
-					if restOffset == 0 && transferChecksum != 0 {
-						if expectedCRC, ok := zipscript.CachedExpectedCRC(bridge.GetSFVData(path.Dir(filePath)), path.Base(filePath)); ok && transferChecksum != expectedCRC {
-							fmt.Fprintf(s.Conn, "226- WARNING: checksum from transfer didn't match checksum in .sfv\r\n")
-						}
+					if restOffset == 0 {
+						handleMasterDownloadSFVChecksum(s, bridge, filePath, transferChecksum)
 					}
 					fmt.Fprintf(s.Conn, "226 Transfer complete.\r\n")
 					if remainingSize > 0 {
@@ -2064,10 +2062,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						maybeHandleSlowTransfer(s, "download", filePath, slaveName, s.PassthruXferIdx, err)
 						writeTransferFailure(s.Conn, "Download", err)
 					} else {
-						if restOffset == 0 && transferChecksum != 0 {
-							if expectedCRC, ok := zipscript.CachedExpectedCRC(bridge.GetSFVData(path.Dir(filePath)), path.Base(filePath)); ok && transferChecksum != expectedCRC {
-								fmt.Fprintf(s.Conn, "226- WARNING: checksum from transfer didn't match checksum in .sfv\r\n")
-							}
+						if restOffset == 0 {
+							handleMasterDownloadSFVChecksum(s, bridge, filePath, transferChecksum)
 						}
 						fmt.Fprintf(s.Conn, "226 Transfer complete.\r\n")
 						if remainingSize > 0 {
@@ -2101,10 +2097,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						maybeHandleSlowTransfer(s, "download", filePath, "", 0, err)
 						writeTransferFailure(s.Conn, "Download", err)
 					} else {
-						if restOffset == 0 && transferChecksum != 0 {
-							if expectedCRC, ok := zipscript.CachedExpectedCRC(bridge.GetSFVData(path.Dir(filePath)), path.Base(filePath)); ok && transferChecksum != expectedCRC {
-								fmt.Fprintf(s.Conn, "226- WARNING: checksum from transfer didn't match checksum in .sfv\r\n")
-							}
+						if restOffset == 0 {
+							handleMasterDownloadSFVChecksum(s, bridge, filePath, transferChecksum)
 						}
 						fmt.Fprintf(s.Conn, "226 Transfer complete.\r\n")
 						if remainingSize > 0 {

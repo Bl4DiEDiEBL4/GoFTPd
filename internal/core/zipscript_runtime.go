@@ -383,6 +383,27 @@ func createMasterSFVMissingMarker(cfg *Config, bridge MasterBridge, dirPath, fil
 	}
 }
 
+func handleMasterDownloadSFVChecksum(s *Session, bridge MasterBridge, filePath string, transferChecksum uint32) {
+	if s == nil || s.Config == nil || bridge == nil || transferChecksum == 0 {
+		return
+	}
+	dirPath := path.Dir(filePath)
+	fileName := path.Base(filePath)
+	expectedCRC, ok := zipscript.CachedExpectedCRC(bridge.GetSFVData(dirPath), fileName)
+	if !ok || expectedCRC == 0 {
+		return
+	}
+	_ = bridge.SyncPresentFile(filePath, transferChecksum)
+	if transferChecksum == expectedCRC {
+		clearMasterSFVMissingMarker(bridge, dirPath, fileName)
+		bridge.SyncStatusMarkersForPath(filePath, false)
+		return
+	}
+	createMasterSFVMissingMarker(s.Config, bridge, dirPath, fileName)
+	bridge.SyncStatusMarkersForPath(filePath, false)
+	fmt.Fprintf(s.Conn, "226- WARNING: checksum from transfer didn't match checksum in .sfv\r\n")
+}
+
 func zipRaceCountsFromStatus(status ReleaseStatus) (present int, total int) {
 	if status.Kind != "zip" {
 		return 0, 0
@@ -1425,7 +1446,7 @@ func applyAudioZipscriptChecksForDir(s *Session, bridge MasterBridge, dirPath, f
 	bridge.CacheMediaInfo(dirPath, fields)
 	if reasons := zipscript.ValidateAudioRelease(s.Config.Zipscript, fields); len(reasons) > 0 {
 		_ = bridge.DeleteFile(filePath)
-		return nil, fmt.Errorf(strings.Join(reasons, "; "))
+		return nil, fmt.Errorf("%s", strings.Join(reasons, "; "))
 	}
 	if err := ensureAudioSortLinks(bridge, zipscript.AudioSortLinks(s.Config.Zipscript, dirPath, fields)); err != nil && s.Config.Debug {
 		log.Printf("[MASTER-ZS] audio sort link failed for %s: %v", dirPath, err)

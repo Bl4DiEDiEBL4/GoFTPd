@@ -60,6 +60,73 @@ func TestSelectSlaveForUploadFallsBackWhenOwnedAncestorSlaveUnavailable(t *testi
 	}
 }
 
+func TestSelectSlaveForUploadSkipsSlaveWithoutMatchingRoot(t *testing.T) {
+	sm := NewSlaveManager("127.0.0.1", 1099, false, "", "", 60*time.Second)
+
+	archiveOnly := NewRemoteSlave("ARCHIVE", nil, nil, 60*time.Second, nil)
+	archiveOnly.available.Store(true)
+	archiveOnly.diskStatus = protocol.DiskStatus{
+		SpaceAvailable: 2000,
+		Roots: []protocol.RootDiskStatus{
+			{MountPath: "/ARCHiVE", SpaceAvailable: 2000},
+		},
+	}
+
+	live := NewRemoteSlave("LIVE", nil, nil, 60*time.Second, nil)
+	live.available.Store(true)
+	live.diskStatus = protocol.DiskStatus{
+		SpaceAvailable: 1000,
+		Roots: []protocol.RootDiskStatus{
+			{MountPath: "/", SpaceAvailable: 1000},
+		},
+	}
+
+	sm.slavesMu.Lock()
+	sm.slaves[archiveOnly.Name()] = archiveOnly
+	sm.slaves[live.Name()] = live
+	sm.slavesMu.Unlock()
+
+	got := sm.SelectSlaveForUpload("/TV-1080P/Release-GRP/.tvmaze")
+	if got == nil || got.Name() != "LIVE" {
+		t.Fatalf("expected upload to skip archive-only slave and use LIVE, got %+v", got)
+	}
+}
+
+func TestSelectSlaveForUploadIgnoresOwnedAncestorWithoutMatchingRoot(t *testing.T) {
+	sm := NewSlaveManager("127.0.0.1", 1099, false, "", "", 60*time.Second)
+
+	archiveOnly := NewRemoteSlave("ARCHIVE", nil, nil, 60*time.Second, nil)
+	archiveOnly.available.Store(true)
+	archiveOnly.diskStatus = protocol.DiskStatus{
+		SpaceAvailable: 2000,
+		Roots: []protocol.RootDiskStatus{
+			{MountPath: "/ARCHiVE", SpaceAvailable: 2000},
+		},
+	}
+
+	live := NewRemoteSlave("LIVE", nil, nil, 60*time.Second, nil)
+	live.available.Store(true)
+	live.diskStatus = protocol.DiskStatus{
+		SpaceAvailable: 1000,
+		Roots: []protocol.RootDiskStatus{
+			{MountPath: "/", SpaceAvailable: 1000},
+		},
+	}
+
+	sm.slavesMu.Lock()
+	sm.slaves[archiveOnly.Name()] = archiveOnly
+	sm.slaves[live.Name()] = live
+	sm.slavesMu.Unlock()
+
+	sm.vfs.AddFile("/TV-1080P", VFSFile{IsDir: true, Seen: true, SlaveName: "ARCHIVE"})
+	sm.vfs.AddFile("/TV-1080P/Release-GRP", VFSFile{IsDir: true, Seen: true, SlaveName: "ARCHIVE"})
+
+	got := sm.SelectSlaveForUpload("/TV-1080P/Release-GRP/.tvmaze")
+	if got == nil || got.Name() != "LIVE" {
+		t.Fatalf("expected owned ancestor on wrong mount to be ignored, got %+v", got)
+	}
+}
+
 func TestRemoteSlaveOfflineClearsVFSFiles(t *testing.T) {
 	sm := NewSlaveManager("127.0.0.1", 1099, false, "", "", 60*time.Second)
 	sm.vfs.AddFile("/X265/release", VFSFile{IsDir: true, Seen: true, SlaveName: "LOCAL"})

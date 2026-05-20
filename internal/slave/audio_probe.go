@@ -323,34 +323,46 @@ func mp3ChannelsForMode(mode int) (string, string) {
 }
 
 func probeFLACMetadata(fullPath string) (map[string]string, error) {
-	data, err := os.ReadFile(fullPath)
+	f, err := os.Open(fullPath)
 	if err != nil {
 		return nil, err
 	}
-	if len(data) < 4 || string(data[:4]) != "fLaC" {
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	marker := make([]byte, 4)
+	if _, err := io.ReadFull(f, marker); err != nil {
+		return nil, err
+	}
+	if string(marker) != "fLaC" {
 		return nil, fmt.Errorf("invalid flac header")
 	}
 
 	fields := map[string]string{"audio_format": "FLAC"}
-	pos := 4
 	var sampleRate uint32
 	var totalSamples uint64
 	var channels int
 	for {
-		if pos+4 > len(data) {
-			break
+		header := make([]byte, 4)
+		if _, err := io.ReadFull(f, header); err != nil {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				break
+			}
+			return nil, err
 		}
-		header := data[pos]
-		last := header&0x80 != 0
-		blockType := header & 0x7F
-		blockLen := int(data[pos+1])<<16 | int(data[pos+2])<<8 | int(data[pos+3])
-		pos += 4
-		if pos+blockLen > len(data) {
-			break
-		}
-		block := data[pos : pos+blockLen]
+		last := header[0]&0x80 != 0
+		blockType := header[0] & 0x7F
+		blockLen := int(header[1])<<16 | int(header[2])<<8 | int(header[3])
 		switch blockType {
 		case 0:
+			block := make([]byte, blockLen)
+			if _, err := io.ReadFull(f, block); err != nil {
+				return nil, err
+			}
 			if len(block) >= 34 {
 				word := uint64(block[10])<<56 | uint64(block[11])<<48 | uint64(block[12])<<40 | uint64(block[13])<<32 |
 					uint64(block[14])<<24 | uint64(block[15])<<16 | uint64(block[16])<<8 | uint64(block[17])
@@ -359,9 +371,16 @@ func probeFLACMetadata(fullPath string) (map[string]string, error) {
 				totalSamples = word & 0xFFFFFFFFF
 			}
 		case 4:
+			block := make([]byte, blockLen)
+			if _, err := io.ReadFull(f, block); err != nil {
+				return nil, err
+			}
 			readVorbisComment(block, fields)
+		default:
+			if _, err := f.Seek(int64(blockLen), io.SeekCurrent); err != nil {
+				return nil, err
+			}
 		}
-		pos += blockLen
 		if last {
 			break
 		}
@@ -379,7 +398,7 @@ func probeFLACMetadata(fullPath string) (map[string]string, error) {
 	fields["channels"] = strconv.Itoa(channels)
 	if durationSeconds > 0 {
 		fields["duration"] = fmt.Sprintf("%.0f", durationSeconds)
-		fields["bitrate"] = strconv.Itoa(int((float64(len(data))*8.0)/durationSeconds + 0.5))
+		fields["bitrate"] = strconv.Itoa(int((float64(info.Size())*8.0)/durationSeconds + 0.5))
 	}
 	fields["bitrate_mode"] = "VBR"
 	deriveMediaInfoFields(fields)

@@ -25,15 +25,17 @@ func ShouldTreatDownloadAsMissing(cfg Config, bridge SFVRuntimeBridge, filePath 
 		if knownCRC == expectedCRC {
 			return false
 		}
+		if ShowMissingFilesForDir(cfg, dirPath) {
+			missingPath := filePath + "-MISSING"
+			if bridge.GetFileSize(missingPath) < 0 {
+				_ = bridge.WriteFile(missingPath, []byte{})
+			}
+		}
 		if ShouldDeleteBadCRCForDir(cfg, dirPath) {
 			if err := bridge.DeleteFile(filePath); err != nil && debugLog != nil {
 				debugLog("[MASTER-ZS] cached bad CRC delete failed for %s: %v", filePath, err)
 			}
 			_ = bridge.MarkFileMissing(filePath)
-			missingPath := filePath + "-MISSING"
-			if bridge.GetFileSize(missingPath) < 0 {
-				_ = bridge.WriteFile(missingPath, []byte{})
-			}
 		}
 		return true
 	}

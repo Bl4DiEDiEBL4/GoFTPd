@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -56,7 +57,7 @@ func NewBot(host string, port int, nick, user, realname string) *Bot {
 }
 
 func (b *Bot) Connect() error {
-	addr := fmt.Sprintf("%s:%d", b.Host, b.Port)
+	addr := net.JoinHostPort(b.Host, strconv.Itoa(b.Port))
 	var conn net.Conn
 	var err error
 	if b.SSL {

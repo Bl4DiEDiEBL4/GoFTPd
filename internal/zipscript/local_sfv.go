@@ -175,6 +175,7 @@ func LocalShouldTreatDownloadAsMissing(cfg Config, filePath, localPath string) b
 		return false
 	}
 
+	CreateLocalSFVMissingMarker(cfg, filepath.Dir(localPath), filepath.Base(localPath))
 	if ShouldDeleteBadCRCForDir(cfg, filepath.ToSlash(filepath.Dir(localPath))) {
 		_ = os.Remove(localPath)
 	}

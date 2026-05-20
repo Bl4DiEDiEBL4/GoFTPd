@@ -621,13 +621,15 @@ func (vfs *VirtualFileSystem) GetReleaseStatus(dirPath string) (core.ReleaseStat
 			presentFiles[raceFileKey(filepath.Base(childPath))] = f
 		}
 		for sfvFile, expectedCRC := range meta.SFVEntries {
+			key := raceFileKey(sfvFile)
 			expectedFiles = append(expectedFiles, sfvFile)
-			f := presentFiles[sfvFile]
+			f := presentFiles[key]
 			if f == nil {
 				missingFiles = append(missingFiles, sfvFile)
 				continue
 			}
 			if expectedCRC != 0 && f.Checksum != 0 && f.Checksum != expectedCRC {
+				missingFiles = append(missingFiles, sfvFile)
 				continue
 			}
 			status.Present++
