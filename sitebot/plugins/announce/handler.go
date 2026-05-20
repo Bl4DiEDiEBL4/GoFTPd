@@ -512,8 +512,12 @@ func (p *AnnouncePlugin) emitInlinePretime(evt *event.Event, section, rel string
 	return true
 }
 
-func shouldSuppressLatePretime(st *releaseState) bool {
+func shouldSuppressLateReleaseInfo(st *releaseState) bool {
 	return st != nil && st.Completed
+}
+
+func shouldSuppressLatePretime(st *releaseState) bool {
+	return shouldSuppressLateReleaseInfo(st)
 }
 
 func completedReleaseKeyByPath(relpath string) string {
@@ -669,6 +673,9 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 		outs = append(outs, plugin.Output{Type: "AUDIOINFO", Text: p.render("AUDIOINFO", vars, fallback)})
 	case event.EventMediaInfo:
 		if isSectionRootMetadataEvent(evt, section) {
+			return nil, nil
+		}
+		if shouldSuppressLateReleaseInfo(st) || p.isReleaseCompleted(section, rel, evt.Path) {
 			return nil, nil
 		}
 		fallback := fmt.Sprintf("SAMPLE-INFO: [%s] %s - Video: %s - Audio: %s - Subs: %s - Duration: %s",

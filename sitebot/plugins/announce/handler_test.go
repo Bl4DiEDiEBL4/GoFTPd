@@ -230,6 +230,83 @@ func TestPretimeAnnounceIsSuppressedAfterCompleteAcrossPathVariants(t *testing.T
 	}
 }
 
+func TestMediaInfoAnnounceIsSuppressedAfterComplete(t *testing.T) {
+	p := New()
+
+	releasePath := "/TV-1080P/Gilmore.Girls.S05E04.1080p.BluRay.x264-BORDURE"
+	completeEvt := &event.Event{
+		Type:    event.EventRaceEnd,
+		Section: "TV-1080P",
+		Path:    releasePath,
+		Data: map[string]string{
+			"u_count":    "4",
+			"t_mbytes":   "3853MB",
+			"t_files":    "81F",
+			"t_avgspeed": "490.08MB/s",
+			"t_duration": "30.3040s",
+		},
+	}
+	if _, err := p.OnEvent(completeEvt); err != nil {
+		t.Fatalf("OnEvent complete failed: %v", err)
+	}
+
+	mediaEvt := &event.Event{
+		Type:    event.EventMediaInfo,
+		Section: "TV-1080P",
+		Path:    releasePath,
+		Data: map[string]string{
+			"video_format": "AVC",
+			"audio_format": "FLAC",
+			"duration":     "1m04s",
+		},
+	}
+	outs, err := p.OnEvent(mediaEvt)
+	if err != nil {
+		t.Fatalf("OnEvent media info failed: %v", err)
+	}
+	if len(outs) != 0 {
+		t.Fatalf("expected late media info to be suppressed, got %+v", outs)
+	}
+}
+
+func TestMediaInfoAnnounceIsSuppressedAfterCompleteAcrossPathVariants(t *testing.T) {
+	p := New()
+
+	completeEvt := &event.Event{
+		Type:    event.EventRaceEnd,
+		Section: "TV-1080P",
+		Path:    "/TV-1080P/20260520/Gilmore.Girls.S05E04.1080p.BluRay.x264-BORDURE",
+		Data: map[string]string{
+			"u_count":    "4",
+			"t_mbytes":   "3853MB",
+			"t_files":    "81F",
+			"t_avgspeed": "490.08MB/s",
+			"t_duration": "30.3040s",
+		},
+	}
+	if _, err := p.OnEvent(completeEvt); err != nil {
+		t.Fatalf("OnEvent complete failed: %v", err)
+	}
+
+	mediaEvt := &event.Event{
+		Type:    event.EventMediaInfo,
+		Section: "TV-1080P",
+		Path:    "/!Today_TV-1080P/Gilmore.Girls.S05E04.1080p.BluRay.x264-BORDURE",
+		Data: map[string]string{
+			"video_format": "AVC",
+			"audio_format": "FLAC",
+			"duration":     "1m04s",
+		},
+	}
+	outs, err := p.OnEvent(mediaEvt)
+	if err != nil {
+		t.Fatalf("OnEvent media info failed: %v", err)
+	}
+	if len(outs) != 0 {
+		t.Fatalf("expected late media info across path variants to be suppressed, got %+v", outs)
+	}
+}
+
 func TestRequestReleaseDirEmitsNewAnnounce(t *testing.T) {
 	p := New()
 	evt := &event.Event{
