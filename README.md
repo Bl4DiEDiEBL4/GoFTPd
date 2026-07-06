@@ -1,8 +1,14 @@
-# GoFTPd
+<p align="center">
+  <img src="docs/assets/weaveftpd-banner.png" alt="WeaveFTPd banner">
+</p>
+
+# WeaveFTPd
+
+[Bl4DiEDiEBL4/WeaveFTPd](https://github.com/Bl4DiEDiEBL4/WeaveFTPd)
 
 > Still under active development. Things may change or break.
 
-GoFTPd is a distributed FTP daemon written in Go. It uses a master/slave
+WeaveFTPd is a distributed FTP daemon written in Go. It uses a master/slave
 architecture with a VFS, CRC/SFV checking, race stats, TLS data transfers,
 SITE commands, plugin hooks, and an IRC sitebot.
 
@@ -42,7 +48,7 @@ PASV/CPSV/PORT, SSCN, and PROT P.
 ./setup.sh build
 ./setup.sh certs "My FTPd"
 cp etc/config-example.yml etc/config.yml
-./goftpd
+./weaveftpd
 
 cd sitebot
 cp etc/config.yml.example etc/config.yml
@@ -115,7 +121,7 @@ are active.
 You can also point the daemon at an explicit config file:
 
 ```bash
-./goftpd --config etc/config-slave-example.yml
+./weaveftpd --config etc/config-slave-example.yml
 ```
 
 In `mode: slave`, the slave-specific runtime comes from the `slave:` block.
@@ -132,7 +138,7 @@ the full master config:
 ```bash
 cp etc/config-slave-example.yml etc/config-slave.yml
 vim etc/config-slave.yml
-./goftpd --config etc/config-slave.yml
+./weaveftpd --config etc/config-slave.yml
 ```
 
 Edit `sitebot/etc/config.yml` before starting the sitebot. The daemon and
@@ -140,7 +146,7 @@ sitebot must use the same `event_fifo` path.
 External scripts can also write JSON-line `CUSTOM` events to that FIFO for
 direct IRC announces; see `sitebot/plugins/README.md` for examples.
 
-The example user is `goftpd` / `goftpd`. Change that before exposing the
+The example user is `weaveftpd` / `weaveftpd`. Change that before exposing the
 daemon.
 
 ## Configuration
@@ -181,7 +187,7 @@ This keeps site-local plugin settings out of Git-tracked example files.
 
 ## VFS Sync API
 
-External archive scripts can move/delete files behind GoFTPd, but the master
+External archive scripts can move/delete files behind WeaveFTPd, but the master
 cannot guess that safely until a remerge sees it. For that case, enable the
 small master-only VFS sync API and call it after your external script has
 already copied, verified, and deleted the physical data.
@@ -194,14 +200,14 @@ api:
 ```
 
 Keep it on `127.0.0.1` unless it is behind a private admin firewall. Send the
-token as `Authorization: Bearer <token>` or `X-GoFTPd-Token: <token>`.
+token as `Authorization: Bearer <token>` or `X-WeaveFTPd-Token: <token>`.
 Changing `api.enabled` or `api.listen` needs a daemon restart.
 
 Move metadata after an external copy/verify/delete:
 
 ```bash
 curl -sS -X POST http://127.0.0.1:5580/api/v1/vfs/move \
-  -H "Authorization: Bearer $GOFTPD_API_TOKEN" \
+  -H "Authorization: Bearer $WEAVEFTPD_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"from":"/BLURAY/Release.Name-GRP","to":"/ARCHiVE/BLURAY/Release.Name-GRP","slave":"LOCAL"}'
 ```
@@ -210,7 +216,7 @@ Delete metadata after an external delete:
 
 ```bash
 curl -sS -X POST http://127.0.0.1:5580/api/v1/vfs/delete \
-  -H "Authorization: Bearer $GOFTPD_API_TOKEN" \
+  -H "Authorization: Bearer $WEAVEFTPD_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"path":"/REQUESTS/FILLED-Old.Release"}'
 ```
@@ -229,7 +235,7 @@ folder as the built binary:
 
 ```bash
 cp etc/config-slave-example.yml etc/config-slave.yml
-./goftpd --config etc/config-slave.yml
+./weaveftpd --config etc/config-slave.yml
 ```
 
 For the common same-box setup, where master and one slave run on the same
@@ -292,45 +298,45 @@ Slave roots can also be split into two clear buckets:
 
 This is useful when one slave should expose normal site paths from one local
 tree and archive content from other disks under a shared virtual prefix without
-putting mergerfs in front of GoFTPd itself. This is especially useful when your
-archive disks are already mounted individually over NFS and you want GoFTPd to
+putting mergerfs in front of WeaveFTPd itself. This is especially useful when your
+archive disks are already mounted individually over NFS and you want WeaveFTPd to
 talk to those real paths directly instead of scanning one big merged mount.
 Example:
 
 ```yml
 slave:
   roots:
-    - "/goftpd/site"
+    - "/weaveftpd/site"
   mounted_roots:
-    - path: "/goftpd/DISK1"
+    - path: "/weaveftpd/DISK1"
       mount_path: "/ARCHiVE"
-    - path: "/goftpd/DISK2"
+    - path: "/weaveftpd/DISK2"
       mount_path: "/ARCHiVE"
-    - path: "/goftpd/DISK3"
+    - path: "/weaveftpd/DISK3"
       mount_path: "/ARCHiVE"
-    - path: "/goftpd/DISK4"
+    - path: "/weaveftpd/DISK4"
       mount_path: "/ARCHiVE"
-    - path: "/goftpd/DISK5"
+    - path: "/weaveftpd/DISK5"
       mount_path: "/ARCHiVE"
-    - path: "/goftpd/DISK6"
+    - path: "/weaveftpd/DISK6"
       mount_path: "/ARCHiVE"
-    - path: "/goftpd/DISK7"
+    - path: "/weaveftpd/DISK7"
       mount_path: "/ARCHiVE"
-    - path: "/goftpd/DISK8"
+    - path: "/weaveftpd/DISK8"
       mount_path: "/ARCHiVE"
-    - path: "/goftpd/DISK9"
+    - path: "/weaveftpd/DISK9"
       mount_path: "/ARCHiVE"
-    - path: "/goftpd/DISK10"
+    - path: "/weaveftpd/DISK10"
       mount_path: "/ARCHiVE"
 ```
 
-With that setup, `/X265/...` resolves under `/goftpd/site`, while
-`/ARCHiVE/EBOOKS/...` resolves directly against `/goftpd/DISK1`,
-`/goftpd/DISK2`, `/goftpd/DISK3`, and so on. That keeps archive access on the
+With that setup, `/X265/...` resolves under `/weaveftpd/site`, while
+`/ARCHiVE/EBOOKS/...` resolves directly against `/weaveftpd/DISK1`,
+`/weaveftpd/DISK2`, `/weaveftpd/DISK3`, and so on. That keeps archive access on the
 real per-disk mounts, which is usually much faster and more predictable than a
 large mergerfs pool layered over NFS.
 
-On a full remerge, GoFTPd scans normal `roots` first and only scans
+On a full remerge, WeaveFTPd scans normal `roots` first and only scans
 `mounted_roots` after that. That keeps the live site tree responsive while the
 larger mounted trees catch up in the background, which makes `mounted_roots`
 especially suitable for archive-style storage.
@@ -411,7 +417,7 @@ refresh at the same time. Files inside one release are checked sequentially, so
 the safe default is `1`; raise it to `2` or `4` only when the archive disks can
 handle the extra read load.
 
-For sites where files can disappear outside GoFTPd, for example external move
+For sites where files can disappear outside WeaveFTPd, for example external move
 or cleanup scripts, configure slow background VFS jobs under the master
 `slaves:` policy for each slave that should be kept in sync. If a slave has no
 `remerge.jobs`, it still connects and serves normally, but the master logs that
@@ -491,7 +497,7 @@ slave:
   remerge_entry_yield_ms: 10
 ```
 
-They are ignored by current GoFTPd. Keep background sync and remerge throttling
+They are ignored by current WeaveFTPd. Keep background sync and remerge throttling
 only in `slaves[].remerge.jobs[]`.
 
 ## ACL Rules
@@ -515,7 +521,7 @@ and grouped rule blocks such as `sitecmd:`, `list:`, and `nuke:`.
 |-----|---------|
 | `anyone: true` | everyone |
 | `nobody: true` | nobody |
-| `users: ["goftpd"]` | exact FTP user match |
+| `users: ["weaveftpd"]` | exact FTP user match |
 | `all_flags: ["1"]` | user must have all listed flags |
 | `any_flags: ["1", "A"]` | user must have at least one listed flag |
 | `all_groups: ["NUKERS"]` | user must be in all listed groups |
@@ -640,11 +646,13 @@ sidecar file is not used either; the request list also lives in VFS metadata.
 
 The slowkick plugin watches live uploads and downloads and only acts after a
 transfer stays below the configured speed floor for the full verify window.
-When it fires, the master tells the slave to abort the transfer first and then
-disconnects the FTP session, so partial uploads are cleaned up on the slave
-side instead of being left behind as junk. Upload and download thresholds can
-be tuned independently, and the plugin can temporarily ban the FTP user after
-a slow kick so they cannot immediately reconnect and grab the slot again.
+It never caps or throttles transfer speed. When it fires on a direct slave
+transfer, the master tells the slave to abort that transfer so partial uploads
+are cleaned up on the slave side instead of being left behind as junk. For
+local/proxied transfers it disconnects the FTP session. Upload and download
+thresholds can be tuned independently, and the plugin can temporarily ban the
+FTP user after a slow kick so they cannot immediately reconnect and grab the
+slot again.
 
 ### Pretime
 
@@ -770,7 +778,7 @@ Account command notes:
 - `GROUPSLOTS <gadmin-user> <slots> [leech_slots]` stores how many users that
   gadmin may create and how many of those may be leech users.
 - `CHWKLYALLOTMENT <user> <credits>` sets the weekly credit replacement amount.
-  GoFTPd persists the applied week and replaces credits once per week instead
+  WeaveFTPd persists the applied week and replaces credits once per week instead
   of adding to the current credit total.
 - `CHRATIO` stays siteop-controlled in the shipped ACL defaults.
 - `BLOWFISH` and `IRC` are informational sitebot helpers. `SITE IRC` reads the
@@ -805,7 +813,7 @@ Built-in sitebot plugins:
 | `BNC` | `!bnc` FTP login checks across configured targets |
 | `BW` | `!bw` bandwidth summary |
 | `Affils` | `!affils` |
-| `Quota` | `!quota` plus staff `!quotactl trial|quota|extend|delete`, tracking trial/quota users from GoFTPd user files |
+| `Quota` | `!quota` plus staff `!quotactl trial|quota|extend|delete`, tracking trial/quota users from WeaveFTPd user files |
 | `Request` | `!request`, `!requests`, `!reqfill`, `!reqdel`, staff `!reqwipe` |
 | `Banned` | `!banned`, `!banned <filter>`, `!banned allow [filter]` |
 | `SelfIP` | `/msg BotNick !ip`, `!ips`, `!addip`, `!delip`, `!chgip` for PM-only self-service IP management |
@@ -817,8 +825,8 @@ Built-in sitebot plugins:
 
 The example sitebot config uses YAML anchors for channel sets, so a channel can
 be changed once at the top and reused across sections and plugin config. By
-default, race and section announces stay in `#goftpd`, while user `!` commands
-are meant for `#goftpd-chat`.
+default, race and section announces stay in `#weaveftpd`, while user `!` commands
+are meant for `#weaveftpd-chat`.
 
 For FiSH keys, the sitebot accepts either a plain key or `cbc:<key>`. Plain
 keys default to CBC. `ecb:` is intentionally rejected. The interactive
@@ -886,7 +894,7 @@ Command plugins can reply directly to the channel, by notice, or to a fixed
 channel depending on their `reply_target`.
 
 Staff/security notices such as failed logins, self-service IP changes, and bad
-slave-control handshakes can be routed to `#goftpd-staff` through
+slave-control handshakes can be routed to `#weaveftpd-staff` through
 `announce.type_routes`.
 
 ## Runtime Reload
@@ -913,7 +921,7 @@ event FIFO path.
 ## Project Layout
 
 ```text
-cmd/goftpd/          daemon entry point
+cmd/weaveftpd/          daemon entry point
 internal/            core FTP, VFS, slave, ACL, user, event, and protocol code
 plugins/             daemon plugins
 sitebot/             IRC sitebot
@@ -928,7 +936,7 @@ Sitebot plugin notes live in `sitebot/plugins/README.md`.
 
 Current plugin development still requires registration in the relevant switch:
 
-- daemon plugins: `cmd/goftpd/main.go`
+- daemon plugins: `cmd/weaveftpd/main.go`
 - sitebot plugins: `sitebot/internal/bot/bot.go`
 
 ## License

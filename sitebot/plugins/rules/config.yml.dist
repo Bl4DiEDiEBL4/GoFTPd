@@ -5,13 +5,13 @@
 # Otherwise it falls back to SITE RULES over FTP.
 host: "127.0.0.1"
 port: 21212
-user: "goftpd"
-password: "goftpd"
+user: "weaveftpd"
+password: "weaveftpd"
 tls: true
 insecure_skip_verify: true
 timeout_seconds: 10
 
-channels: ["#goftpd-chat"]
+channels: ["#weaveftpd-chat"]
 
 # reply_target supports "channel", "notice", "pm", or a fixed "#channel".
 reply_target: "pm"

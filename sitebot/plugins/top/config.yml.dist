@@ -1,4 +1,4 @@
-# Daily uploader leaderboard from goftpd userfiles.
+# Daily uploader leaderboard from weaveftpd userfiles.
 # IRC commands:
 #   !top
 #   !top 5
@@ -9,7 +9,7 @@ users_dir: "../etc/users"
 # Uses sitebot/global timezone when set in the main config so daily cutover
 # matches the server stats reset.
 
-channels: ["#goftpd-chat"]
+channels: ["#weaveftpd-chat"]
 
 # reply_target supports "channel", "notice", "pm", or a fixed "#channel".
 reply_target: "channel"

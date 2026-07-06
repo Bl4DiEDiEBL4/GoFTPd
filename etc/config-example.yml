@@ -1,5 +1,5 @@
 # =============================================================================
-#  GoFTPd configuration — single file used for both master and slave roles.
+#  WeaveFTPd configuration — single file used for both master and slave roles.
 #
 #  The `mode:` setting decides which blocks are read. When `mode: master`,
 #  the `slave:` block is ignored. When `mode: slave`, all master-only FTP/site/
@@ -13,14 +13,14 @@
 # =============================================================================
 #  Server identity — cosmetic, shown in welcome banners and stats.
 # =============================================================================
-sitename_long:  "GoFTPd"        # Full site name, shown in FTP banners
-sitename_short: "GoFTPd"            # 2-3 char site tag used in race stats
+sitename_long:  "WeaveFTPd"        # Full site name, shown in FTP banners
+sitename_short: "WeaveFTPd"            # 2-3 char site tag used in race stats
 # Version is loaded from sibling file: etc/version
 timezone:       "Europe/Amsterdam" # IANA timezone for FTP LIST/MLSD/MDTM and dated dirs; empty/"Local" uses OS local time
-show_cwd_banner: true           # Show the GoFTPd logo banner on CWD when there is no actual race data.
+show_cwd_banner: true           # Show the WeaveFTPd logo banner on CWD when there is no actual race data.
                                 # Real race-stat banners are still shown regardless of this setting.
 show_real_owner_group: false    # Show stored file owner/group in LIST, MLSD, and STAT -l for real VFS files.
-                                # false keeps the virtual GoFTPd/GoFTPd ownership look.
+                                # false keeps the virtual WeaveFTPd/WeaveFTPd ownership look.
 
 
 # =============================================================================
@@ -38,7 +38,7 @@ passthrough:  true              # true = client connects directly to slave (reco
 #  Local VFS sync API - master-only, disabled by default.
 #
 #  Use this only when an external archiver already copied/verified/deleted data
-#  outside GoFTPd and then needs to tell the master to update VFS metadata.
+#  outside WeaveFTPd and then needs to tell the master to update VFS metadata.
 #  The API does not move bytes and does not scan disks.
 #
 #  Keep this bound to localhost or a private admin network and use a real token.
@@ -95,17 +95,17 @@ slave:
   master_port:   1099           # Must match master's control_port
   roots:         []             # REQUIRED in slave mode. Normal roots mounted at "/".
                                 # Example:
-                                #   - "/goftpd/site"
+                                #   - "/weaveftpd/site"
   mounted_roots: []             # Optional extra physical roots mounted under a
                                 # virtual path such as /ARCHiVE.
                                 # Example:
-                                #   - path: "/goftpd/DISK1"
+                                #   - path: "/weaveftpd/DISK1"
                                 #     mount_path: "/ARCHiVE"
-                                #   - path: "/goftpd/DISK2"
+                                #   - path: "/weaveftpd/DISK2"
                                 #     mount_path: "/ARCHiVE"
-                                #   - path: "/goftpd/DISK3"
+                                #   - path: "/weaveftpd/DISK3"
                                 #     mount_path: "/ARCHiVE"
-                                #   - path: "/goftpd/DISK4"
+                                #   - path: "/weaveftpd/DISK4"
                                 #     mount_path: "/ARCHiVE"
                                 # Handy when archive disks are already mounted
                                 # separately (for example over NFS) and you want
@@ -368,7 +368,7 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 #
 #  To add your own plugin:
 #    1. Create /plugins/<name>/handler.go implementing plugin.Plugin
-#    2. Add a case for it in cmd/goftpd/main.go's plugin switch
+#    2. Add a case for it in cmd/weaveftpd/main.go's plugin switch
 #    3. Add an entry below with `enabled: true` and a `config_file`
 #
 #  Section matching is case-insensitive substring — "TV" matches TV-1080P,
@@ -400,26 +400,26 @@ zipscript:
       run_on: "master"         # master or slave; slave runs on the owning slave where the files live
       slave_name: ""           # optional override when run_on=slave; normally leave empty to auto-pick the owning slave
       command: "/usr/bin/python3"
-      args: ["/goftpd/bin/on_complete.py"]
+      args: ["/weaveftpd/bin/on_complete.py"]
       timeout_seconds: 30
       extra_env:
         EXAMPLE: "1"
       # Exported env vars include:
-      #   GOFTPD_EVENT=COMPLETE
-      #   GOFTPD_PATH / GOFTPD_DIR
-      #   GOFTPD_HOOK_TARGET
-      #   GOFTPD_SLAVE_NAME (when run_on=slave)
-      #   GOFTPD_LOCAL_PATH (when run_on=slave; local filesystem path on that slave)
-      #   GOFTPD_RELNAME
-      #   GOFTPD_RELEASE_NAME
-      #   GOFTPD_RELEASE_SUBDIR
-      #   GOFTPD_SECTION
-      #   GOFTPD_SECTION_ROOT
-      #   GOFTPD_TOTAL_BYTES / GOFTPD_TOTAL_MB / GOFTPD_TOTAL_FILES
-      #   GOFTPD_DURATION_MS / GOFTPD_DURATION
-      #   GOFTPD_AVG_SPEED_MB
-      #   GOFTPD_USER_COUNT
-      # plus GOFTPD_<KEY> for zipscript race vars such as T_MBYTES/T_FILES/etc.
+      #   WEAVEFTPD_EVENT=COMPLETE
+      #   WEAVEFTPD_PATH / WEAVEFTPD_DIR
+      #   WEAVEFTPD_HOOK_TARGET
+      #   WEAVEFTPD_SLAVE_NAME (when run_on=slave)
+      #   WEAVEFTPD_LOCAL_PATH (when run_on=slave; local filesystem path on that slave)
+      #   WEAVEFTPD_RELNAME
+      #   WEAVEFTPD_RELEASE_NAME
+      #   WEAVEFTPD_RELEASE_SUBDIR
+      #   WEAVEFTPD_SECTION
+      #   WEAVEFTPD_SECTION_ROOT
+      #   WEAVEFTPD_TOTAL_BYTES / WEAVEFTPD_TOTAL_MB / WEAVEFTPD_TOTAL_FILES
+      #   WEAVEFTPD_DURATION_MS / WEAVEFTPD_DURATION
+      #   WEAVEFTPD_AVG_SPEED_MB
+      #   WEAVEFTPD_USER_COUNT
+      # plus WEAVEFTPD_<KEY> for zipscript race vars such as T_MBYTES/T_FILES/etc.
 
   sfv:
     force_first: false         # pzs-ng style: allow payload before .sfv; the release is checked once the .sfv lands
@@ -637,8 +637,8 @@ plugins:
     config_file: "plugins/speedtest/config.yml"
   slowkick:
     enabled: true
-    # Live transfer speed floors with optional tempban/announce. Enforcement
-    # happens in the slave transfer loop, not via a coarse polling observer.
+    # Live transfer speed floors with optional tempban/announce. The plugin
+    # monitors live sessions and aborts slow transfers through daemon services.
     config_file: "plugins/slowkick/config.yml"
     # In plugins/slowkick/config.yml you can also exclude tiny metadata files:
     #   exclude_extensions:
@@ -691,12 +691,12 @@ plugins:
 #    - blowfish_*:     Optional daemon-side mirror for SITE BLOWFISH. If left
 #                      empty, SITE BLOWFISH falls back to parsing sitebot_config.
 # =============================================================================
-event_fifo:     "/GoFTPd/etc/goftpd.sitebot.fifo"
-sitebot_config: "/GoFTPd/sitebot/etc/config.yml"
+event_fifo:     "/WeaveFTPd/etc/weaveftpd.sitebot.fifo"
+sitebot_config: "/WeaveFTPd/sitebot/etc/config.yml"
 blowfish_private_key: ""
 blowfish_keys:
-  # "#goftpd": "cbc:YourBlowfishKeyHere123456"
-  # "#goftpd-staff": "cbc:YourBlowfishKeyHere123456"
+  # "#weaveftpd": "cbc:YourBlowfishKeyHere123456"
+  # "#weaveftpd-staff": "cbc:YourBlowfishKeyHere123456"
 
 
 # =============================================================================
@@ -716,7 +716,7 @@ xdupe_db_path: "./logs/xdupe.db"
 #  Set log_file: "" to disable file logging.
 # =============================================================================
 debug:          false
-log_file:       "logs/goftpd.log"
+log_file:       "logs/weaveftpd.log"
 log_delete_after_days: 1
 log_keep_days:  1
 log_console:    true

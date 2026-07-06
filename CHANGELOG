@@ -1,8 +1,17 @@
-GoFTPd Changelog
+WeaveFTPd Changelog
 ================
 
 1.2.0
 -----
+
+Compatibility
+- The master-to-slave receive/send commands no longer send speed-policy
+  arguments. The current handlers tolerate both the compact and legacy forms,
+  but deploy the master and slaves together when rolling this change onto older
+  installations.
+- Removed daemon-level max-speed throttling entirely. Transfers run uncapped;
+  `slowkick` is kick-only and monitors live transfers through plugin services
+  instead of passing min/max speed policy into the slave transfer loop.
 
 Performance
 - Let Linux TCP autotuning manage data-socket buffers by default, with
@@ -34,12 +43,12 @@ Reliability
   then. The follow now gives up after a bounded idle period so the client fails
   fast and retries cleanly, and each chunk write has a deadline so a receiver that
   stops reading surfaces as an error instead of blocking the send.
-- Uploads now self-abort after an idle period with no new bytes (drftpd-style),
-  instead of only when an explicit min-speed is configured. A stalled source
-  previously held the upload slot open indefinitely (the poll-tick read deadline
-  just reset and spun); now the dead upload is released, which also frees any
-  leech-while-upload download that was following it and stops a stuck transfer
-  from holding the master's completion wait for the full 2h timeout.
+- Uploads now self-abort after an idle period with no new bytes (drftpd-style).
+  A stalled source previously held the upload slot open indefinitely (the
+  poll-tick read deadline just reset and spun); now the dead upload is released,
+  which also frees any leech-while-upload download that was following it and
+  stops a stuck transfer from holding the master's completion wait for the full
+  2h timeout.
 
 Sitebot
 - NEW LEADER is now announced at most once per distinct racer per release, only on
@@ -95,7 +104,7 @@ Data integrity
   etc. were clobbered. AddFile now refuses to let an evidence-free re-scan (no
   checksum/xfertime) shrink a completed size, for all file types. This was making
   a valid .sfv list as 0 bytes, which cbftp skips, so it never raced.
-- goftpd now generates the <release>.m3u from the SFV when an MP3 release
+- weaveftpd now generates the <release>.m3u from the SFV when an MP3 release
   completes, matching glftpd/pzs-ng. It lists the SFV's MP3 files, is written to
   the release's slave before the complete announce/hook fires, and is skipped if
   the release already ships an .m3u. Toggle with audio.create_m3u (default true).
@@ -117,7 +126,7 @@ Data integrity
 - REQUEST/REQFILL metadata is now flushed to disk immediately and mirrored to a
   readable JSON state file so REQTOP fill counters survive daemon restarts
   instead of depending on the periodic VFS save loop.
-- Fixed intermittent missing .sfv (and .nfo/.diz) on goftpd->goftpd FXP races.
+- Fixed intermittent missing .sfv (and .nfo/.diz) on weaveftpd->weaveftpd FXP races.
   Root cause: when a file was FXP-pulled at the same instant a racer was
   uploading it to the source, the "leech-while-upload" detection was only checked
   once at the start of the send, so an upload that registered a moment later was
@@ -157,7 +166,7 @@ Display
 - MP3, FLAC, IMDB and TVMaze info on CWD are now CP437 boxes at one shared width
   matching the race-stats banner.
 - The CWD race-stats banner now uses a compact "R A C E S T A T S" title.
-- The GoFTPd ASCII art moved to the login MOTD.
+- The WeaveFTPd ASCII art moved to the login MOTD.
 
 Plugins
 - releaseguard: a banned release can no longer slip in via STOR. An upload that
@@ -366,5 +375,5 @@ Plugins
 1.0.0b
 ------
 
-- Initial beta baseline for the current GoFTPd codebase.
+- Initial beta baseline for the current WeaveFTPd codebase.
 - Core FTP daemon, sitebot, VFS, ACL, and race-tracking foundations in place.

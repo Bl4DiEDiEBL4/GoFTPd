@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"goftpd/internal/acl"
-	"goftpd/internal/user"
+	"weaveftpd/internal/acl"
+	"weaveftpd/internal/user"
 )
 
 func TestListRequestTargetArgSkipsListOptions(t *testing.T) {

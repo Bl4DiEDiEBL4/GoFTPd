@@ -1,5 +1,5 @@
 # Fallback channel for announce types that do not have a more specific route.
-default_channel: "#goftpd-staff"
+default_channel: "#weaveftpd-staff"
 
 # Shared theme file used to render formatted announce lines.
 # Bundled presets:
@@ -13,28 +13,28 @@ loginfail_cooldown_seconds: 10
 
 # Explicit type -> channel routes.
 type_routes:
-  NUKE: ["#goftpd-nuke"]
-  AUTONUKEWARN: ["#goftpd-nuke"]
-  AUTONUKEDELETE: ["#goftpd-nuke"]
-  UNNUKE: ["#goftpd-nuke"]
-  NEWDAY: ["#goftpd"]
-  SPEEDTEST: ["#goftpd"]
-  TOP: ["#goftpd-chat"]
-  LOGIN: ["#goftpd-staff"]
-  USERCHANGE: ["#goftpd-staff"]
-  SELFIP: ["#goftpd-staff"]
-  RELEASEGUARD: ["#goftpd-staff"]
-  SLAVEAUTH: ["#goftpd-staff"]
-  REMERGE: ["#goftpd-staff"]
-  SLOWUPLOADWARN: ["#goftpd-staff"]
-  SLOWUPLOADKICK: ["#goftpd-staff"]
-  SLOWDOWNLOADWARN: ["#goftpd-staff"]
-  SLOWDOWNLOADKICK: ["#goftpd-staff"]
+  NUKE: ["#weaveftpd-nuke"]
+  AUTONUKEWARN: ["#weaveftpd-nuke"]
+  AUTONUKEDELETE: ["#weaveftpd-nuke"]
+  UNNUKE: ["#weaveftpd-nuke"]
+  NEWDAY: ["#weaveftpd"]
+  SPEEDTEST: ["#weaveftpd"]
+  TOP: ["#weaveftpd-chat"]
+  LOGIN: ["#weaveftpd-staff"]
+  USERCHANGE: ["#weaveftpd-staff"]
+  SELFIP: ["#weaveftpd-staff"]
+  RELEASEGUARD: ["#weaveftpd-staff"]
+  SLAVEAUTH: ["#weaveftpd-staff"]
+  REMERGE: ["#weaveftpd-staff"]
+  SLOWUPLOADWARN: ["#weaveftpd-staff"]
+  SLOWUPLOADKICK: ["#weaveftpd-staff"]
+  SLOWDOWNLOADWARN: ["#weaveftpd-staff"]
+  SLOWDOWNLOADKICK: ["#weaveftpd-staff"]
   # External scripts can write CUSTOM JSON events to the sitebot FIFO and set
   # data.announce_type to one of these values for explicit routing.
-  # SPACEARCHIVE: ["#goftpd-archive"]
-  # SPACEOFFSITE: ["#goftpd-archive"]
-  # SPACEDELETE: ["#goftpd-archive"]
+  # SPACEARCHIVE: ["#weaveftpd-archive"]
+  # SPACEOFFSITE: ["#weaveftpd-archive"]
+  # SPACEDELETE: ["#weaveftpd-archive"]
 
 # Pretime rendering mode:
 #   newline = emit a second PRETiME line with OK/BAD

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"goftpd/sitebot/internal/event"
-	"goftpd/sitebot/internal/plugin"
-	tmpl "goftpd/sitebot/internal/template"
+	"weaveftpd/sitebot/internal/event"
+	"weaveftpd/sitebot/internal/plugin"
+	tmpl "weaveftpd/sitebot/internal/template"
 )
 
 type Target struct {
@@ -46,8 +46,8 @@ type Plugin struct {
 
 func New() *Plugin {
 	return &Plugin{
-		user:        "goftpd",
-		siteName:    "GoFTPd",
+		user:        "weaveftpd",
+		siteName:    "WeaveFTPd",
 		useTLS:      true,
 		insecure:    true,
 		timeout:     10 * time.Second,

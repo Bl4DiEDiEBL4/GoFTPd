@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"goftpd/internal/core"
+	"weaveftpd/internal/core"
 )
 
 func TestConfigPathFromArgsDefaultsToEtcConfig(t *testing.T) {

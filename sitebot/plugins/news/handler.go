@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/sitebot/internal/event"
-	"goftpd/sitebot/internal/plugin"
+	"weaveftpd/sitebot/internal/event"
+	"weaveftpd/sitebot/internal/plugin"
 )
 
 type NewsPlugin struct {
@@ -40,7 +40,7 @@ func New() *NewsPlugin {
 		maxShown:      20,
 		defaultShown:  5,
 		searchDefault: 4,
-		staffChannels: []string{"#goftpd-staff"},
+		staffChannels: []string{"#weaveftpd-staff"},
 		dateFormat:    "02 Jan 15:04",
 		replyTarget:   "channel",
 	}

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"goftpd/internal/timeutil"
-	"goftpd/internal/user"
+	"weaveftpd/internal/timeutil"
+	"weaveftpd/internal/user"
 )
 
 func (s *Session) HandleSiteUsers(args []string) bool {

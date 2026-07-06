@@ -11,26 +11,26 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/sitebot/internal/event"
-	"goftpd/sitebot/internal/irc"
-	"goftpd/sitebot/internal/plugin"
-	tmpl "goftpd/sitebot/internal/template"
-	admincommanderplugin "goftpd/sitebot/plugins/admincommander"
-	affilsplugin "goftpd/sitebot/plugins/affils"
-	announceplugin "goftpd/sitebot/plugins/announce"
-	bannedplugin "goftpd/sitebot/plugins/banned"
-	bncplugin "goftpd/sitebot/plugins/bnc"
-	bwplugin "goftpd/sitebot/plugins/bw"
-	freeplugin "goftpd/sitebot/plugins/free"
-	imdbplugin "goftpd/sitebot/plugins/imdb"
-	newsplugin "goftpd/sitebot/plugins/news"
-	quotaplugin "goftpd/sitebot/plugins/quota"
-	requestplugin "goftpd/sitebot/plugins/request"
-	rulesplugin "goftpd/sitebot/plugins/rules"
-	selfipplugin "goftpd/sitebot/plugins/selfip"
-	topplugin "goftpd/sitebot/plugins/top"
-	topicplugin "goftpd/sitebot/plugins/topic"
-	tvmazeplugin "goftpd/sitebot/plugins/tvmaze"
+	"weaveftpd/sitebot/internal/event"
+	"weaveftpd/sitebot/internal/irc"
+	"weaveftpd/sitebot/internal/plugin"
+	tmpl "weaveftpd/sitebot/internal/template"
+	admincommanderplugin "weaveftpd/sitebot/plugins/admincommander"
+	affilsplugin "weaveftpd/sitebot/plugins/affils"
+	announceplugin "weaveftpd/sitebot/plugins/announce"
+	bannedplugin "weaveftpd/sitebot/plugins/banned"
+	bncplugin "weaveftpd/sitebot/plugins/bnc"
+	bwplugin "weaveftpd/sitebot/plugins/bw"
+	freeplugin "weaveftpd/sitebot/plugins/free"
+	imdbplugin "weaveftpd/sitebot/plugins/imdb"
+	newsplugin "weaveftpd/sitebot/plugins/news"
+	quotaplugin "weaveftpd/sitebot/plugins/quota"
+	requestplugin "weaveftpd/sitebot/plugins/request"
+	rulesplugin "weaveftpd/sitebot/plugins/rules"
+	selfipplugin "weaveftpd/sitebot/plugins/selfip"
+	topplugin "weaveftpd/sitebot/plugins/top"
+	topicplugin "weaveftpd/sitebot/plugins/topic"
+	tvmazeplugin "weaveftpd/sitebot/plugins/tvmaze"
 )
 
 type Bot struct {
@@ -1094,7 +1094,7 @@ func (b *Bot) RestartProcess() error {
 func (b *Bot) controlSettings() controlConfig {
 	cfg := plugin.ConfigSection(b.Config.Plugins.Config, "control")
 	out := controlConfig{
-		StaffChannels: []string{"#goftpd-staff"},
+		StaffChannels: []string{"#weaveftpd-staff"},
 		StaffHosts:    []string{},
 		ReplyTarget:   "channel",
 		RestartDelay:  800 * time.Millisecond,
@@ -1208,7 +1208,7 @@ func (b *Bot) Stop() error {
 	return nil
 }
 
-// handleInviteEvent processes an INVITE event from goftpd. It sends an IRC
+// handleInviteEvent processes an INVITE event from weaveftpd. It sends an IRC
 // INVITE command for each channel in evt.Data["channels"] (comma-separated).
 // Requires the bot to have ops in those channels (or them to permit non-op
 // invites). The bot is typically oper'd via auto_oper, so it can invite

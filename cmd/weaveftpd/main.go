@@ -18,26 +18,26 @@ import (
 	"syscall"
 	"time"
 
-	"goftpd/internal/acl"
-	"goftpd/internal/core"
-	"goftpd/internal/dupe"
-	"goftpd/internal/master"
-	"goftpd/internal/plugin"
-	"goftpd/internal/protocol"
-	"goftpd/internal/slave"
-	"goftpd/internal/timeutil"
-	"goftpd/plugins/autonuke"
-	"goftpd/plugins/dateddirs"
-	"goftpd/plugins/imdb"
-	"goftpd/plugins/pre"
-	"goftpd/plugins/pretime"
-	"goftpd/plugins/releaseguard"
-	"goftpd/plugins/request"
-	"goftpd/plugins/slowkick"
-	"goftpd/plugins/spacekeeper"
-	"goftpd/plugins/speedtest"
-	"goftpd/plugins/tvmaze"
 	"gopkg.in/yaml.v3"
+	"weaveftpd/internal/acl"
+	"weaveftpd/internal/core"
+	"weaveftpd/internal/dupe"
+	"weaveftpd/internal/master"
+	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/protocol"
+	"weaveftpd/internal/slave"
+	"weaveftpd/internal/timeutil"
+	"weaveftpd/plugins/autonuke"
+	"weaveftpd/plugins/dateddirs"
+	"weaveftpd/plugins/imdb"
+	"weaveftpd/plugins/pre"
+	"weaveftpd/plugins/pretime"
+	"weaveftpd/plugins/releaseguard"
+	"weaveftpd/plugins/request"
+	"weaveftpd/plugins/slowkick"
+	"weaveftpd/plugins/spacekeeper"
+	"weaveftpd/plugins/speedtest"
+	"weaveftpd/plugins/tvmaze"
 )
 
 func main() {
@@ -64,7 +64,7 @@ func main() {
 	} else {
 		core.InstallConsoleLogger(cfg.Debug)
 	}
-	core.PrintStartupBanner(cfg.Version, "GoFTPd daemon")
+	core.PrintStartupBanner(cfg.Version, "WeaveFTPd daemon")
 
 	// SLAVE MODE: No FTP server, just connect to master and serve files
 	if cfg.Mode == "slave" {
@@ -99,7 +99,7 @@ func main() {
 	// 4. Setup Shared TLS Cache for FXP/Resumption
 	sharedCache := tls.NewLRUClientSessionCache(256)
 	var ticketKey [32]byte
-	copy(ticketKey[:], "goftpd-secret-session-key-32byte")
+	copy(ticketKey[:], "weaveftpd-secret-session-key-32byte")
 
 	tlsConfig := &tls.Config{
 		Certificates:                []tls.Certificate{cert},
@@ -427,7 +427,7 @@ func main() {
 		case "spacekeeper":
 			p = spacekeeper.New()
 		default:
-			log.Printf("[PLUGINS] Unknown plugin: %s (add a case in cmd/goftpd/main.go)", pluginName)
+			log.Printf("[PLUGINS] Unknown plugin: %s (add a case in cmd/weaveftpd/main.go)", pluginName)
 			continue
 		}
 
@@ -443,14 +443,6 @@ func main() {
 	// 7b. Initialize all plugins with config
 	if err := cfg.PluginManager.InitializePlugins(pluginConfigs); err != nil {
 		log.Fatalf("Failed to initialize plugins: %v", err)
-	}
-	if masterBridge != nil {
-		masterBridge.SetTransferSpeedPolicy(func(username, primaryGroup, transferPath, direction string) (int64, int64, int64) {
-			if cfg.PluginManager == nil {
-				return 0, 0, 0
-			}
-			return cfg.PluginManager.TransferSpeedLimits(username, primaryGroup, transferPath, direction)
-		})
 	}
 	if cfg.Debug {
 		log.Printf("[PLUGINS] All plugins initialized")
@@ -503,7 +495,7 @@ func main() {
 	if cfg.PluginManager != nil {
 		pluginCount = len(cfg.PluginManager.GetPlugins())
 	}
-	log.Printf("[STARTUP] GoFTPd online [mode=%s] [listen=%s] [public_ip=%s] [passthrough=%t] [plugins=%d]",
+	log.Printf("[STARTUP] WeaveFTPd online [mode=%s] [listen=%s] [public_ip=%s] [passthrough=%t] [plugins=%d]",
 		cfg.Mode, listenAddr, cfg.PublicIP, cfg.Passthrough, pluginCount)
 
 	// Accept FTP clients
@@ -546,7 +538,7 @@ func main() {
 }
 
 func configPathFromArgs(args []string) (string, error) {
-	fs := flag.NewFlagSet("goftpd", flag.ContinueOnError)
+	fs := flag.NewFlagSet("weaveftpd", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	configPath := fs.String("config", "etc/config.yml", "path to daemon config file")
 	if err := fs.Parse(args); err != nil {

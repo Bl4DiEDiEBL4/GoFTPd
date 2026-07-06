@@ -3,7 +3,7 @@ package core
 import (
 	"testing"
 
-	"goftpd/internal/zipscript"
+	"weaveftpd/internal/zipscript"
 )
 
 func TestMediaInfoReleaseDirAllowedRejectsSectionRoot(t *testing.T) {

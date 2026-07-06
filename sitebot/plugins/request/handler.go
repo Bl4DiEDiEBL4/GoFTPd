@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"goftpd/sitebot/internal/event"
-	"goftpd/sitebot/internal/plugin"
-	tmpl "goftpd/sitebot/internal/template"
+	"weaveftpd/sitebot/internal/event"
+	"weaveftpd/sitebot/internal/plugin"
+	tmpl "weaveftpd/sitebot/internal/template"
 )
 
 type Plugin struct {
@@ -44,13 +44,13 @@ func New() *Plugin {
 	return &Plugin{
 		host:          "127.0.0.1",
 		port:          2121,
-		user:          "goftpd",
+		user:          "weaveftpd",
 		useTLS:        true,
 		insecure:      true,
 		timeout:       10 * time.Second,
 		replyTarget:   "channel",
 		channels:      []string{},
-		staffChannels: []string{"#goftpd-staff"},
+		staffChannels: []string{"#weaveftpd-staff"},
 	}
 }
 

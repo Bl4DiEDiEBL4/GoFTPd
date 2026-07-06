@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"goftpd/sitebot/internal/event"
+	"weaveftpd/sitebot/internal/event"
 )
 
 func TestAggregateNamedGroupSumsMatchingMountPaths(t *testing.T) {

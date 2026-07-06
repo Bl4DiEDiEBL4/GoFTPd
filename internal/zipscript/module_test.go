@@ -3,7 +3,7 @@ package zipscript
 import (
 	"testing"
 
-	"goftpd/internal/user"
+	"weaveftpd/internal/user"
 )
 
 func boolPtr(v bool) *bool { return &v }
@@ -242,8 +242,8 @@ func TestCompleteStatusNameUsesMusicMetadataForAffilPredir(t *testing.T) {
 		},
 	}
 
-	got := CompleteStatusName(cfg, "GoFTPd", "/groups/GRP1/Artist-Album-2026-GRP", 123, 12, media)
-	want := "[GoFTPd] - ( 123M 12F - COMPLETE - DANCE 2026 ) - [GoFTPd]"
+	got := CompleteStatusName(cfg, "WeaveFTPd", "/groups/GRP1/Artist-Album-2026-GRP", 123, 12, media)
+	want := "[WeaveFTPd] - ( 123M 12F - COMPLETE - DANCE 2026 ) - [WeaveFTPd]"
 	if got != want {
 		t.Fatalf("CompleteStatusName = %q, want %q", got, want)
 	}
@@ -265,8 +265,8 @@ func TestCompleteStatusNameIgnoresUnusableMusicMetadata(t *testing.T) {
 		},
 	}
 
-	got := CompleteStatusName(cfg, "GoFTPd", "/MP3/0503/Artist-Album-2026-GRP", 123, 12, media)
-	want := "[GoFTPd] - ( 123M 12F - COMPLETE ) - [GoFTPd]"
+	got := CompleteStatusName(cfg, "WeaveFTPd", "/MP3/0503/Artist-Album-2026-GRP", 123, 12, media)
+	want := "[WeaveFTPd] - ( 123M 12F - COMPLETE ) - [WeaveFTPd]"
 	if got != want {
 		t.Fatalf("CompleteStatusName = %q, want %q", got, want)
 	}

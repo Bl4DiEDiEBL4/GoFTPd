@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"goftpd/sitebot/internal/event"
+	"weaveftpd/sitebot/internal/event"
 )
 
 type Handler interface {

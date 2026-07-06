@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"goftpd/internal/protocol"
+	"weaveftpd/internal/protocol"
 )
 
 func TestRootsForVirtualPathPrefersSpecificMount(t *testing.T) {

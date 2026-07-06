@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"goftpd/internal/protocol"
+	"weaveftpd/internal/protocol"
 )
 
 func TestFetchResponseReturnsBufferedEarlyResponse(t *testing.T) {

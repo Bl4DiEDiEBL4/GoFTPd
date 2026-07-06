@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"goftpd/internal/core"
-	"goftpd/internal/protocol"
-	"goftpd/internal/zipscript"
+	"weaveftpd/internal/core"
+	"weaveftpd/internal/protocol"
+	"weaveftpd/internal/zipscript"
 )
 
 func TestSelectSlaveForUploadPrefersOwnedAncestorDirectory(t *testing.T) {

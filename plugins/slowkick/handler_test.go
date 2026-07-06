@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"goftpd/internal/plugin"
-	"goftpd/internal/user"
+	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/user"
 )
 
 func testServices() *plugin.Services {
@@ -23,56 +23,134 @@ func testServices() *plugin.Services {
 	}
 }
 
-func TestTransferSpeedPolicyUploadUsesConfiguredFloorAndGrace(t *testing.T) {
-	h := New()
-	h.svc = testServices()
-	h.monitorUploads = true
-	h.minUsersOnline = 2
-	h.minUploadSpeedBytes = 5 * 1024
-	h.uploadGrace = 7 * time.Second
+func TestCheckActiveTransfersAbortsSlowSlaveUpload(t *testing.T) {
+	started := time.Now().Add(-8 * time.Second)
+	var aborted bool
+	var eventType string
 
-	minSpeed, maxSpeed, grace, ok := h.TransferSpeedPolicy("tester", "USERS", "/TV/release/file.r00", "upload")
-	if !ok {
-		t.Fatal("expected upload policy to apply")
-	}
-	if minSpeed != 5*1024 {
-		t.Fatalf("expected min speed 5120, got %d", minSpeed)
-	}
-	if maxSpeed != 0 {
-		t.Fatalf("expected no max speed, got %d", maxSpeed)
-	}
-	if grace != 7 {
-		t.Fatalf("expected grace 7s, got %d", grace)
-	}
-}
-
-func TestTransferSpeedPolicySkipsExcludedExtension(t *testing.T) {
-	h := New()
-	h.svc = testServices()
-	h.monitorUploads = true
-	h.minUsersOnline = 2
-	h.minUploadSpeedBytes = 5 * 1024
-	h.excludeExtensions = lowerSet([]string{"sfv", "nfo"})
-
-	if _, _, _, ok := h.TransferSpeedPolicy("tester", "USERS", "/XXX/release/release.nfo", "upload"); ok {
-		t.Fatal("expected excluded extension to skip policy")
-	}
-}
-
-func TestTransferSpeedPolicySkipsWhenUsersBelowMinimum(t *testing.T) {
 	h := New()
 	h.svc = &plugin.Services{
 		Logger: log.New(os.Stderr, "", 0),
 		ListActiveSessions: func() []plugin.ActiveSession {
-			return []plugin.ActiveSession{{ID: 1, User: "tester", LoggedIn: true}}
+			return []plugin.ActiveSession{{
+				ID:                1,
+				User:              "tester",
+				PrimaryGroup:      "USERS",
+				LoggedIn:          true,
+				TransferDirection: "upload",
+				TransferPath:      "/TV/release/file.r00",
+				TransferStartedAt: started,
+				TransferSlaveName: "SLAVE1",
+				TransferSlaveIdx:  42,
+			}}
+		},
+		GetLiveTransferStats: func() []plugin.LiveTransferStat {
+			return []plugin.LiveTransferStat{{
+				SlaveName:     "SLAVE1",
+				TransferIndex: 42,
+				Path:          "/TV/release/file.r00",
+				StartedAt:     started,
+				Transferred:   1024,
+				SpeedBytes:    1024,
+			}}
+		},
+		AbortTransfer: func(slaveName string, transferIndex int32, reason string) bool {
+			aborted = true
+			if slaveName != "SLAVE1" || transferIndex != 42 {
+				t.Fatalf("unexpected abort target %s/%d", slaveName, transferIndex)
+			}
+			if !strings.Contains(reason, "slowkick") {
+				t.Fatalf("expected slowkick abort reason, got %q", reason)
+			}
+			return true
+		},
+		EmitEvent: func(evtType, evtPath, filename, section string, size int64, speed float64, data map[string]string) {
+			eventType = evtType
+		},
+	}
+	h.monitorUploads = true
+	h.minUsersOnline = 0
+	h.minUploadSpeedBytes = 5 * 1024
+	h.uploadGrace = 7 * time.Second
+	h.announceKick = true
+	h.tempbanAfterKick = false
+
+	h.checkActiveTransfers(started.Add(8 * time.Second))
+
+	if !aborted {
+		t.Fatal("expected slow slave upload to be aborted")
+	}
+	if eventType != "SLOWUPLOADKICK" {
+		t.Fatalf("expected SLOWUPLOADKICK event, got %q", eventType)
+	}
+}
+
+func TestCheckActiveTransfersSkipsExcludedExtension(t *testing.T) {
+	started := time.Now().Add(-10 * time.Second)
+	var aborted bool
+
+	h := New()
+	h.svc = &plugin.Services{
+		Logger: log.New(os.Stderr, "", 0),
+		ListActiveSessions: func() []plugin.ActiveSession {
+			return []plugin.ActiveSession{{
+				ID:                1,
+				User:              "tester",
+				PrimaryGroup:      "USERS",
+				LoggedIn:          true,
+				TransferDirection: "upload",
+				TransferPath:      "/XXX/release/release.nfo",
+				TransferStartedAt: started,
+			}}
+		},
+		DisconnectSession: func(id uint64) bool {
+			aborted = true
+			return true
+		},
+	}
+	h.monitorUploads = true
+	h.minUsersOnline = 0
+	h.minUploadSpeedBytes = 5 * 1024
+	h.excludeExtensions = lowerSet([]string{"sfv", "nfo"})
+
+	h.checkActiveTransfers(started.Add(10 * time.Second))
+
+	if aborted {
+		t.Fatal("expected excluded extension to skip slowkick")
+	}
+}
+
+func TestCheckActiveTransfersSkipsWhenUsersBelowMinimum(t *testing.T) {
+	started := time.Now().Add(-10 * time.Second)
+	var aborted bool
+
+	h := New()
+	h.svc = &plugin.Services{
+		Logger: log.New(os.Stderr, "", 0),
+		ListActiveSessions: func() []plugin.ActiveSession {
+			return []plugin.ActiveSession{{
+				ID:                1,
+				User:              "tester",
+				PrimaryGroup:      "USERS",
+				LoggedIn:          true,
+				TransferDirection: "upload",
+				TransferPath:      "/TV/release/file.r00",
+				TransferStartedAt: started,
+			}}
+		},
+		DisconnectSession: func(id uint64) bool {
+			aborted = true
+			return true
 		},
 	}
 	h.monitorUploads = true
 	h.minUsersOnline = 2
 	h.minUploadSpeedBytes = 5 * 1024
 
-	if _, _, _, ok := h.TransferSpeedPolicy("tester", "USERS", "/TV/release/file.r00", "upload"); ok {
-		t.Fatal("expected policy to stay disabled below min users")
+	h.checkActiveTransfers(started.Add(10 * time.Second))
+
+	if aborted {
+		t.Fatal("expected slowkick to stay disabled below min users")
 	}
 }
 
@@ -182,19 +260,37 @@ func TestReloadConfigCanDisableSlowkick(t *testing.T) {
 		t.Fatalf("ReloadConfig failed: %v", err)
 	}
 
-	if _, _, _, ok := h.TransferSpeedPolicy("tester", "USERS", "/TV/release/file.r00", "upload"); ok {
-		t.Fatal("expected disabled slowkick to return no transfer policy")
-	}
 	if err := h.ValidateLogin(&user.User{Name: "tester", PrimaryGroup: "USERS"}, "127.0.0.1"); err != nil {
 		t.Fatalf("expected disabled slowkick to ignore tempban, got %v", err)
 	}
 }
 
 func TestReloadConfigCanClearDefaultExclusions(t *testing.T) {
-	h := New()
-	h.svc = testServices()
+	started := time.Now().Add(-10 * time.Second)
+	var aborted bool
 
-	if _, _, _, ok := h.TransferSpeedPolicy("tester", "USERS", "/REQUESTS/Test/file.sfv", "upload"); ok {
+	h := New()
+	h.svc = &plugin.Services{
+		Logger: log.New(os.Stderr, "", 0),
+		ListActiveSessions: func() []plugin.ActiveSession {
+			return []plugin.ActiveSession{{
+				ID:                1,
+				User:              "tester",
+				PrimaryGroup:      "USERS",
+				LoggedIn:          true,
+				TransferDirection: "upload",
+				TransferPath:      "/REQUESTS/Test/file.sfv",
+				TransferStartedAt: started,
+			}}
+		},
+		DisconnectSession: func(id uint64) bool {
+			aborted = true
+			return true
+		},
+	}
+
+	h.checkActiveTransfers(started.Add(10 * time.Second))
+	if aborted {
 		t.Fatal("expected default request/sfv exclusions before reload")
 	}
 
@@ -211,14 +307,9 @@ func TestReloadConfigCanClearDefaultExclusions(t *testing.T) {
 		t.Fatalf("ReloadConfig failed: %v", err)
 	}
 
-	minSpeed, _, grace, ok := h.TransferSpeedPolicy("tester", "USERS", "/REQUESTS/Test/file.sfv", "upload")
-	if !ok {
-		t.Fatal("expected cleared exclusions to allow upload policy")
-	}
-	if minSpeed != 5*1024 {
-		t.Fatalf("expected reloaded min speed 5120, got %d", minSpeed)
-	}
-	if grace != 3 {
-		t.Fatalf("expected reloaded grace 3, got %d", grace)
+	h.checkActiveTransfers(started.Add(10 * time.Second))
+
+	if !aborted {
+		t.Fatal("expected cleared exclusions to allow slowkick")
 	}
 }

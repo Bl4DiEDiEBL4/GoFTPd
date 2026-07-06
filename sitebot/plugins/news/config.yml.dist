@@ -12,6 +12,6 @@ search_default: 4
 #   "#channel" = always reply in that fixed IRC channel
 reply_target: "channel"
 
-channels: ["#goftpd-chat"]
-staff_channels: ["#goftpd-staff"]
+channels: ["#weaveftpd-chat"]
+staff_channels: ["#weaveftpd-staff"]
 staff_hosts: []

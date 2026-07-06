@@ -112,7 +112,7 @@ approval_markers:
 check_complete_dir: true
 
 # Excluded from the nukees output shown in announces.
-user_exclude: "goftpd"
+user_exclude: "weaveftpd"
 
 empty:
   enabled: true

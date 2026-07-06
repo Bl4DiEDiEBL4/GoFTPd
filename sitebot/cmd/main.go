@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"goftpd/sitebot/internal/bot"
+	"weaveftpd/sitebot/internal/bot"
 )
 
 func main() {

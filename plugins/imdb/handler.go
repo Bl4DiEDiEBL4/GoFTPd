@@ -1,8 +1,8 @@
-// Package imdb is a goftpd plugin that looks up movie metadata on
+// Package imdb is a weaveftpd plugin that looks up movie metadata on
 // imdbapi.dev when a release directory is created, and writes a .imdb
 // file into the release dir for display via show_diz.
 //
-// Config (in the main goftpd config.yml under plugins.imdb):
+// Config (in the main weaveftpd config.yml under plugins.imdb):
 //
 //	plugins:
 //	  imdb:
@@ -24,10 +24,10 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/internal/plugin"
+	"weaveftpd/internal/plugin"
 )
 
-// Handler is the imdb plugin. One instance per goftpd process.
+// Handler is the imdb plugin. One instance per weaveftpd process.
 type Handler struct {
 	svc      *plugin.Services
 	debug    bool
@@ -532,7 +532,7 @@ func newInfoBox(title, version string) *infoBox {
 	b.lines = append(b.lines,
 		boxTL+strings.Repeat(boxH, boxInnerWidth)+boxTR,
 		boxV+boxCenterCell(title, boxInnerWidth)+boxV,
-		boxV+boxRightCell("GoFTPd v"+version+" ", boxInnerWidth)+boxV,
+		boxV+boxRightCell("WeaveFTPd v"+version+" ", boxInnerWidth)+boxV,
 		boxLT+strings.Repeat(boxH, boxInnerWidth)+boxRT,
 	)
 	return b

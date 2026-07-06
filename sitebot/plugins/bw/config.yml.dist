@@ -6,15 +6,15 @@
 #   !bw slave SLAVENAME
 host: "127.0.0.1"
 port: 21212
-user: "goftpd"
-password: "goftpd"
+user: "weaveftpd"
+password: "weaveftpd"
 # Optional display name used in the IRC wait line.
-sitename: "GoFTPd"
+sitename: "WeaveFTPd"
 tls: true
 insecure_skip_verify: true
 timeout_seconds: 10
 
-channels: ["#goftpd-chat"]
+channels: ["#weaveftpd-chat"]
 
 # reply_target supports "channel", "notice", or a fixed "#channel".
 reply_target: "channel"

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"goftpd/internal/plugin"
+	"weaveftpd/internal/plugin"
 )
 
 type testBridge struct {

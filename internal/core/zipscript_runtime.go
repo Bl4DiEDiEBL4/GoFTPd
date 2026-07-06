@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"goftpd/internal/zipscript"
+	"weaveftpd/internal/zipscript"
 )
 
 func toZipscriptRaceUsers(users []VFSRaceUser) []zipscript.RaceUserStat {
@@ -443,7 +443,7 @@ func ensureSFVDataAvailable(cfg *Config, bridge MasterBridge, dirPath string) ma
 }
 
 // maybeGenerateReleaseM3U creates an .m3u playlist from the SFV for a completed
-// MP3 release (pzs-ng create_m3u behaviour). goftpd does not otherwise produce
+// MP3 release (pzs-ng create_m3u behaviour). weaveftpd does not otherwise produce
 // an m3u, so without this an outbound race / link script can complete before a
 // racer uploads one. No-op when disabled, the section is not MP3, there is no
 // SFV, or the release already has an .m3u.
@@ -1097,7 +1097,7 @@ func ensureDirPathOwned(bridge MasterBridge, dirPath, owner, group string) error
 }
 
 func ensureDirPath(bridge MasterBridge, dirPath string) error {
-	return ensureDirPathOwned(bridge, dirPath, "GoFTPd", "GoFTPd")
+	return ensureDirPathOwned(bridge, dirPath, "WeaveFTPd", "WeaveFTPd")
 }
 
 func runReleaseUploadPipeline(s *Session, bridge MasterBridge, in releaseUploadPipelineInput) {
@@ -1687,8 +1687,8 @@ func ensureUploadDirsForEvent(s *Session, bridge MasterBridge, uploadDir string)
 			return err
 		}
 	}
-	owner := "GoFTPd"
-	group := "GoFTPd"
+	owner := "WeaveFTPd"
+	group := "WeaveFTPd"
 	if s.User != nil {
 		if strings.TrimSpace(s.User.Name) != "" {
 			owner = s.User.Name

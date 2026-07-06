@@ -205,12 +205,12 @@ func TestRaceDBScrubReleaseRaceMetadataKeepsCompletenessButHidesRacers(t *testin
 
 	vfs := NewVirtualFileSystem()
 	vfs.AddFile(releasePath, VFSFile{IsDir: true, Seen: true})
-	vfs.AddFile(releasePath+"/file.r00", VFSFile{Size: 100, Seen: true, Owner: "GoFTPd", Group: "GoFTPd", Checksum: 0x1234})
+	vfs.AddFile(releasePath+"/file.r00", VFSFile{Size: 100, Seen: true, Owner: "WeaveFTPd", Group: "WeaveFTPd", Checksum: 0x1234})
 	if hydrated, err := rdb.HydrateVFS(vfs); err != nil || hydrated != 0 {
 		t.Fatalf("HydrateVFS hydrated=%d err=%v", hydrated, err)
 	}
 	file := vfs.GetFile(releasePath + "/file.r00")
-	if file.Owner != "GoFTPd" || file.Group != "GoFTPd" {
+	if file.Owner != "WeaveFTPd" || file.Group != "WeaveFTPd" {
 		t.Fatalf("expected scrubbed race DB rows not to hydrate race owner/group, got %s/%s", file.Owner, file.Group)
 	}
 	if file.XferTime != 0 {
@@ -238,7 +238,7 @@ func TestReplaceReleaseFilesPreservesExistingRaceMetadataFromWeakRescan(t *testi
 	err = rdb.ReplaceReleaseFiles(releasePath, "release.sfv", entries, map[string]ReleaseFileRecord{
 		"file.r00": {
 			FileName:   "file.r00",
-			Owner:      "GoFTPd",
+			Owner:      "WeaveFTPd",
 			Group:      "root",
 			SizeBytes:  100,
 			DurationMs: 0,
@@ -405,7 +405,7 @@ func TestRaceDBHydrateVFSIncludesZipStyleUploadsWithoutExpectedManifest(t *testi
 		Path:         filePath,
 		Size:         1024,
 		Seen:         true,
-		Owner:        "GoFTPd",
+		Owner:        "WeaveFTPd",
 		Group:        "root",
 		LastModified: 1,
 	})

@@ -11,13 +11,13 @@ const motdPath = "etc/motd"
 
 // %U expands to the username and %V to the running version.
 var defaultMOTDLines = []string{
-	`   ____       _____ _____ ____     _`,
-	`  / ___| ___ |  ___|_   _|  _ \ __| |`,
-	" | |  _ / _ \\| |_    | | | |_) / _` |",
-	` | |_| | (_) |  _|   | | |  __/ (_| |`,
-	`  \____|\___/|_|     |_| |_|   \__,_|`,
+	`__        __                    _____ _____ ____      _`,
+	`\ \      / /__  __ ___   _____ |  ___|_   _|  _ \  __| |`,
+	" \\ \\ /\\ / / _ \\/ _` \\ \\ / / _ \\| |_    | | | |_) |/ _` |",
+	`  \ V  V /  __/ (_| |\ V /  __/|  _|   | | |  __/| (_| |`,
+	`   \_/\_/ \___|\__,_| \_/ \___||_|     |_| |_|    \__,_|`,
 	``,
-	` Welcome to GoFTPd v%V, %U!`,
+	` Welcome to WeaveFTPd v%V, %U!`,
 }
 
 func (s *Session) emitLoginMOTD() {

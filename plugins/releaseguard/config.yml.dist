@@ -1,6 +1,6 @@
 # Block bad release names before MKD creates the directory.
 #
-# This is a GoFTPd-native take on glftpd/tur-predircheck style rules.
+# This is a WeaveFTPd-native take on glftpd/tur-predircheck style rules.
 
 skip_paths:
   - "/PRE/*"

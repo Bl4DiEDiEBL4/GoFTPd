@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"goftpd/internal/plugin"
+	"weaveftpd/internal/plugin"
 )
 
 type siteHelpEntry struct {

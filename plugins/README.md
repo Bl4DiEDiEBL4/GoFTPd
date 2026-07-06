@@ -1,4 +1,4 @@
-# GoFTPd Plugins
+# WeaveFTPd Plugins
 
 Plugins extend the daemon by reacting to events (dir created, file uploaded,
 release nuked, etc.) and doing work with the master's VFS bridge.
@@ -28,7 +28,7 @@ separate daemon plugin. Configure it with `zipscript.audio` and
 
 1. Create a new package under `/plugins/<yourname>/handler.go`
 2. Implement the `plugin.Plugin` interface
-3. Register it in `cmd/goftpd/main.go`
+3. Register it in `cmd/weaveftpd/main.go`
 4. Add a config block to `etc/config.yml`
 
 ### Minimal example
@@ -38,7 +38,7 @@ package mything
 
 import (
     "log"
-    "goftpd/internal/plugin"
+    "weaveftpd/internal/plugin"
 )
 
 type Handler struct{ svc *plugin.Services }
@@ -62,7 +62,7 @@ func (h *Handler) OnEvent(evt *plugin.Event) error {
 func (h *Handler) Stop() error { return nil }
 ```
 
-Then in `cmd/goftpd/main.go`, add a case:
+Then in `cmd/weaveftpd/main.go`, add a case:
 
 ```go
 case "mything":

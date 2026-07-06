@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"goftpd/internal/plugin"
+	"weaveftpd/internal/plugin"
 )
 
 type testBridge struct {

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/internal/plugin"
+	"weaveftpd/internal/plugin"
 )
 
 type Handler struct {
@@ -115,7 +115,7 @@ func (h *Handler) ensureFiles() {
 }
 
 func (h *Handler) createMissingFiles() bool {
-	h.svc.Bridge.MakeDir(h.dir, "GoFTPd", "GoFTPd")
+	h.svc.Bridge.MakeDir(h.dir, "WeaveFTPd", "WeaveFTPd")
 	complete := true
 	for _, mb := range h.files {
 		if mb <= 0 {
@@ -127,7 +127,7 @@ func (h *Handler) createMissingFiles() bool {
 			continue
 		}
 		complete = false
-		if err := h.svc.Bridge.CreateSparseFile(filePath, size, "GoFTPd", "GoFTPd"); err != nil {
+		if err := h.svc.Bridge.CreateSparseFile(filePath, size, "WeaveFTPd", "WeaveFTPd"); err != nil {
 			if h.debug {
 				log.Printf("[SPEEDTEST] create %s failed: %v", filePath, err)
 			}

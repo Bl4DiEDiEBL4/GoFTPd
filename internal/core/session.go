@@ -11,9 +11,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"goftpd/internal/acl"
-	"goftpd/internal/netutil"
-	"goftpd/internal/user"
+	"weaveftpd/internal/acl"
+	"weaveftpd/internal/netutil"
+	"weaveftpd/internal/user"
 )
 
 func sanitizeLoggedFTPLine(line string) string {
@@ -137,7 +137,7 @@ func HandleSession(conn net.Conn, tlsConfig *tls.Config, cfg *Config, aclEngine 
 	defer session.Conn.Close()
 
 	// Initial Banner
-	fmt.Fprintf(session.Conn, "220-%s GoFTPd v%s\r\n220 Ready.\r\n",
+	fmt.Fprintf(session.Conn, "220-%s WeaveFTPd v%s\r\n220 Ready.\r\n",
 		session.Config.SiteNameShort, session.Config.Version)
 
 	controlReader := bufio.NewReaderSize(session.Conn, 4096)

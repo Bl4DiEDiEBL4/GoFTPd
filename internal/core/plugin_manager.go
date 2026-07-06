@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"goftpd/internal/plugin"
-	"goftpd/internal/user"
+	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/user"
 )
 
 // PluginManager owns the registered plugins and dispatches events to them.
@@ -190,49 +190,6 @@ func (pm *PluginManager) ValidateLogin(u *user.User, remoteIP string) error {
 		}
 	}
 	return nil
-}
-
-func (pm *PluginManager) TransferSpeedLimits(username, primaryGroup, transferPath, direction string) (int64, int64, int64) {
-	if pm == nil {
-		return 0, 0, 0
-	}
-
-	pm.mu.RLock()
-	plugins := make([]plugin.Plugin, len(pm.plugins))
-	copy(plugins, pm.plugins)
-	pm.mu.RUnlock()
-
-	for _, p := range plugins {
-		provider, ok := p.(plugin.TransferSpeedPolicyProvider)
-		if !ok {
-			continue
-		}
-		minSpeed, maxSpeed, graceSeconds, ok := provider.TransferSpeedPolicy(username, primaryGroup, transferPath, direction)
-		if !ok {
-			continue
-		}
-		return minSpeed, maxSpeed, graceSeconds
-	}
-	return 0, 0, 0
-}
-
-func (pm *PluginManager) HandleSlowTransfer(username, primaryGroup, transferPath, direction, slaveName string, transferIndex int32, actualSpeedBytes, minSpeedBytes int64) {
-	if pm == nil {
-		return
-	}
-
-	pm.mu.RLock()
-	plugins := make([]plugin.Plugin, len(pm.plugins))
-	copy(plugins, pm.plugins)
-	pm.mu.RUnlock()
-
-	for _, p := range plugins {
-		handler, ok := p.(plugin.SlowTransferHandler)
-		if !ok {
-			continue
-		}
-		handler.HandleSlowTransfer(username, primaryGroup, transferPath, direction, slaveName, transferIndex, actualSpeedBytes, minSpeedBytes)
-	}
 }
 
 func (pm *PluginManager) ReloadConfigs(pluginConfigs map[string]map[string]interface{}) error {

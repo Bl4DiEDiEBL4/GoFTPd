@@ -3,13 +3,13 @@
 # logic instead of duplicating it in IRC plugins.
 host: "127.0.0.1"
 port: 21212
-user: "goftpd"
-password: "goftpd"
+user: "weaveftpd"
+password: "weaveftpd"
 tls: true
 insecure_skip_verify: true
 timeout_seconds: 10
 
-staff_channels: ["#goftpd-staff"]
+staff_channels: ["#weaveftpd-staff"]
 staff_hosts: []
 
 # Only these SITE subcommands can be called from IRC. Use ["*"] only if

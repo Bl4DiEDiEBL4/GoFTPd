@@ -8,11 +8,11 @@ import (
 	"strings"
 	"sync"
 
-	"goftpd/internal/timeutil"
-	"goftpd/internal/user"
-	"goftpd/internal/versionfile"
-	"goftpd/internal/zipscript"
 	"gopkg.in/yaml.v3"
+	"weaveftpd/internal/timeutil"
+	"weaveftpd/internal/user"
+	"weaveftpd/internal/versionfile"
+	"weaveftpd/internal/zipscript"
 )
 
 type Config struct {
@@ -59,9 +59,9 @@ type Config struct {
 	// regardless of flags. A user needs at least ONE of the listed flags.
 	// Example:
 	//   invite_channels:
-	//     - channel: "#goftpd-staff"
+	//     - channel: "#weaveftpd-staff"
 	//       flags: "1"         # siteop only
-	//     - channel: "#goftpd-nuke"
+	//     - channel: "#weaveftpd-nuke"
 	//       flags: "12"        # siteop or group admin
 	InviteChannels []InviteRule `yaml:"invite_channels"`
 

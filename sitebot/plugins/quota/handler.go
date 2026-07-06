@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/sitebot/internal/event"
-	"goftpd/sitebot/internal/plugin"
-	tmpl "goftpd/sitebot/internal/template"
 	"gopkg.in/yaml.v3"
+	"weaveftpd/sitebot/internal/event"
+	"weaveftpd/sitebot/internal/plugin"
+	tmpl "weaveftpd/sitebot/internal/template"
 )
 
 const (
@@ -102,7 +102,7 @@ func New() *Plugin {
 		statusCommands:   []string{"quota"},
 		staffCommand:     "quotactl",
 		replyTarget:      "channel",
-		staffChannels:    []string{"#goftpd-staff"},
+		staffChannels:    []string{"#weaveftpd-staff"},
 		trialEnabled:     true,
 		quotaEnabled:     true,
 		trialDaysDefault: 7,

@@ -4,7 +4,7 @@ import (
 	"net"
 	"testing"
 
-	"goftpd/internal/user"
+	"weaveftpd/internal/user"
 )
 
 func TestDisconnectActiveSessionClearsTransferState(t *testing.T) {

@@ -1,8 +1,8 @@
-﻿############################################################
-#  GoFTPd sitebot theme - DrFTPD-style preset              #
+############################################################
+#  WeaveFTPd sitebot theme - DrFTPD-style preset              #
 ############################################################
 #
-# This preset keeps the current GoFTPd variables/rendering model,
+# This preset keeps the current WeaveFTPd variables/rendering model,
 # but leans toward the familiar DrFTPD announce look and spacing.
 #
 # mIRC colors:

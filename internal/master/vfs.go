@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/internal/core"
-	"goftpd/internal/metrics"
-	"goftpd/internal/plugin"
-	"goftpd/internal/zipscript"
+	"weaveftpd/internal/core"
+	"weaveftpd/internal/metrics"
+	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/zipscript"
 )
 
 // VFSFile represents a file or directory in the master's virtual file system.
@@ -76,6 +76,7 @@ type vfsSnapshot struct {
 type VirtualFileSystem struct {
 	files          map[string]*VFSFile
 	children       map[string]map[string]struct{}
+	slavePaths     map[string]map[string]struct{}
 	dirMeta        map[string]*VFSDirMeta // dir path -> metadata (SFV cache etc)
 	protectedDirs  map[string]bool
 	hiddenPaths    map[string]bool
@@ -110,6 +111,7 @@ func NewVirtualFileSystem() *VirtualFileSystem {
 	vfs := &VirtualFileSystem{
 		files:         make(map[string]*VFSFile),
 		children:      make(map[string]map[string]struct{}),
+		slavePaths:    make(map[string]map[string]struct{}),
 		dirMeta:       make(map[string]*VFSDirMeta),
 		protectedDirs: make(map[string]bool),
 		hiddenPaths:   make(map[string]bool),
@@ -140,12 +142,12 @@ func (vfs *VirtualFileSystem) AddFile(path string, file VFSFile) {
 		vfs.excludePaths = make(map[string]bool)
 	}
 	if vfs.isExcludedPathLocked(path) {
-		delete(vfs.files, path)
+		vfs.deleteFileEntryOnlyLocked(path)
 		vfs.invalidateRaceCachesForPathLocked(path)
 		return
 	}
 	if vfs.isHiddenPathLocked(path) {
-		delete(vfs.files, path)
+		vfs.deleteFileEntryOnlyLocked(path)
 		vfs.invalidateRaceCachesForPathLocked(path)
 		return
 	}
@@ -197,7 +199,12 @@ func (vfs *VirtualFileSystem) AddFile(path string, file VFSFile) {
 		}
 	}
 
+	oldSlave := ""
+	if existing := vfs.files[path]; existing != nil {
+		oldSlave = existing.SlaveName
+	}
 	vfs.files[path] = &file
+	vfs.reindexSlavePathLocked(path, oldSlave, file.SlaveName)
 	vfs.ensureParentDirsLocked(path, file.SlaveName)
 	vfs.linkChildLocked(cleanVFSPath(filepath.Dir(path)), path)
 	if file.IsDir {
@@ -382,8 +389,14 @@ func (vfs *VirtualFileSystem) Chmod(path string, mode uint32) {
 func (vfs *VirtualFileSystem) MarkAllUnseen(slaveName string) {
 	vfs.mu.Lock()
 	defer vfs.mu.Unlock()
-	for path, file := range vfs.files {
+	for _, path := range vfs.pathsForSlaveLocked(slaveName) {
+		file := vfs.files[path]
+		if file == nil {
+			vfs.removeSlavePathLocked(slaveName, path)
+			continue
+		}
 		if vfs.protectedDirs[path] {
+			vfs.reindexSlavePathLocked(path, file.SlaveName, "")
 			file.Seen = true
 			file.SlaveName = ""
 			continue
@@ -442,6 +455,7 @@ func (vfs *VirtualFileSystem) resetProtectedDirsLocked() {
 			continue
 		}
 		if file := vfs.files[path]; file != nil {
+			vfs.reindexSlavePathLocked(path, file.SlaveName, "")
 			file.Seen = true
 			file.SlaveName = ""
 		}
@@ -454,8 +468,14 @@ func (vfs *VirtualFileSystem) PurgeUnseen(slaveName string) {
 	defer vfs.mu.Unlock()
 	nowUnix := time.Now().Unix()
 	changed := false
-	for path, file := range vfs.files {
+	for _, path := range vfs.pathsForSlaveLocked(slaveName) {
+		file := vfs.files[path]
+		if file == nil {
+			vfs.removeSlavePathLocked(slaveName, path)
+			continue
+		}
 		if vfs.protectedDirs[path] {
+			vfs.reindexSlavePathLocked(path, file.SlaveName, "")
 			file.Seen = true
 			file.SlaveName = ""
 			continue
@@ -578,6 +598,7 @@ func (vfs *VirtualFileSystem) SetProtectedDirs(paths []string) {
 		vfs.protectedDirs[p] = true
 		f := vfs.files[p]
 		if f != nil {
+			vfs.reindexSlavePathLocked(p, f.SlaveName, "")
 			f.Path = p
 			f.IsDir = true
 			f.Seen = true
@@ -598,7 +619,7 @@ func (vfs *VirtualFileSystem) SetProtectedDirs(paths []string) {
 		if strings.TrimSpace(f.SlaveName) != "" {
 			continue
 		}
-		delete(vfs.files, p)
+		vfs.deleteFileEntryOnlyLocked(p)
 	}
 	vfs.rebuildChildrenLocked()
 	vfs.markPersistDirtyLocked()
@@ -662,6 +683,9 @@ func (vfs *VirtualFileSystem) deletePathLocked(path string) bool {
 	path = cleanVFSPath(path)
 	parent := cleanVFSPath(filepath.Dir(path))
 	baseLower := strings.ToLower(filepath.Base(path))
+	if vfs.files[path] == nil {
+		return false
+	}
 	if strings.HasSuffix(strings.ToLower(filepath.Base(path)), ".sfv") {
 		if meta := vfs.dirMeta[parent]; meta != nil {
 			meta.SFVName = ""
@@ -672,19 +696,7 @@ func (vfs *VirtualFileSystem) deletePathLocked(path string) bool {
 		}
 	}
 	clearZipMeta := baseLower == "file_id.diz" || strings.HasSuffix(baseLower, ".zip")
-	removed := make([]string, 0, 8)
-	if _, ok := vfs.files[path]; ok {
-		delete(vfs.files, path)
-		removed = append(removed, path)
-	}
-
-	prefix := path + "/"
-	for k := range vfs.files {
-		if strings.HasPrefix(k, prefix) {
-			delete(vfs.files, k)
-			removed = append(removed, k)
-		}
-	}
+	removed := vfs.collectSubtreePathsLocked(path)
 	if len(removed) == 0 {
 		return false
 	}
@@ -693,18 +705,15 @@ func (vfs *VirtualFileSystem) deletePathLocked(path string) bool {
 		delete(children, path)
 	}
 	for _, removedPath := range removed {
+		vfs.deleteFileEntryOnlyLocked(removedPath)
 		vfs.invalidateRaceCachesForPathLocked(removedPath)
 		delete(vfs.children, removedPath)
+		delete(vfs.dirMeta, removedPath)
 		if removedPath == path {
 			continue
 		}
 		if children := vfs.children[cleanVFSPath(filepath.Dir(removedPath))]; children != nil {
 			delete(children, removedPath)
-		}
-	}
-	for metaPath := range vfs.dirMeta {
-		if metaPath == path || strings.HasPrefix(metaPath, prefix) {
-			delete(vfs.dirMeta, metaPath)
 		}
 	}
 	if clearZipMeta && !vfs.hasZipArchiveLocked(parent) {
@@ -957,7 +966,7 @@ func isWeakMetadataValue(value string) bool {
 		return true
 	case len(value) == 4 && strings.EqualFold(value, "root"):
 		return true
-	case len(value) == 6 && strings.EqualFold(value, "goftpd"):
+	case len(value) == 6 && strings.EqualFold(value, "weaveftpd"):
 		return true
 	default:
 		return false
@@ -1001,39 +1010,7 @@ func (vfs *VirtualFileSystem) RenameFile(from, to string) {
 		return
 	}
 
-	// Move the file itself
-	delete(vfs.files, from)
-	file.Path = to
-	vfs.files[to] = file
-
-	// Move children if directory
-	prefix := from + "/"
-	var toMove []struct{ old, new string }
-	for k := range vfs.files {
-		if strings.HasPrefix(k, prefix) {
-			newPath := to + "/" + k[len(prefix):]
-			toMove = append(toMove, struct{ old, new string }{k, newPath})
-		}
-	}
-	for _, mv := range toMove {
-		f := vfs.files[mv.old]
-		delete(vfs.files, mv.old)
-		f.Path = mv.new
-		vfs.files[mv.new] = f
-	}
-
-	metaPrefix := from + "/"
-	var metaMove []struct{ old, new string }
-	for k := range vfs.dirMeta {
-		if k == from || strings.HasPrefix(k, metaPrefix) {
-			metaMove = append(metaMove, struct{ old, new string }{k, to + k[len(from):]})
-		}
-	}
-	for _, mv := range metaMove {
-		meta := vfs.dirMeta[mv.old]
-		delete(vfs.dirMeta, mv.old)
-		vfs.dirMeta[mv.new] = meta
-	}
+	vfs.moveSubtreeLocked(from, to, "")
 	if strings.HasSuffix(fromBase, ".sfv") && (fromParent != toParent || !strings.HasSuffix(toBase, ".sfv")) {
 		if meta := vfs.dirMeta[fromParent]; meta != nil {
 			meta.SFVName = ""
@@ -1047,7 +1024,6 @@ func (vfs *VirtualFileSystem) RenameFile(from, to string) {
 	if strings.HasSuffix(fromBase, ".zip") && (fromParent != toParent || !strings.HasSuffix(toBase, ".zip")) && !vfs.hasZipArchiveLocked(fromParent) {
 		vfs.clearZipMetaLocked(fromParent)
 	}
-	vfs.rebuildChildrenLocked()
 	now := time.Now().Unix()
 	vfs.touchAncestorsLocked(fromParent, now)
 	vfs.touchAncestorsLocked(toParent, now)
@@ -1068,41 +1044,8 @@ func (vfs *VirtualFileSystem) RelocateFile(from, to, newSlaveName string) {
 		return
 	}
 
-	delete(vfs.files, from)
-	file.Path = to
-	file.SlaveName = newSlaveName
-	vfs.files[to] = file
+	vfs.moveSubtreeLocked(from, to, newSlaveName)
 
-	prefix := from + "/"
-	var toMove []struct{ old, new string }
-	for k := range vfs.files {
-		if strings.HasPrefix(k, prefix) {
-			newPath := to + "/" + k[len(prefix):]
-			toMove = append(toMove, struct{ old, new string }{k, newPath})
-		}
-	}
-	for _, mv := range toMove {
-		f := vfs.files[mv.old]
-		delete(vfs.files, mv.old)
-		f.Path = mv.new
-		f.SlaveName = newSlaveName
-		vfs.files[mv.new] = f
-	}
-
-	metaPrefix := from + "/"
-	var metaMove []struct{ old, new string }
-	for k := range vfs.dirMeta {
-		if k == from || strings.HasPrefix(k, metaPrefix) {
-			metaMove = append(metaMove, struct{ old, new string }{k, to + k[len(from):]})
-		}
-	}
-	for _, mv := range metaMove {
-		meta := vfs.dirMeta[mv.old]
-		delete(vfs.dirMeta, mv.old)
-		vfs.dirMeta[mv.new] = meta
-	}
-
-	vfs.rebuildChildrenLocked()
 	now := time.Now().Unix()
 	vfs.touchAncestorsLocked(fromParent, now)
 	vfs.touchAncestorsLocked(toParent, now)
@@ -1115,19 +1058,43 @@ func (vfs *VirtualFileSystem) ClearSlave(slaveName string) {
 	defer vfs.mu.Unlock()
 
 	changed := false
-	for path, file := range vfs.files {
-		if file.SlaveName == slaveName {
-			delete(vfs.files, path)
-			changed = true
+	deletedDirs := make([]string, 0)
+	for _, path := range vfs.pathsForSlaveLocked(slaveName) {
+		file := vfs.files[path]
+		if file == nil || file.SlaveName != slaveName {
+			vfs.removeSlavePathLocked(slaveName, path)
+			continue
 		}
+		if file.IsDir {
+			deletedDirs = append(deletedDirs, path)
+		}
+		vfs.deleteFileEntryOnlyLocked(path)
+		delete(vfs.dirMeta, path)
+		if children := vfs.children[cleanVFSPath(filepath.Dir(path))]; children != nil {
+			delete(children, path)
+		}
+		vfs.invalidateRaceCachesForPathLocked(path)
+		changed = true
 	}
 	if changed {
-		for dirPath := range vfs.dirMeta {
-			if file := vfs.files[dirPath]; file == nil || !file.IsDir {
-				delete(vfs.dirMeta, dirPath)
+		for _, dirPath := range deletedDirs {
+			childPaths := vfs.children[dirPath]
+			if len(childPaths) == 0 {
+				delete(vfs.children, dirPath)
+				continue
+			}
+			for childPath := range childPaths {
+				child := vfs.files[childPath]
+				if child == nil {
+					delete(childPaths, childPath)
+					continue
+				}
+				vfs.ensureParentDirsLocked(childPath, child.SlaveName)
+			}
+			if len(childPaths) == 0 && vfs.files[dirPath] == nil {
+				delete(vfs.children, dirPath)
 			}
 		}
-		vfs.rebuildChildrenLocked()
 		vfs.markPersistDirtyLocked()
 	}
 }
@@ -1458,7 +1425,7 @@ func (vfs *VirtualFileSystem) pruneExcludedPathsLocked() {
 	changed := false
 	for p := range vfs.files {
 		if vfs.isExcludedPathLocked(p) {
-			delete(vfs.files, p)
+			vfs.deleteFileEntryOnlyLocked(p)
 			delete(vfs.dirMeta, p)
 			changed = true
 		}
@@ -1473,7 +1440,7 @@ func (vfs *VirtualFileSystem) pruneHiddenPathsLocked() {
 	changed := false
 	for p := range vfs.files {
 		if vfs.isHiddenPathLocked(p) {
-			delete(vfs.files, p)
+			vfs.deleteFileEntryOnlyLocked(p)
 			delete(vfs.dirMeta, p)
 			changed = true
 		}
@@ -1832,6 +1799,92 @@ func (vfs *VirtualFileSystem) ensureChildrenBucketLocked(dirPath string) {
 	}
 }
 
+func (vfs *VirtualFileSystem) ensureSlavePathIndexLocked() {
+	if vfs.slavePaths == nil {
+		vfs.slavePaths = make(map[string]map[string]struct{})
+	}
+}
+
+func (vfs *VirtualFileSystem) addSlavePathLocked(slaveName, path string) {
+	slaveName = strings.TrimSpace(slaveName)
+	if slaveName == "" {
+		return
+	}
+	vfs.ensureSlavePathIndexLocked()
+	path = cleanVFSPath(path)
+	paths := vfs.slavePaths[slaveName]
+	if paths == nil {
+		paths = make(map[string]struct{})
+		vfs.slavePaths[slaveName] = paths
+	}
+	paths[path] = struct{}{}
+}
+
+func (vfs *VirtualFileSystem) removeSlavePathLocked(slaveName, path string) {
+	slaveName = strings.TrimSpace(slaveName)
+	if slaveName == "" || vfs.slavePaths == nil {
+		return
+	}
+	path = cleanVFSPath(path)
+	paths := vfs.slavePaths[slaveName]
+	if paths == nil {
+		return
+	}
+	delete(paths, path)
+	if len(paths) == 0 {
+		delete(vfs.slavePaths, slaveName)
+	}
+}
+
+func (vfs *VirtualFileSystem) reindexSlavePathLocked(path, oldSlave, newSlave string) {
+	path = cleanVFSPath(path)
+	oldSlave = strings.TrimSpace(oldSlave)
+	newSlave = strings.TrimSpace(newSlave)
+	if oldSlave == newSlave {
+		if newSlave != "" {
+			vfs.addSlavePathLocked(newSlave, path)
+		}
+		return
+	}
+	vfs.removeSlavePathLocked(oldSlave, path)
+	vfs.addSlavePathLocked(newSlave, path)
+}
+
+func (vfs *VirtualFileSystem) deleteFileEntryOnlyLocked(path string) {
+	path = cleanVFSPath(path)
+	if file := vfs.files[path]; file != nil {
+		vfs.removeSlavePathLocked(file.SlaveName, path)
+	}
+	delete(vfs.files, path)
+}
+
+func (vfs *VirtualFileSystem) rebuildSlavePathsLocked() {
+	vfs.slavePaths = make(map[string]map[string]struct{})
+	for path, file := range vfs.files {
+		if file == nil {
+			continue
+		}
+		vfs.addSlavePathLocked(file.SlaveName, path)
+	}
+}
+
+func (vfs *VirtualFileSystem) pathsForSlaveLocked(slaveName string) []string {
+	slaveName = strings.TrimSpace(slaveName)
+	if slaveName == "" {
+		return nil
+	}
+	if vfs.slavePaths == nil {
+		vfs.rebuildSlavePathsLocked()
+	}
+	paths := vfs.slavePaths[slaveName]
+	out := make([]string, 0, len(paths))
+	for path := range paths {
+		out = append(out, path)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func (vfs *VirtualFileSystem) linkChildLocked(parentPath, childPath string) {
 	parentPath = cleanVFSPath(parentPath)
 	childPath = cleanVFSPath(childPath)
@@ -1855,6 +1908,7 @@ func (vfs *VirtualFileSystem) ensureParentDirsLocked(path string, slaveName stri
 				SlaveName: slaveName,
 				Seen:      true,
 			}
+			vfs.addSlavePathLocked(slaveName, dir)
 		} else {
 			existing.Path = dir
 			existing.IsDir = true
@@ -1868,6 +1922,76 @@ func (vfs *VirtualFileSystem) ensureParentDirsLocked(path string, slaveName stri
 		vfs.linkChildLocked(parent, dir)
 		dir = parent
 	}
+}
+
+func (vfs *VirtualFileSystem) moveSubtreeLocked(from, to, newSlaveName string) bool {
+	from = cleanVFSPath(from)
+	to = cleanVFSPath(to)
+	paths := vfs.collectSubtreePathsLocked(from)
+	if len(paths) == 0 || vfs.files[from] == nil {
+		return false
+	}
+
+	type moveEntry struct {
+		oldPath string
+		newPath string
+		file    *VFSFile
+		meta    *VFSDirMeta
+	}
+	moves := make([]moveEntry, 0, len(paths))
+	for _, oldPath := range paths {
+		file := vfs.files[oldPath]
+		if file == nil {
+			continue
+		}
+		suffix := strings.TrimPrefix(oldPath, from)
+		newPath := cleanVFSPath(to + suffix)
+		moves = append(moves, moveEntry{
+			oldPath: oldPath,
+			newPath: newPath,
+			file:    file,
+			meta:    vfs.dirMeta[oldPath],
+		})
+	}
+	if len(moves) == 0 {
+		return false
+	}
+
+	fromParent := cleanVFSPath(filepath.Dir(from))
+	if children := vfs.children[fromParent]; children != nil {
+		delete(children, from)
+	}
+	for _, mv := range moves {
+		vfs.deleteFileEntryOnlyLocked(mv.oldPath)
+		delete(vfs.children, mv.oldPath)
+		if mv.meta != nil {
+			delete(vfs.dirMeta, mv.oldPath)
+		}
+	}
+
+	slaveForParents := moves[0].file.SlaveName
+	if strings.TrimSpace(newSlaveName) != "" {
+		slaveForParents = newSlaveName
+	}
+	vfs.ensureParentDirsLocked(to, slaveForParents)
+	for _, mv := range moves {
+		mv.file.Path = mv.newPath
+		if strings.TrimSpace(newSlaveName) != "" {
+			mv.file.SlaveName = newSlaveName
+		}
+		vfs.files[mv.newPath] = mv.file
+		vfs.addSlavePathLocked(mv.file.SlaveName, mv.newPath)
+		if mv.file.IsDir {
+			vfs.ensureChildrenBucketLocked(mv.newPath)
+		}
+		vfs.linkChildLocked(cleanVFSPath(filepath.Dir(mv.newPath)), mv.newPath)
+		if mv.meta != nil {
+			vfs.dirMeta[mv.newPath] = mv.meta
+		}
+		vfs.invalidateRaceCachesForPathLocked(mv.oldPath)
+		vfs.invalidateRaceCachesForPathLocked(mv.newPath)
+	}
+	return true
 }
 
 func (vfs *VirtualFileSystem) touchAncestorsLocked(path string, ts int64) {
@@ -1892,13 +2016,14 @@ func (vfs *VirtualFileSystem) rebuildChildrenLocked() {
 	if vfs.files == nil {
 		vfs.files = make(map[string]*VFSFile)
 	}
+	vfs.slavePaths = make(map[string]map[string]struct{})
 	if _, ok := vfs.files["/"]; !ok {
 		vfs.files["/"] = &VFSFile{Path: "/", IsDir: true, Seen: true}
 	}
 
 	for path, file := range vfs.files {
 		if file == nil {
-			delete(vfs.files, path)
+			vfs.deleteFileEntryOnlyLocked(path)
 			continue
 		}
 		cleanPath := cleanVFSPath(path)
@@ -1953,6 +2078,7 @@ func (vfs *VirtualFileSystem) rebuildChildrenLocked() {
 		children[parent][path] = struct{}{}
 	}
 	vfs.children = children
+	vfs.rebuildSlavePathsLocked()
 	vfs.clearAllRaceCachesLocked()
 }
 

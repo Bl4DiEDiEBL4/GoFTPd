@@ -94,25 +94,25 @@ func runCompleteHookLocal(debug bool, command string, args []string, env map[str
 
 func buildCompleteHookEnv(extra map[string]string, ctx CompleteHookContext) map[string]string {
 	env := map[string]string{
-		"GOFTPD_EVENT":          "COMPLETE",
-		"GOFTPD_HOOK_TARGET":    "master",
-		"GOFTPD_DIR":            strings.TrimSpace(ctx.DirPath),
-		"GOFTPD_PATH":           strings.TrimSpace(ctx.DirPath),
-		"GOFTPD_RELNAME":        strings.TrimSpace(ctx.RelName),
-		"GOFTPD_RELEASE_NAME":   strings.TrimSpace(ctx.ReleaseName),
-		"GOFTPD_RELEASE_SUBDIR": strings.TrimSpace(ctx.ReleaseSubdir),
-		"GOFTPD_SECTION":        strings.TrimSpace(ctx.Section),
-		"GOFTPD_SECTION_ROOT":   strings.TrimSpace(ctx.SectionRoot),
-		"GOFTPD_TOTAL_BYTES":    fmt.Sprintf("%d", ctx.TotalBytes),
-		"GOFTPD_TOTAL_MB":       fmt.Sprintf("%.2f", float64(ctx.TotalBytes)/1024.0/1024.0),
-		"GOFTPD_TOTAL_FILES":    fmt.Sprintf("%d", ctx.TotalFiles),
-		"GOFTPD_DURATION_MS":    fmt.Sprintf("%d", ctx.DurationMs),
-		"GOFTPD_DURATION":       strings.TrimSpace(ctx.Duration),
-		"GOFTPD_AVG_SPEED_MB":   fmt.Sprintf("%.2f", ctx.AvgSpeedMB),
-		"GOFTPD_USER_COUNT":     fmt.Sprintf("%d", ctx.UserCount),
+		"WEAVEFTPD_EVENT":          "COMPLETE",
+		"WEAVEFTPD_HOOK_TARGET":    "master",
+		"WEAVEFTPD_DIR":            strings.TrimSpace(ctx.DirPath),
+		"WEAVEFTPD_PATH":           strings.TrimSpace(ctx.DirPath),
+		"WEAVEFTPD_RELNAME":        strings.TrimSpace(ctx.RelName),
+		"WEAVEFTPD_RELEASE_NAME":   strings.TrimSpace(ctx.ReleaseName),
+		"WEAVEFTPD_RELEASE_SUBDIR": strings.TrimSpace(ctx.ReleaseSubdir),
+		"WEAVEFTPD_SECTION":        strings.TrimSpace(ctx.Section),
+		"WEAVEFTPD_SECTION_ROOT":   strings.TrimSpace(ctx.SectionRoot),
+		"WEAVEFTPD_TOTAL_BYTES":    fmt.Sprintf("%d", ctx.TotalBytes),
+		"WEAVEFTPD_TOTAL_MB":       fmt.Sprintf("%.2f", float64(ctx.TotalBytes)/1024.0/1024.0),
+		"WEAVEFTPD_TOTAL_FILES":    fmt.Sprintf("%d", ctx.TotalFiles),
+		"WEAVEFTPD_DURATION_MS":    fmt.Sprintf("%d", ctx.DurationMs),
+		"WEAVEFTPD_DURATION":       strings.TrimSpace(ctx.Duration),
+		"WEAVEFTPD_AVG_SPEED_MB":   fmt.Sprintf("%.2f", ctx.AvgSpeedMB),
+		"WEAVEFTPD_USER_COUNT":     fmt.Sprintf("%d", ctx.UserCount),
 	}
 	for k, v := range ctx.Data {
-		env["GOFTPD_"+sanitizeEnvKey(k)] = v
+		env["WEAVEFTPD_"+sanitizeEnvKey(k)] = v
 	}
 	for k, v := range extra {
 		k = strings.TrimSpace(k)

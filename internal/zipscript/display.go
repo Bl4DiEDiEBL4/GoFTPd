@@ -141,7 +141,7 @@ func BuildAudioInfoBox(dirPath string, fields map[string]string, version string)
 	return []string{
 		bxTL + strings.Repeat(bxH, full) + bxTR,
 		bxV + boxCenter(title, full) + bxV,
-		bxV + boxRight("GoFTPd v"+version+" ", full) + bxV,
+		bxV + boxRight("WeaveFTPd v"+version+" ", full) + bxV,
 		bxLT + strings.Repeat(bxH, lw) + bxTT + strings.Repeat(bxH, rw) + bxRT,
 		bxV + boxText("  Artist : "+artist, lw) + bxV + boxText(" Genre : "+genre, rw) + bxV,
 		bxV + boxText("  Album  : "+album, lw) + bxV + boxText(" Year  : "+year, rw) + bxV,

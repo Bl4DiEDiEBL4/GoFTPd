@@ -5,7 +5,7 @@ import (
 	"log"
 	"strings"
 
-	"goftpd/internal/plugin"
+	"weaveftpd/internal/plugin"
 )
 
 // DispatchSiteCommand routes SITE sub-commands to their specific handlers.

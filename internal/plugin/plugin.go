@@ -1,10 +1,10 @@
-// Package plugin defines the extensibility interface for goftpd.
+// Package plugin defines the extensibility interface for weaveftpd.
 //
 // To write a plugin:
 //
 //  1. Create a new package under /plugins/<yourname>/
 //  2. Implement the Plugin interface below
-//  3. Register it in cmd/goftpd/main.go's plugin switch
+//  3. Register it in cmd/weaveftpd/main.go's plugin switch
 //
 // Plugins receive typed events via OnEvent. They have access to a Services
 // handle (populated at Init) which exposes the master bridge, logger, and
@@ -33,7 +33,7 @@ import (
 	"log"
 	"time"
 
-	"goftpd/internal/user"
+	"weaveftpd/internal/user"
 )
 
 // Event types dispatched by the PluginManager. Plugins should check evt.Type
@@ -67,7 +67,7 @@ type Event struct {
 	Extra    map[string]interface{} // Free-form for event-specific data
 }
 
-// Services is the handle plugins use to interact with goftpd. Populated by
+// Services is the handle plugins use to interact with weaveftpd. Populated by
 // the PluginManager when it calls Init(). Plugins should store the pointer
 // and use it in OnEvent callbacks.
 type Services struct {
@@ -148,14 +148,6 @@ type LoginValidator interface {
 	ValidateLogin(u *user.User, remoteIP string) error
 }
 
-type TransferSpeedPolicyProvider interface {
-	TransferSpeedPolicy(username, primaryGroup, transferPath, direction string) (minSpeedBytes int64, maxSpeedBytes int64, graceSeconds int64, ok bool)
-}
-
-type SlowTransferHandler interface {
-	HandleSlowTransfer(username, primaryGroup, transferPath, direction, slaveName string, transferIndex int32, actualSpeedBytes, minSpeedBytes int64)
-}
-
 type ConfigReloader interface {
 	ReloadConfig(config map[string]interface{}) error
 }
@@ -233,7 +225,7 @@ type MasterBridge interface {
 	PluginGetVFSReleaseStats(dirPath string) (users []RaceUser, groups []RaceGroup, totalBytes int64, present int, total int)
 }
 
-// Plugin is the interface every goftpd plugin must implement.
+// Plugin is the interface every weaveftpd plugin must implement.
 type Plugin interface {
 	// Name returns a short, unique identifier (e.g. "tvmaze", "imdb").
 	// Used as the key in the plugin config block.

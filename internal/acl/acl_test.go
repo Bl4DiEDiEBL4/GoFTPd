@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"goftpd/internal/user"
+	"weaveftpd/internal/user"
 )
 
 func TestLoadStructuredYAMLRules(t *testing.T) {
@@ -17,8 +17,8 @@ roles:
     any_groups: ["STAFF", "SiteOP"]
   siteop:
     all_flags: ["1"]
-  goftpd_bot:
-    users: ["goftpd"]
+  weaveftpd_bot:
+    users: ["weaveftpd"]
 
 rules:
   sitecmd:
@@ -33,7 +33,7 @@ rules:
         nobody: true
   nuke:
     - path: /site/*
-      required: $goftpd_bot
+      required: $weaveftpd_bot
 `)
 
 	e := &Engine{RulesByType: map[string][]Rule{}}
@@ -51,7 +51,7 @@ rules:
 	anyUser := &user.User{Name: "tester"}
 	staffUser := &user.User{Name: "staffer", PrimaryGroup: "STAFF", Groups: map[string]int{"STAFF": 0}}
 	siteopUser := &user.User{Name: "siteop", Flags: "1"}
-	goftpdBot := &user.User{Name: "goftpd"}
+	weaveftpdBot := &user.User{Name: "weaveftpd"}
 
 	if !e.CanPerformRuleOnly(anyUser, "sitecmd", "AFFILS") {
 		t.Fatal("public AFFILS rule should allow any user")
@@ -65,8 +65,8 @@ rules:
 	if !e.CanPerformRuleOnly(siteopUser, "sitecmd", "REHASH") {
 		t.Fatal("REHASH should allow siteop user")
 	}
-	if !e.CanPerform(goftpdBot, "NUKE", "/site/MP3/Release-GRP") {
-		t.Fatal("goftpd bot should be allowed to nuke in structured config")
+	if !e.CanPerform(weaveftpdBot, "NUKE", "/site/MP3/Release-GRP") {
+		t.Fatal("weaveftpd bot should be allowed to nuke in structured config")
 	}
 }
 

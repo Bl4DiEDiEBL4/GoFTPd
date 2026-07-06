@@ -4,7 +4,7 @@ import (
 	"net"
 	"testing"
 
-	"goftpd/internal/protocol"
+	"weaveftpd/internal/protocol"
 )
 
 func TestWriteObjectNoActivityRefreshesHeartbeatActivity(t *testing.T) {

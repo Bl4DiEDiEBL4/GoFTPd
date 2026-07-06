@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"goftpd/internal/zipscript"
+	"weaveftpd/internal/zipscript"
 )
 
 type rescanOptions struct {

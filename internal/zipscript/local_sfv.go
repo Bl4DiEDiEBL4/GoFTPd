@@ -9,8 +9,42 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 )
+
+const localCacheMaxEntries = 4096
+
+type localSFVFileSignature struct {
+	name        string
+	size        int64
+	modUnixNano int64
+}
+
+type localSFVDirCacheEntry struct {
+	signature []localSFVFileSignature
+	entries   map[string]uint32
+}
+
+type localCRCCacheEntry struct {
+	size        int64
+	modUnixNano int64
+	crc         uint32
+}
+
+var localSFVCache = struct {
+	sync.Mutex
+	dirs map[string]localSFVDirCacheEntry
+}{
+	dirs: make(map[string]localSFVDirCacheEntry),
+}
+
+var localCRCCache = struct {
+	sync.Mutex
+	files map[string]localCRCCacheEntry
+}{
+	files: make(map[string]localCRCCacheEntry),
+}
 
 func WriteUploadSFVStatus(conn io.Writer, checksum uint32, expectedCRC uint32, hasExpected bool, fileSize int64) {
 	if !hasExpected {
@@ -50,23 +84,22 @@ func LocalExpectedCRCForFile(localPath string) (uint32, bool) {
 }
 
 func LocalSFVEntriesForDir(dirPath string) map[string]uint32 {
-	entries, err := os.ReadDir(dirPath)
+	dirPath = filepath.Clean(dirPath)
+	signature, err := localSFVSignature(dirPath)
 	if err != nil {
 		return nil
 	}
-
-	sfvNames := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".sfv") {
-			continue
-		}
-		sfvNames = append(sfvNames, entry.Name())
+	localSFVCache.Lock()
+	if cached, ok := localSFVCache.dirs[dirPath]; ok && localSFVSignatureEqual(cached.signature, signature) {
+		out := cloneLocalSFVEntries(cached.entries)
+		localSFVCache.Unlock()
+		return out
 	}
-	sort.Strings(sfvNames)
+	localSFVCache.Unlock()
 
-	parsed := map[string]uint32{}
-	for _, sfvName := range sfvNames {
-		data, err := os.ReadFile(filepath.Join(dirPath, sfvName))
+	parsed := make(map[string]uint32)
+	for _, sfv := range signature {
+		data, err := os.ReadFile(filepath.Join(dirPath, sfv.name))
 		if err != nil {
 			continue
 		}
@@ -79,9 +112,15 @@ func LocalSFVEntriesForDir(dirPath string) map[string]uint32 {
 		}
 	}
 	if len(parsed) == 0 {
+		localSFVCache.Lock()
+		storeLocalSFVCacheLocked(dirPath, signature, nil)
+		localSFVCache.Unlock()
 		return nil
 	}
-	return parsed
+	localSFVCache.Lock()
+	storeLocalSFVCacheLocked(dirPath, signature, parsed)
+	localSFVCache.Unlock()
+	return cloneLocalSFVEntries(parsed)
 }
 
 func SyncLocalSFVMissingMarkers(cfg Config, dirPath string) {
@@ -186,6 +225,20 @@ func LocalShouldTreatDownloadAsMissing(cfg Config, filePath, localPath string) b
 }
 
 func LocalFileCRC(localPath string) (uint32, error) {
+	localPath = filepath.Clean(localPath)
+	info, err := os.Stat(localPath)
+	if err != nil {
+		return 0, err
+	}
+	size := info.Size()
+	modUnixNano := info.ModTime().UnixNano()
+	localCRCCache.Lock()
+	if cached, ok := localCRCCache.files[localPath]; ok && cached.size == size && cached.modUnixNano == modUnixNano {
+		localCRCCache.Unlock()
+		return cached.crc, nil
+	}
+	localCRCCache.Unlock()
+
 	file, err := os.Open(localPath)
 	if err != nil {
 		return 0, err
@@ -196,5 +249,73 @@ func LocalFileCRC(localPath string) (uint32, error) {
 	if _, err := io.Copy(hash, file); err != nil {
 		return 0, err
 	}
-	return hash.Sum32(), nil
+	crc := hash.Sum32()
+	if after, err := file.Stat(); err == nil && after.Size() == size && after.ModTime().UnixNano() == modUnixNano {
+		localCRCCache.Lock()
+		if len(localCRCCache.files) >= localCacheMaxEntries {
+			localCRCCache.files = make(map[string]localCRCCacheEntry)
+		}
+		localCRCCache.files[localPath] = localCRCCacheEntry{size: size, modUnixNano: modUnixNano, crc: crc}
+		localCRCCache.Unlock()
+	}
+	return crc, nil
+}
+
+func localSFVSignature(dirPath string) ([]localSFVFileSignature, error) {
+	entries, err := os.ReadDir(dirPath)
+	if err != nil {
+		return nil, err
+	}
+	signature := make([]localSFVFileSignature, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".sfv") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		signature = append(signature, localSFVFileSignature{
+			name:        entry.Name(),
+			size:        info.Size(),
+			modUnixNano: info.ModTime().UnixNano(),
+		})
+	}
+	sort.Slice(signature, func(i, j int) bool {
+		return strings.ToLower(signature[i].name) < strings.ToLower(signature[j].name)
+	})
+	return signature, nil
+}
+
+func localSFVSignatureEqual(a, b []localSFVFileSignature) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func cloneLocalSFVEntries(entries map[string]uint32) map[string]uint32 {
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make(map[string]uint32, len(entries))
+	for name, crc := range entries {
+		out[name] = crc
+	}
+	return out
+}
+
+func storeLocalSFVCacheLocked(dirPath string, signature []localSFVFileSignature, entries map[string]uint32) {
+	if len(localSFVCache.dirs) >= localCacheMaxEntries {
+		localSFVCache.dirs = make(map[string]localSFVDirCacheEntry)
+	}
+	localSFVCache.dirs[dirPath] = localSFVDirCacheEntry{
+		signature: append([]localSFVFileSignature(nil), signature...),
+		entries:   cloneLocalSFVEntries(entries),
+	}
 }

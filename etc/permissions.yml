@@ -1,7 +1,7 @@
 # =============================================================================
-# GoFTPd ACL rules
+# WeaveFTPd ACL rules
 #
-# This file uses the structured ACL format. GoFTPd still understands the old
+# This file uses the structured ACL format. WeaveFTPd still understands the old
 # flat `- type/path/required` layout too, but this version is easier to read
 # and easier to extend without duplicating the same access strings everywhere.
 #
@@ -74,8 +74,8 @@ roles:
       - all_flags: ["1", "B"]
 
   # Internal bot account used by automated nuke helpers.
-  goftpd_bot:
-    users: ["goftpd"]
+  weaveftpd_bot:
+    users: ["weaveftpd"]
 
 
 rules:
@@ -308,14 +308,14 @@ rules:
   # ---------------------------------------------------------------------------
   nuke:
     - path: /*
-      required: $goftpd_bot
+      required: $weaveftpd_bot
 
     - path: /*
       required: $nuker
 
   unnuke:
     - path: /*
-      required: $goftpd_bot
+      required: $weaveftpd_bot
 
     - path: /*
       required: $unnuker

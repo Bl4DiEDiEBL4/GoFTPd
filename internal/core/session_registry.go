@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"goftpd/internal/acl"
-	"goftpd/internal/plugin"
+	"weaveftpd/internal/acl"
+	"weaveftpd/internal/plugin"
 )
 
 type sessionSnapshot struct {

@@ -8,9 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/internal/plugin"
-	"goftpd/internal/user"
+	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/user"
 )
+
+const slowkickMonitorInterval = time.Second
 
 type Handler struct {
 	svc                   *plugin.Services
@@ -31,8 +33,11 @@ type Handler struct {
 	tempbanDuration       time.Duration
 	debug                 bool
 	configMu              sync.RWMutex
+	stopOnce              sync.Once
+	stopCh                chan struct{}
 	mu                    sync.Mutex
 	tempBans              map[string]time.Time
+	kickedTransfers       map[string]struct{}
 }
 
 type configSnapshot struct {
@@ -67,7 +72,9 @@ func New() *Handler {
 		excludeGroups:         map[string]struct{}{},
 		excludePaths:          normalizePaths([]string{"/PRE", "/REQUESTS", "/SPEEDTEST"}),
 		excludeExtensions:     lowerSet([]string{"sfv"}),
+		stopCh:                make(chan struct{}),
 		tempBans:              map[string]time.Time{},
+		kickedTransfers:       map[string]struct{}{},
 	}
 }
 
@@ -75,7 +82,11 @@ func (h *Handler) Name() string { return "slowkick" }
 
 func (h *Handler) Init(svc *plugin.Services, cfg map[string]interface{}) error {
 	h.svc = svc
-	return h.applyConfig(cfg, true)
+	if err := h.applyConfig(cfg, true); err != nil {
+		return err
+	}
+	go h.monitorLoop()
+	return nil
 }
 
 func (h *Handler) ReloadConfig(cfg map[string]interface{}) error {
@@ -189,75 +200,252 @@ func (h *Handler) ValidateLogin(u *user.User, remoteIP string) error {
 	return nil
 }
 
-func (h *Handler) TransferSpeedPolicy(username, primaryGroup, transferPath, direction string) (int64, int64, int64, bool) {
-	username = strings.TrimSpace(username)
-	if username == "" {
-		return 0, 0, 0, false
-	}
-	cfg := h.snapshotConfig()
-	if !h.shouldApplyTransferPolicyWithConfig(cfg, username, primaryGroup, transferPath, direction) {
-		return 0, 0, 0, false
-	}
-	switch strings.ToLower(strings.TrimSpace(direction)) {
-	case "upload":
-		if cfg.minUploadSpeedBytes <= 0 {
-			return 0, 0, 0, false
-		}
-		return int64(cfg.minUploadSpeedBytes), 0, int64(cfg.uploadGrace / time.Second), true
-	case "download":
-		if cfg.minDownloadSpeedBytes <= 0 {
-			return 0, 0, 0, false
-		}
-		return int64(cfg.minDownloadSpeedBytes), 0, int64(cfg.downloadGrace / time.Second), true
-	default:
-		return 0, 0, 0, false
-	}
+func (h *Handler) HandleSlowTransfer(username, primaryGroup, transferPath, direction, slaveName string, transferIndex int32, actualSpeedBytes, minSpeedBytes int64) {
+	h.handleSlowTransfer(plugin.ActiveSession{
+		User:              username,
+		PrimaryGroup:      primaryGroup,
+		TransferDirection: direction,
+		TransferPath:      transferPath,
+		TransferSlaveName: slaveName,
+		TransferSlaveIdx:  transferIndex,
+	}, actualSpeedBytes, minSpeedBytes)
 }
 
-func (h *Handler) HandleSlowTransfer(username, primaryGroup, transferPath, direction, slaveName string, transferIndex int32, actualSpeedBytes, minSpeedBytes int64) {
+func (h *Handler) handleSlowTransfer(snap plugin.ActiveSession, actualSpeedBytes, minSpeedBytes int64) {
 	now := time.Now()
 	h.pruneExpiredTempBans(now)
 	cfg := h.snapshotConfig()
-	if !h.shouldApplyTransferPolicyWithConfig(cfg, username, primaryGroup, transferPath, direction) {
+	if !h.shouldApplyTransferPolicyWithConfig(cfg, snap.User, snap.PrimaryGroup, snap.TransferPath, snap.TransferDirection) {
 		return
 	}
+	policy := transferPolicy{
+		direction:     strings.ToLower(strings.TrimSpace(snap.TransferDirection)),
+		minSpeedBytes: float64(minSpeedBytes),
+	}
+	switch policy.direction {
+	case "upload":
+		policy.kickEvent = "SLOWUPLOADKICK"
+	case "download":
+		policy.kickEvent = "SLOWDOWNLOADKICK"
+	default:
+		return
+	}
+	h.recordSlowTransferKick(cfg, snap, actualSpeedBytes, policy)
+}
+
+func (h *Handler) recordSlowTransferKick(cfg configSnapshot, snap plugin.ActiveSession, actualSpeedBytes int64, policy transferPolicy) {
 	if cfg.tempbanAfterKick && cfg.tempbanDuration > 0 {
-		h.setTempBan(username, now.Add(cfg.tempbanDuration))
+		h.setTempBan(snap.User, time.Now().Add(cfg.tempbanDuration))
 	}
 	if cfg.announceKick {
-		snap := plugin.ActiveSession{
-			User:              username,
-			PrimaryGroup:      primaryGroup,
-			TransferDirection: direction,
-			TransferPath:      transferPath,
-			TransferSlaveName: slaveName,
-			TransferSlaveIdx:  transferIndex,
-		}
-		policy := transferPolicy{
-			direction:     strings.ToLower(strings.TrimSpace(direction)),
-			minSpeedBytes: float64(minSpeedBytes),
-		}
-		switch policy.direction {
-		case "upload":
-			policy.kickEvent = "SLOWUPLOADKICK"
-		case "download":
-			policy.kickEvent = "SLOWDOWNLOADKICK"
-		default:
-			return
-		}
 		h.emitSlowEvent(policy.kickEvent, snap, float64(actualSpeedBytes), policy)
-		h.logf("kicked %s for slow %s in %s at %.1fKB/s", username, policy.direction, transferPath, float64(actualSpeedBytes)/1024.0)
+		h.logf("kicked %s for slow %s in %s at %.1fKB/s", snap.User, policy.direction, snap.TransferPath, float64(actualSpeedBytes)/1024.0)
 	}
 }
 
-func (h *Handler) Stop() error { return nil }
-
-func (h *Handler) shouldCheckSession(snap plugin.ActiveSession) bool {
-	return snap.LoggedIn && h.shouldApplyTransferPolicy(snap.User, snap.PrimaryGroup, snap.TransferPath, snap.TransferDirection)
+func (h *Handler) Stop() error {
+	h.stopOnce.Do(func() {
+		if h.stopCh != nil {
+			close(h.stopCh)
+		}
+	})
+	return nil
 }
 
-func (h *Handler) shouldApplyTransferPolicy(username, primaryGroup, transferPath, direction string) bool {
-	return h.shouldApplyTransferPolicyWithConfig(h.snapshotConfig(), username, primaryGroup, transferPath, direction)
+func (h *Handler) monitorLoop() {
+	ticker := time.NewTicker(slowkickMonitorInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			h.checkActiveTransfers(time.Now())
+		case <-h.stopCh:
+			return
+		}
+	}
+}
+
+type liveTransferKey struct {
+	slave string
+	index int32
+}
+
+func (h *Handler) checkActiveTransfers(now time.Time) {
+	if h == nil || h.svc == nil || h.svc.ListActiveSessions == nil {
+		return
+	}
+	cfg := h.snapshotConfig()
+	sessions := h.svc.ListActiveSessions()
+	liveStats := h.liveStatsByTransfer()
+	activeKeys := make(map[string]struct{}, len(sessions))
+
+	for _, snap := range sessions {
+		key := slowKickTransferKey(snap)
+		if key != "" {
+			activeKeys[key] = struct{}{}
+		}
+		policy, grace, ok := h.policyForSnapshot(cfg, snap)
+		if !ok {
+			continue
+		}
+		if snap.TransferStartedAt.IsZero() || now.Sub(snap.TransferStartedAt) < grace {
+			continue
+		}
+		speed, ok := transferSpeedBytes(snap, liveStats, now)
+		if !ok {
+			continue
+		}
+		if speed >= policy.minSpeedBytes {
+			continue
+		}
+		h.kickSlowTransfer(cfg, snap, speed, policy)
+	}
+
+	h.pruneKickedTransfers(activeKeys)
+	h.pruneExpiredTempBans(now)
+}
+
+func (h *Handler) liveStatsByTransfer() map[liveTransferKey]plugin.LiveTransferStat {
+	if h == nil || h.svc == nil || h.svc.GetLiveTransferStats == nil {
+		return nil
+	}
+	stats := h.svc.GetLiveTransferStats()
+	out := make(map[liveTransferKey]plugin.LiveTransferStat, len(stats))
+	for _, stat := range stats {
+		key := liveTransferKey{
+			slave: strings.ToLower(strings.TrimSpace(stat.SlaveName)),
+			index: stat.TransferIndex,
+		}
+		if key.slave == "" || key.index == 0 {
+			continue
+		}
+		out[key] = stat
+	}
+	return out
+}
+
+func (h *Handler) policyForSnapshot(cfg configSnapshot, snap plugin.ActiveSession) (transferPolicy, time.Duration, bool) {
+	if !snap.LoggedIn || !h.shouldApplyTransferPolicyWithConfig(cfg, snap.User, snap.PrimaryGroup, snap.TransferPath, snap.TransferDirection) {
+		return transferPolicy{}, 0, false
+	}
+	switch strings.ToLower(strings.TrimSpace(snap.TransferDirection)) {
+	case "upload":
+		if cfg.minUploadSpeedBytes <= 0 {
+			return transferPolicy{}, 0, false
+		}
+		return transferPolicy{
+			direction:     "upload",
+			minSpeedBytes: cfg.minUploadSpeedBytes,
+			kickEvent:     "SLOWUPLOADKICK",
+		}, cfg.uploadGrace, true
+	case "download":
+		if cfg.minDownloadSpeedBytes <= 0 {
+			return transferPolicy{}, 0, false
+		}
+		return transferPolicy{
+			direction:     "download",
+			minSpeedBytes: cfg.minDownloadSpeedBytes,
+			kickEvent:     "SLOWDOWNLOADKICK",
+		}, cfg.downloadGrace, true
+	default:
+		return transferPolicy{}, 0, false
+	}
+}
+
+func transferSpeedBytes(snap plugin.ActiveSession, liveStats map[liveTransferKey]plugin.LiveTransferStat, now time.Time) (float64, bool) {
+	if stat, ok := liveStats[liveTransferKey{
+		slave: strings.ToLower(strings.TrimSpace(snap.TransferSlaveName)),
+		index: snap.TransferSlaveIdx,
+	}]; ok && sameTransferPath(stat.Path, snap.TransferPath) {
+		if stat.SpeedBytes > 0 {
+			return stat.SpeedBytes, true
+		}
+		if !stat.StartedAt.IsZero() && now.After(stat.StartedAt) {
+			return float64(stat.Transferred) / now.Sub(stat.StartedAt).Seconds(), true
+		}
+		return 0, true
+	}
+	if strings.TrimSpace(snap.TransferSlaveName) != "" && snap.TransferSlaveIdx != 0 {
+		return 0, false
+	}
+	if snap.TransferStartedAt.IsZero() || !now.After(snap.TransferStartedAt) {
+		return 0, false
+	}
+	return float64(snap.TransferBytes) / now.Sub(snap.TransferStartedAt).Seconds(), true
+}
+
+func sameTransferPath(a, b string) bool {
+	a = strings.ToLower(path.Clean("/" + strings.TrimSpace(a)))
+	b = strings.ToLower(path.Clean("/" + strings.TrimSpace(b)))
+	return a == b
+}
+
+func (h *Handler) kickSlowTransfer(cfg configSnapshot, snap plugin.ActiveSession, speed float64, policy transferPolicy) {
+	key := slowKickTransferKey(snap)
+	if key == "" || !h.markKickedTransfer(key) {
+		return
+	}
+
+	reason := fmt.Sprintf("slowkick: %.0fB/s below %.0fB/s", speed, policy.minSpeedBytes)
+	aborted := false
+	if h.svc != nil {
+		if h.svc.AbortTransfer != nil && strings.TrimSpace(snap.TransferSlaveName) != "" && snap.TransferSlaveIdx != 0 {
+			aborted = h.svc.AbortTransfer(snap.TransferSlaveName, snap.TransferSlaveIdx, reason)
+		}
+		if !aborted && h.svc.DisconnectSession != nil && snap.ID != 0 {
+			aborted = h.svc.DisconnectSession(snap.ID)
+		}
+	}
+	if !aborted {
+		h.forgetKickedTransfer(key)
+		h.logf("unable to abort slow %s for %s in %s", policy.direction, snap.User, snap.TransferPath)
+		return
+	}
+
+	h.recordSlowTransferKick(cfg, snap, int64(speed), policy)
+}
+
+func slowKickTransferKey(snap plugin.ActiveSession) string {
+	if snap.ID == 0 || strings.TrimSpace(snap.TransferPath) == "" || strings.TrimSpace(snap.TransferDirection) == "" || snap.TransferStartedAt.IsZero() {
+		return ""
+	}
+	return fmt.Sprintf("%d|%s|%s|%d|%s|%d",
+		snap.ID,
+		strings.ToLower(strings.TrimSpace(snap.TransferDirection)),
+		strings.ToLower(path.Clean("/"+strings.TrimSpace(snap.TransferPath))),
+		snap.TransferStartedAt.UnixNano(),
+		strings.ToLower(strings.TrimSpace(snap.TransferSlaveName)),
+		snap.TransferSlaveIdx,
+	)
+}
+
+func (h *Handler) markKickedTransfer(key string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.kickedTransfers == nil {
+		h.kickedTransfers = map[string]struct{}{}
+	}
+	if _, ok := h.kickedTransfers[key]; ok {
+		return false
+	}
+	h.kickedTransfers[key] = struct{}{}
+	return true
+}
+
+func (h *Handler) forgetKickedTransfer(key string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.kickedTransfers, key)
+}
+
+func (h *Handler) pruneKickedTransfers(active map[string]struct{}) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for key := range h.kickedTransfers {
+		if _, ok := active[key]; !ok {
+			delete(h.kickedTransfers, key)
+		}
+	}
 }
 
 func (h *Handler) shouldApplyTransferPolicyWithConfig(cfg configSnapshot, username, primaryGroup, transferPath, direction string) bool {

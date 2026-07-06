@@ -1,23 +1,23 @@
-# GoFTPd .gitignore
+# WeaveFTPd .gitignore
 
 # Binary
-/goftpd
+/weaveftpd
 *.exe
 *.so
 *.dylib
 copy.sh
 sitebot/sitebot
-etc/goftpd.sitebot.fifo
+etc/weaveftpd.sitebot.fifo
 
 # TLS certificates (generate your own with generate_certs.sh)
 etc/server.crt
 etc/server.key
 *.pem
 
-# User files - only keep default.user and goftpd as examples
+# User files - only keep default.user and weaveftpd as examples
 etc/users/*
 !etc/users/default.user
-!etc/users/goftpd
+!etc/users/weaveftpd
 etc/users/n0pe
 
 # Group files - only keep NoGroup as example

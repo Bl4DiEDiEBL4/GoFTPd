@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${ROOT_DIR}"
 STATE_FILE="${ROOT_DIR}/etc/setup-interactive.env"
-FIFO_PATH_DEFAULT="${ROOT_DIR}/etc/goftpd.sitebot.fifo"
+FIFO_PATH_DEFAULT="${ROOT_DIR}/etc/weaveftpd.sitebot.fifo"
 SITEBOT_CONFIG_DEFAULT="${ROOT_DIR}/sitebot/etc/config.yml"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_DIR="${ROOT_DIR}/backups/setup-interactive-${TIMESTAMP}"
@@ -35,13 +35,13 @@ say_color() {
 
 show_banner() {
     say_color "${C_CYAN}${C_BOLD}" "=============================================================="
-    say_color "${C_CYAN}${C_BOLD}" "   ______      ________________  ____ "
-    say_color "${C_GREEN}${C_BOLD}" "  / ____/___  / ____/_  __/ __ \\/ __ \\"
-    say_color "${C_GREEN}${C_BOLD}" " / / __/ __ \\/ /_    / / / /_/ / / / /"
-    say_color "${C_YELLOW}${C_BOLD}" "/ /_/ / /_/ / __/   / / / ____/ /_/ / "
-    say_color "${C_YELLOW}${C_BOLD}" "\\____/\\____/_/     /_/ /_/   /_____/  "
+    say_color "${C_CYAN}${C_BOLD}" "__        __                    _____ _____ ____      _"
+    say_color "${C_GREEN}${C_BOLD}" "\\ \\      / /__  __ ___   _____ |  ___|_   _|  _ \\  __| |"
+    say_color "${C_GREEN}${C_BOLD}" " \\ \\ /\\ / / _ \\/ _\` \\ \\ / / _ \\| |_    | | | |_) |/ _\` |"
+    say_color "${C_YELLOW}${C_BOLD}" "  \\ V  V /  __/ (_| |\\ V /  __/|  _|   | | |  __/| (_| |"
+    say_color "${C_YELLOW}${C_BOLD}" "   \\_/\\_/ \\___|\\__,_| \\_/ \\___||_|     |_| |_|    \\__,_|"
     say_color "${C_CYAN}${C_BOLD}" "=============================================================="
-    say_color "${C_YELLOW}" "            GoFTPd setup, build, and cleanup helper"
+    say_color "${C_YELLOW}" "            WeaveFTPd setup, build, and cleanup helper"
     printf '\n'
 }
 
@@ -136,7 +136,7 @@ run_cleanup_mode() {
 
 generate_tls_certs() {
     local site_name out_dir ca_cn server_cn client_cn org
-    site_name="${1:-${GOFTPD_CERT_NAME:-GoFTPd}}"
+    site_name="${1:-${WEAVEFTPD_CERT_NAME:-WeaveFTPd}}"
     out_dir="${ROOT_DIR}/etc/certs"
     ca_cn="${site_name} Root CA"
     server_cn="${site_name} FTP"
@@ -1105,7 +1105,7 @@ configure_daemon() {
         replace_matching_line "${daemon_config}" '^sitebot_config:' "sitebot_config: \"${SETUP_SITEBOT_CONFIG_PATH:-${SITEBOT_CONFIG_DEFAULT}}\""
 
         if [ "${daemon_mode}" = "master" ]; then
-            long_name="$(prompt_default 'Daemon site name' "${SETUP_SITE_NAME:-GoFTPd}")"
+            long_name="$(prompt_default 'Daemon site name' "${SETUP_SITE_NAME:-WeaveFTPd}")"
             short_name="$(prompt_default 'Daemon short site tag' "${SETUP_SITE_SHORT:-${long_name}}")"
             site_version="$(prompt_default 'Daemon version' "${SETUP_SITE_VERSION:-1.0.6b}")"
             timezone="$(prompt_default 'Daemon timezone (IANA name, use Local to follow the OS)' "${SETUP_TIMEZONE:-${system_timezone}}")"
@@ -1122,8 +1122,8 @@ configure_daemon() {
             replace_matching_line "${daemon_config}" '^version:' "version:        \"${site_version}\""
             replace_matching_line "${daemon_config}" '^timezone:' "timezone:       \"${timezone}\""
         else
-            SETUP_SITE_NAME="${SETUP_SITE_NAME:-GoFTPd}"
-            SETUP_SITE_SHORT="${SETUP_SITE_SHORT:-GoFTPd}"
+            SETUP_SITE_NAME="${SETUP_SITE_NAME:-WeaveFTPd}"
+            SETUP_SITE_SHORT="${SETUP_SITE_SHORT:-WeaveFTPd}"
             SETUP_SITE_VERSION="${SETUP_SITE_VERSION:-1.0.6b}"
             SETUP_TIMEZONE="${SETUP_TIMEZONE:-${system_timezone}}"
             SETUP_CERT_NAME="${SETUP_CERT_NAME:-${SETUP_SITE_NAME}}"
@@ -1296,8 +1296,8 @@ configure_sitebot() {
         fi
         ftp_host="$(prompt_default 'Sitebot FTP host for plugins' "${SETUP_PLUGIN_FTP_HOST:-127.0.0.1}")"
         ftp_port="$(prompt_default 'Sitebot FTP port for plugins' "${SETUP_PLUGIN_FTP_PORT:-21212}")"
-        ftp_user="$(prompt_default 'Sitebot FTP user for plugins' "${SETUP_PLUGIN_FTP_USER:-goftpd}")"
-        ftp_password="$(prompt_default 'Sitebot FTP password for plugins' "${SETUP_PLUGIN_FTP_PASSWORD:-goftpd}")"
+        ftp_user="$(prompt_default 'Sitebot FTP user for plugins' "${SETUP_PLUGIN_FTP_USER:-weaveftpd}")"
+        ftp_password="$(prompt_default 'Sitebot FTP password for plugins' "${SETUP_PLUGIN_FTP_PASSWORD:-weaveftpd}")"
         if prompt_yes_no "Use TLS for sitebot FTP plugins?" "$(bool_to_prompt_default "${SETUP_PLUGIN_FTP_TLS:-true}")"; then
             ftp_tls="true"
         else
@@ -1310,15 +1310,15 @@ configure_sitebot() {
         fi
         bnc_target_host="$(prompt_default 'BNC target host' "${SETUP_BNC_TARGET_HOST:-${ftp_host}}")"
         bnc_target_port="$(prompt_default 'BNC target port' "${SETUP_BNC_TARGET_PORT:-${ftp_port}}")"
-        bnc_target_name="$(prompt_default 'BNC target label' "${SETUP_BNC_TARGET_NAME:-${SETUP_SITE_NAME:-GoFTPd}}")"
+        bnc_target_name="$(prompt_default 'BNC target label' "${SETUP_BNC_TARGET_NAME:-${SETUP_SITE_NAME:-WeaveFTPd}}")"
         rules_file="$(prompt_default 'Rules file for !rules (empty = use SITE RULES)' "${SETUP_RULES_FILE:-}")"
-        main_channel="$(prompt_default 'Main race IRC channel' "${SETUP_MAIN_CHANNEL:-#goftpd}")"
-        chat_channel="$(prompt_default 'Chat/command IRC channel' "${SETUP_CHAT_CHANNEL:-#goftpd-chat}")"
-        spam_channel="$(prompt_default 'Spam IRC channel' "${SETUP_SPAM_CHANNEL:-#goftpd-spam}")"
-        staff_channel="$(prompt_default 'Staff IRC channel' "${SETUP_STAFF_CHANNEL:-#goftpd-staff}")"
-        foreign_channel="$(prompt_default 'Foreign IRC channel' "${SETUP_FOREIGN_CHANNEL:-#goftpd-foreign}")"
-        archive_channel="$(prompt_default 'Archive IRC channel' "${SETUP_ARCHIVE_CHANNEL:-#goftpd-archive}")"
-        nuke_channel="$(prompt_default 'Nuke IRC channel' "${SETUP_NUKE_CHANNEL:-#goftpd-nuke}")"
+        main_channel="$(prompt_default 'Main race IRC channel' "${SETUP_MAIN_CHANNEL:-#weaveftpd}")"
+        chat_channel="$(prompt_default 'Chat/command IRC channel' "${SETUP_CHAT_CHANNEL:-#weaveftpd-chat}")"
+        spam_channel="$(prompt_default 'Spam IRC channel' "${SETUP_SPAM_CHANNEL:-#weaveftpd-spam}")"
+        staff_channel="$(prompt_default 'Staff IRC channel' "${SETUP_STAFF_CHANNEL:-#weaveftpd-staff}")"
+        foreign_channel="$(prompt_default 'Foreign IRC channel' "${SETUP_FOREIGN_CHANNEL:-#weaveftpd-foreign}")"
+        archive_channel="$(prompt_default 'Archive IRC channel' "${SETUP_ARCHIVE_CHANNEL:-#weaveftpd-archive}")"
+        nuke_channel="$(prompt_default 'Nuke IRC channel' "${SETUP_NUKE_CHANNEL:-#weaveftpd-nuke}")"
         say "Enter raw Blowfish/FiSH keys only here. setup.sh writes the cbc: prefix into the config for you."
         main_key="$(prompt_default 'Blowfish key for main channel (raw key, no cbc: prefix)' "${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}")"
         chat_key="$(prompt_default 'Blowfish key for chat channel (raw key, no cbc: prefix)' "${SETUP_BLOWFISH_KEY_CHAT:-${main_key}}")"
@@ -1340,21 +1340,21 @@ configure_sitebot() {
         irc_ssl="${SETUP_IRC_SSL:-true}"
         ftp_host="${SETUP_PLUGIN_FTP_HOST:-127.0.0.1}"
         ftp_port="${SETUP_PLUGIN_FTP_PORT:-21212}"
-        ftp_user="${SETUP_PLUGIN_FTP_USER:-goftpd}"
-        ftp_password="${SETUP_PLUGIN_FTP_PASSWORD:-goftpd}"
+        ftp_user="${SETUP_PLUGIN_FTP_USER:-weaveftpd}"
+        ftp_password="${SETUP_PLUGIN_FTP_PASSWORD:-weaveftpd}"
         ftp_tls="${SETUP_PLUGIN_FTP_TLS:-true}"
         ftp_insecure="${SETUP_PLUGIN_FTP_INSECURE:-true}"
         bnc_target_host="${SETUP_BNC_TARGET_HOST:-${ftp_host}}"
         bnc_target_port="${SETUP_BNC_TARGET_PORT:-${ftp_port}}"
-        bnc_target_name="${SETUP_BNC_TARGET_NAME:-${SETUP_SITE_NAME:-GoFTPd}}"
+        bnc_target_name="${SETUP_BNC_TARGET_NAME:-${SETUP_SITE_NAME:-WeaveFTPd}}"
         rules_file="${SETUP_RULES_FILE:-}"
-        main_channel="${SETUP_MAIN_CHANNEL:-#goftpd}"
-        chat_channel="${SETUP_CHAT_CHANNEL:-#goftpd-chat}"
-        spam_channel="${SETUP_SPAM_CHANNEL:-#goftpd-spam}"
-        staff_channel="${SETUP_STAFF_CHANNEL:-#goftpd-staff}"
-        foreign_channel="${SETUP_FOREIGN_CHANNEL:-#goftpd-foreign}"
-        archive_channel="${SETUP_ARCHIVE_CHANNEL:-#goftpd-archive}"
-        nuke_channel="${SETUP_NUKE_CHANNEL:-#goftpd-nuke}"
+        main_channel="${SETUP_MAIN_CHANNEL:-#weaveftpd}"
+        chat_channel="${SETUP_CHAT_CHANNEL:-#weaveftpd-chat}"
+        spam_channel="${SETUP_SPAM_CHANNEL:-#weaveftpd-spam}"
+        staff_channel="${SETUP_STAFF_CHANNEL:-#weaveftpd-staff}"
+        foreign_channel="${SETUP_FOREIGN_CHANNEL:-#weaveftpd-foreign}"
+        archive_channel="${SETUP_ARCHIVE_CHANNEL:-#weaveftpd-archive}"
+        nuke_channel="${SETUP_NUKE_CHANNEL:-#weaveftpd-nuke}"
         main_key="${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}"
         chat_key="${SETUP_BLOWFISH_KEY_CHAT:-${main_key}}"
         spam_key="${SETUP_BLOWFISH_KEY_SPAM:-${main_key}}"
@@ -1568,7 +1568,7 @@ ensure_service_account() {
     if ! prompt_yes_no "Create dedicated service account ${user_name}:${group_name}?" "Y"; then
         say ""
         say "Skipping account creation."
-        say "Make sure ${user_name} exists and can read/write the paths GoFTPd needs."
+        say "Make sure ${user_name} exists and can read/write the paths WeaveFTPd needs."
         return 1
     fi
 
@@ -1594,7 +1594,7 @@ configure_slave_root_permissions() {
 
     say ""
     say "A slave service user must be able to read/write its data roots."
-    say "If you want GoFTPd to manage the files directly as ${run_user},"
+    say "If you want WeaveFTPd to manage the files directly as ${run_user},"
     say "it needs access to the configured slave roots."
 
     roots_csv="$(prompt_default "Slave root paths to grant access to (comma-separated)" "${default_roots}")"
@@ -1662,8 +1662,8 @@ configure_systemd_services() {
         return 0
     fi
 
-    if [ ! -f "${ROOT_DIR}/goftpd" ]; then
-        say "The daemon binary (${ROOT_DIR}/goftpd) does not exist yet."
+    if [ ! -f "${ROOT_DIR}/weaveftpd" ]; then
+        say "The daemon binary (${ROOT_DIR}/weaveftpd) does not exist yet."
         say "Run ./setup.sh build or ./setup.sh install first."
         return 1
     fi
@@ -1673,9 +1673,9 @@ configure_systemd_services() {
     say "that can use sudo. The installer may need to create service users,"
     say "write unit files, and adjust slave-root permissions."
 
-    service_user="$(prompt_default "systemd service user" "${SETUP_SERVICE_USER:-goftpd}")"
-    service_group="$(prompt_default "systemd service group" "${SETUP_SERVICE_GROUP:-goftpd}")"
-    daemon_service_name="$(prompt_default "daemon systemd service name" "goftpd")"
+    service_user="$(prompt_default "systemd service user" "${SETUP_SERVICE_USER:-weaveftpd}")"
+    service_group="$(prompt_default "systemd service group" "${SETUP_SERVICE_GROUP:-weaveftpd}")"
+    daemon_service_name="$(prompt_default "daemon systemd service name" "weaveftpd")"
 
     if ! ensure_service_account "${service_user}" "${service_group}"; then
         say ""
@@ -1694,9 +1694,9 @@ configure_systemd_services() {
 
     write_systemd_unit \
         "${daemon_service_name}" \
-        "GoFTPd daemon" \
+        "WeaveFTPd daemon" \
         "${ROOT_DIR}" \
-        "${ROOT_DIR}/goftpd -config ${ROOT_DIR}/etc/config.yml" \
+        "${ROOT_DIR}/weaveftpd -config ${ROOT_DIR}/etc/config.yml" \
         "${service_user}" \
         "${service_group}"
 
@@ -1715,7 +1715,7 @@ configure_systemd_services() {
         sitebot_service_name="$(prompt_default "sitebot systemd service name" "gositebot")"
         write_systemd_unit \
             "${sitebot_service_name}" \
-            "GoFTPd sitebot" \
+            "WeaveFTPd sitebot" \
             "${ROOT_DIR}/sitebot" \
             "${ROOT_DIR}/sitebot/sitebot -config ${ROOT_DIR}/sitebot/etc/config.yml" \
             "${service_user}" \
@@ -1760,17 +1760,17 @@ save_state_file() {
         local value="$2"
         printf '%s=%q\n' "${key}" "${value}" >> "${STATE_FILE}"
     }
-    write_state_var SETUP_SITE_NAME "${SETUP_SITE_NAME:-GoFTPd}"
-    write_state_var SETUP_SITE_SHORT "${SETUP_SITE_SHORT:-GoFTPd}"
+    write_state_var SETUP_SITE_NAME "${SETUP_SITE_NAME:-WeaveFTPd}"
+    write_state_var SETUP_SITE_SHORT "${SETUP_SITE_SHORT:-WeaveFTPd}"
     write_state_var SETUP_SITE_VERSION "${SETUP_SITE_VERSION:-1.0.6b}"
     write_state_var SETUP_TIMEZONE "${SETUP_TIMEZONE:-Europe/Amsterdam}"
-    write_state_var SETUP_CERT_NAME "${SETUP_CERT_NAME:-GoFTPd}"
+    write_state_var SETUP_CERT_NAME "${SETUP_CERT_NAME:-WeaveFTPd}"
     write_state_var SETUP_GENERATE_CERTS "${SETUP_GENERATE_CERTS:-true}"
     write_state_var SETUP_FIFO_PATH "${SETUP_FIFO_PATH:-${FIFO_PATH_DEFAULT}}"
     write_state_var SETUP_SITEBOT_CONFIG_PATH "${SETUP_SITEBOT_CONFIG_PATH:-${SITEBOT_CONFIG_DEFAULT}}"
     write_state_var SETUP_DAEMON_MODE "${SETUP_DAEMON_MODE:-master}"
-    write_state_var SETUP_SERVICE_USER "${SETUP_SERVICE_USER:-goftpd}"
-    write_state_var SETUP_SERVICE_GROUP "${SETUP_SERVICE_GROUP:-goftpd}"
+    write_state_var SETUP_SERVICE_USER "${SETUP_SERVICE_USER:-weaveftpd}"
+    write_state_var SETUP_SERVICE_GROUP "${SETUP_SERVICE_GROUP:-weaveftpd}"
     write_state_var SETUP_LISTEN_PORT "${SETUP_LISTEN_PORT:-21212}"
     write_state_var SETUP_PUBLIC_IP "${SETUP_PUBLIC_IP:-1.2.3.4}"
     write_state_var SETUP_MASTER_LISTEN_HOST "${SETUP_MASTER_LISTEN_HOST:-0.0.0.0}"
@@ -1791,21 +1791,21 @@ save_state_file() {
     write_state_var SETUP_IRC_SSL "${SETUP_IRC_SSL:-true}"
     write_state_var SETUP_PLUGIN_FTP_HOST "${SETUP_PLUGIN_FTP_HOST:-127.0.0.1}"
     write_state_var SETUP_PLUGIN_FTP_PORT "${SETUP_PLUGIN_FTP_PORT:-21212}"
-    write_state_var SETUP_PLUGIN_FTP_USER "${SETUP_PLUGIN_FTP_USER:-goftpd}"
-    write_state_var SETUP_PLUGIN_FTP_PASSWORD "${SETUP_PLUGIN_FTP_PASSWORD:-goftpd}"
+    write_state_var SETUP_PLUGIN_FTP_USER "${SETUP_PLUGIN_FTP_USER:-weaveftpd}"
+    write_state_var SETUP_PLUGIN_FTP_PASSWORD "${SETUP_PLUGIN_FTP_PASSWORD:-weaveftpd}"
     write_state_var SETUP_PLUGIN_FTP_TLS "${SETUP_PLUGIN_FTP_TLS:-true}"
     write_state_var SETUP_PLUGIN_FTP_INSECURE "${SETUP_PLUGIN_FTP_INSECURE:-true}"
     write_state_var SETUP_BNC_TARGET_HOST "${SETUP_BNC_TARGET_HOST:-127.0.0.1}"
     write_state_var SETUP_BNC_TARGET_PORT "${SETUP_BNC_TARGET_PORT:-21212}"
-    write_state_var SETUP_BNC_TARGET_NAME "${SETUP_BNC_TARGET_NAME:-${SETUP_SITE_NAME:-GoFTPd}}"
+    write_state_var SETUP_BNC_TARGET_NAME "${SETUP_BNC_TARGET_NAME:-${SETUP_SITE_NAME:-WeaveFTPd}}"
     write_state_var SETUP_RULES_FILE "${SETUP_RULES_FILE:-}"
-    write_state_var SETUP_MAIN_CHANNEL "${SETUP_MAIN_CHANNEL:-#goftpd}"
-    write_state_var SETUP_CHAT_CHANNEL "${SETUP_CHAT_CHANNEL:-#goftpd-chat}"
-    write_state_var SETUP_SPAM_CHANNEL "${SETUP_SPAM_CHANNEL:-#goftpd-spam}"
-    write_state_var SETUP_STAFF_CHANNEL "${SETUP_STAFF_CHANNEL:-#goftpd-staff}"
-    write_state_var SETUP_FOREIGN_CHANNEL "${SETUP_FOREIGN_CHANNEL:-#goftpd-foreign}"
-    write_state_var SETUP_ARCHIVE_CHANNEL "${SETUP_ARCHIVE_CHANNEL:-#goftpd-archive}"
-    write_state_var SETUP_NUKE_CHANNEL "${SETUP_NUKE_CHANNEL:-#goftpd-nuke}"
+    write_state_var SETUP_MAIN_CHANNEL "${SETUP_MAIN_CHANNEL:-#weaveftpd}"
+    write_state_var SETUP_CHAT_CHANNEL "${SETUP_CHAT_CHANNEL:-#weaveftpd-chat}"
+    write_state_var SETUP_SPAM_CHANNEL "${SETUP_SPAM_CHANNEL:-#weaveftpd-spam}"
+    write_state_var SETUP_STAFF_CHANNEL "${SETUP_STAFF_CHANNEL:-#weaveftpd-staff}"
+    write_state_var SETUP_FOREIGN_CHANNEL "${SETUP_FOREIGN_CHANNEL:-#weaveftpd-foreign}"
+    write_state_var SETUP_ARCHIVE_CHANNEL "${SETUP_ARCHIVE_CHANNEL:-#weaveftpd-archive}"
+    write_state_var SETUP_NUKE_CHANNEL "${SETUP_NUKE_CHANNEL:-#weaveftpd-nuke}"
     write_state_var SETUP_BLOWFISH_KEY_MAIN "${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}"
     write_state_var SETUP_BLOWFISH_KEY_CHAT "${SETUP_BLOWFISH_KEY_CHAT:-${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}}"
     write_state_var SETUP_BLOWFISH_KEY_SPAM "${SETUP_BLOWFISH_KEY_SPAM:-${SETUP_BLOWFISH_KEY_MAIN:-YourBlowfishKeyHere123456}}"
@@ -1921,21 +1921,21 @@ build_daemon_binary() {
 
     say ""
     say "Step 3: Build daemon..."
-    if [ ! -d "${ROOT_DIR}/cmd/goftpd" ]; then
-        say "Error: ${ROOT_DIR}/cmd/goftpd not found."
+    if [ ! -d "${ROOT_DIR}/cmd/weaveftpd" ]; then
+        say "Error: ${ROOT_DIR}/cmd/weaveftpd not found."
         exit 1
     fi
 
-    go build -o "${ROOT_DIR}/goftpd" ./cmd/goftpd
+    go build -o "${ROOT_DIR}/weaveftpd" ./cmd/weaveftpd
 
-    if [ ! -f "${ROOT_DIR}/goftpd" ]; then
+    if [ ! -f "${ROOT_DIR}/weaveftpd" ]; then
         say "Daemon build failed."
         exit 1
     fi
 
     say ""
     say "Daemon build complete:"
-    ls -lh "${ROOT_DIR}/goftpd"
+    ls -lh "${ROOT_DIR}/weaveftpd"
     say ""
     say "Daemon config:"
     say "  ${daemon_config}"
@@ -1944,14 +1944,14 @@ build_daemon_binary() {
     say "  ${fifo_path}"
     say ""
     say "Run:"
-    say "  ./goftpd"
+    say "  ./weaveftpd"
 }
 
 build_sitebot_binary() {
     local sitebot_dir fifo_path expected_module current_module main_file main_dir
     sitebot_dir="${ROOT_DIR}/sitebot"
     fifo_path="${SETUP_FIFO_PATH:-${FIFO_PATH_DEFAULT}}"
-    expected_module="goftpd/sitebot"
+    expected_module="weaveftpd/sitebot"
 
     say ""
     say_color "${C_YELLOW}${C_BOLD}" "Building sitebot"
@@ -2251,10 +2251,10 @@ import_glftpd_accounts() {
     fi
 
     say ""
-    say "Current GoFTPd account files will be backed up to:"
+    say "Current WeaveFTPd account files will be backed up to:"
     say "  ${import_backup}"
     say ""
-    if ! prompt_yes_no "Import staged glFTPD accounts into GoFTPd now?" "Y"; then
+    if ! prompt_yes_no "Import staged glFTPD accounts into WeaveFTPd now?" "Y"; then
         say "Import cancelled. Staged copy kept at ${staged_root}."
         exit 0
     fi
@@ -2332,7 +2332,7 @@ import_glftpd_accounts() {
     say "glFTPD import complete."
     say "Staged source copy:"
     say "  ${staged_root}"
-    say "Backup of prior GoFTPd account files:"
+    say "Backup of prior WeaveFTPd account files:"
     say "  ${import_backup}"
     say "Import log:"
     say "  ${import_log}"
@@ -2343,7 +2343,7 @@ import_glftpd_accounts() {
     say "  ${target_users_dir}/"
     say "  ${target_groups_dir}/"
     say ""
-    say "Legacy glFTPD password hashes are now accepted by GoFTPd."
+    say "Legacy glFTPD password hashes are now accepted by WeaveFTPd."
 }
 
 import_drftpd_v3_accounts() {
@@ -2381,10 +2381,10 @@ import_drftpd_v3_accounts() {
     cp -a "${stage_userdata}" "${staged_root}/userdata"
 
     say ""
-    say "Current GoFTPd account files will be backed up to:"
+    say "Current WeaveFTPd account files will be backed up to:"
     say "  ${import_backup}"
     say ""
-    if ! prompt_yes_no "Import staged DrFTPD v3 accounts into GoFTPd now?" "Y"; then
+    if ! prompt_yes_no "Import staged DrFTPD v3 accounts into WeaveFTPd now?" "Y"; then
         say "Import cancelled. Staged copy kept at ${staged_root}/userdata."
         exit 0
     fi
@@ -2441,7 +2441,7 @@ import_drftpd_v3_accounts() {
     say "  ${staged_root}/userdata"
     say "Generated import files:"
     say "  ${generated_root}"
-    say "Backup of prior GoFTPd account files:"
+    say "Backup of prior WeaveFTPd account files:"
     say "  ${import_backup}"
     say "Import log:"
     say "  ${import_log}"
@@ -2491,10 +2491,10 @@ import_drftpd_v4_accounts() {
     cp -a "${stage_userdata}" "${staged_root}/userdata"
 
     say ""
-    say "Current GoFTPd account files will be backed up to:"
+    say "Current WeaveFTPd account files will be backed up to:"
     say "  ${import_backup}"
     say ""
-    if ! prompt_yes_no "Import staged DrFTPD v4 accounts into GoFTPd now?" "Y"; then
+    if ! prompt_yes_no "Import staged DrFTPD v4 accounts into WeaveFTPd now?" "Y"; then
         say "Import cancelled. Staged copy kept at ${staged_root}/userdata."
         exit 0
     fi
@@ -2551,7 +2551,7 @@ import_drftpd_v4_accounts() {
     say "  ${staged_root}/userdata"
     say "Generated import files:"
     say "  ${generated_root}"
-    say "Backup of prior GoFTPd account files:"
+    say "Backup of prior WeaveFTPd account files:"
     say "  ${import_backup}"
     say "Import log:"
     say "  ${import_log}"
@@ -2567,7 +2567,7 @@ import_drftpd_v4_accounts() {
 
 show_usage() {
     show_banner
-    say_color "${C_BOLD}" "GoFTPd setup"
+    say_color "${C_BOLD}" "WeaveFTPd setup"
     say ""
     say_color "${C_YELLOW}" "Usage:"
     say "  ./setup.sh install   Run guided install/config setup"
@@ -2587,9 +2587,9 @@ show_usage() {
     say "  - 'build' just runs the daemon and sitebot build scripts."
     say "  - 'update' runs git pull --ff-only from the repository root."
     say "  - 'certs' writes CA, server, and slave certs into ./etc/certs."
-    say "  - 'import-glftpd' stages a copy of /glftpd-style account files, backs up current GoFTPd account data, then converts passwd/group/user/group files."
-    say "  - 'import-drftpd3' stages userdata/users/javabeans, derives groups, merges into GoFTPd, and requires siteop password resets afterward."
-    say "  - 'import-drftpd4' stages DrFTPD v4 users/groups JSON, preserves supported password formats when possible, and merges into GoFTPd."
+    say "  - 'import-glftpd' stages a copy of /glftpd-style account files, backs up current WeaveFTPd account data, then converts passwd/group/user/group files."
+    say "  - 'import-drftpd3' stages userdata/users/javabeans, derives groups, merges into WeaveFTPd, and requires siteop password resets afterward."
+    say "  - 'import-drftpd4' stages DrFTPD v4 users/groups JSON, preserves supported password formats when possible, and merges into WeaveFTPd."
     say "  - 'systemd' installs Debian/Ubuntu-friendly service files for the daemon and optional sitebot."
     say "  - 'clean' keeps ${STATE_FILE} but backs up generated configs, FIFO, and certs."
 }
@@ -2618,7 +2618,7 @@ case "${1:-help}" in
         ;;
     certs|--certs)
         ensure_script_permissions
-        generate_tls_certs "${2:-${GOFTPD_CERT_NAME:-GoFTPd}}"
+        generate_tls_certs "${2:-${WEAVEFTPD_CERT_NAME:-WeaveFTPd}}"
         exit 0
         ;;
     build|--build)
@@ -2693,5 +2693,5 @@ offer_systemd_setup
 
 say ""
 say "Setup complete."
-say "If a plugin config is missing later, GoFTPd and the sitebot will now"
+say "If a plugin config is missing later, WeaveFTPd and the sitebot will now"
 say "tell you which config_file was checked and suggest copying the .dist file."

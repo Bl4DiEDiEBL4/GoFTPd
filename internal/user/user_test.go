@@ -189,7 +189,7 @@ func TestSaveRefusesToStripAccountFields(t *testing.T) {
 	}
 	userPath := filepath.Join("etc", "users", "Finity")
 	input := strings.Join([]string{
-		"USER Added by goftpd",
+		"USER Added by weaveftpd",
 		"GENERAL 0,120 -1 0 0",
 		"LOGINS 16 0 6 10",
 		"TIMEFRAME 0 0",
@@ -197,7 +197,7 @@ func TestSaveRefusesToStripAccountFields(t *testing.T) {
 		"TAGLINE No Tagline Set",
 		"HOMEDIR /site",
 		"DIR /",
-		"ADDED 1712306777 goftpd",
+		"ADDED 1712306777 weaveftpd",
 		"EXPIRES 0",
 		"CREDITS 245752440015 0",
 		"RATIO 3 -1",
@@ -257,7 +257,7 @@ func TestSaveRefusesToReduceAllTimeStats(t *testing.T) {
 	}
 	userPath := filepath.Join("etc", "users", "Finity")
 	input := strings.Join([]string{
-		"USER Added by goftpd",
+		"USER Added by weaveftpd",
 		"GENERAL 0,120 -1 0 0",
 		"LOGINS 16 0 6 10",
 		"TIMEFRAME 0 0",
@@ -265,7 +265,7 @@ func TestSaveRefusesToReduceAllTimeStats(t *testing.T) {
 		"TAGLINE No Tagline Set",
 		"HOMEDIR /site",
 		"DIR /",
-		"ADDED 1712306777 goftpd",
+		"ADDED 1712306777 weaveftpd",
 		"EXPIRES 0",
 		"CREDITS 245752440015 0",
 		"RATIO 3 -1",
@@ -367,7 +367,7 @@ func TestUpdateStatsWithCreditsMergesParallelSessions(t *testing.T) {
 		t.Fatalf("WriteFile(passwd) error = %v", err)
 	}
 	input := strings.Join([]string{
-		"USER Added by goftpd",
+		"USER Added by weaveftpd",
 		"GENERAL 0,120 -1 0 0",
 		"LOGINS 16 0 6 10",
 		"TIMEFRAME 0 0",
@@ -375,7 +375,7 @@ func TestUpdateStatsWithCreditsMergesParallelSessions(t *testing.T) {
 		"TAGLINE No Tagline Set",
 		"HOMEDIR /site",
 		"DIR /",
-		"ADDED 1712306777 goftpd",
+		"ADDED 1712306777 weaveftpd",
 		"EXPIRES 0",
 		"CREDITS 0",
 		"RATIO 3",
@@ -452,7 +452,7 @@ func TestUpdateDownloadStatsWithCreditsMergesParallelSessions(t *testing.T) {
 		t.Fatalf("WriteFile(passwd) error = %v", err)
 	}
 	input := strings.Join([]string{
-		"USER Added by goftpd",
+		"USER Added by weaveftpd",
 		"GENERAL 0,120 -1 0 0",
 		"LOGINS 16 0 6 10",
 		"TIMEFRAME 0 0",
@@ -460,7 +460,7 @@ func TestUpdateDownloadStatsWithCreditsMergesParallelSessions(t *testing.T) {
 		"TAGLINE No Tagline Set",
 		"HOMEDIR /site",
 		"DIR /",
-		"ADDED 1712306777 goftpd",
+		"ADDED 1712306777 weaveftpd",
 		"EXPIRES 0",
 		"CREDITS 1000",
 		"RATIO 3",

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"goftpd/internal/plugin"
+	"weaveftpd/internal/plugin"
 )
 
 func TestLookupSQLiteCustomFields(t *testing.T) {

@@ -97,7 +97,7 @@ func RenderCompactRaceStats(w io.Writer, users []RaceUserStat, groups []RaceGrou
 		leader = clean(users[0].Name, 20)
 	}
 
-	fmt.Fprintf(w, ".-== GoFTPd Race ==------------------------------.\r\n")
+	fmt.Fprintf(w, ".-== WeaveFTPd Race ==------------------------------.\r\n")
 	fmt.Fprintf(w, "| #1 %-20s %4dF %7s %11s %3d%% |\r\n",
 		leader,
 		present,
@@ -165,7 +165,7 @@ func RenderRaceHeader(w io.Writer, version string) {
 
 func renderRaceTitle(w io.Writer, version string, width int) {
 	textCenter(w, "R A C E S T A T S", width)
-	textRight(w, fmt.Sprintf("GoFTPd v%s ", version), width)
+	textRight(w, fmt.Sprintf("WeaveFTPd v%s ", version), width)
 }
 
 func textCenter(w io.Writer, s string, width int) {

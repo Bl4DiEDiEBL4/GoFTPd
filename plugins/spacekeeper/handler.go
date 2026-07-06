@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/internal/plugin"
+	"weaveftpd/internal/plugin"
 )
 
 type rule struct {

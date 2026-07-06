@@ -1,6 +1,6 @@
 # Quota Plugin
 
-The `Quota` sitebot plugin tracks trial and quota users from GoFTPd user files
+The `Quota` sitebot plugin tracks trial and quota users from WeaveFTPd user files
 and lets staff manage them from IRC.
 
 It is inspired by the old fin-bot workflow, but without the old `!df` / free
@@ -8,7 +8,7 @@ space command set.
 
 ## What It Does
 
-- Reads GoFTPd user files from `etc/users`
+- Reads WeaveFTPd user files from `etc/users`
 - Tracks users in one of three states:
   - `trial`
   - `quota`
@@ -97,13 +97,13 @@ status_commands: ["quota"]
 staff_command: "quotactl"
 
 reply_target: "channel"
-channels: ["#goftpd-chat"]
-staff_channels: ["#goftpd-staff"]
+channels: ["#weaveftpd-chat"]
+staff_channels: ["#weaveftpd-staff"]
 staff_hosts: []
 staff_users: []
 
 included_groups: []
-skip_users: ["default.user", "glftpd", "goftpd", "NUKEBOT"]
+skip_users: ["default.user", "glftpd", "weaveftpd", "NUKEBOT"]
 
 scan_interval_seconds: 300
 
@@ -142,7 +142,7 @@ plugins:
 
 The plugin uses flag `6` as the disabled marker.
 
-GoFTPd now treats that as a real disabled account and rejects login with:
+WeaveFTPd now treats that as a real disabled account and rejects login with:
 
 - `530 Account disabled.`
 

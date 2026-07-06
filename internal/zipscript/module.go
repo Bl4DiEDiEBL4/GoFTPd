@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"goftpd/internal/user"
+	"weaveftpd/internal/user"
 )
 
 type MediaInfoProvider interface {

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"goftpd/internal/versionfile"
 	"gopkg.in/yaml.v3"
+	"weaveftpd/internal/versionfile"
 )
 
 type Config struct {

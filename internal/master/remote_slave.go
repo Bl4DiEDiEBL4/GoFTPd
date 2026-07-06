@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"goftpd/internal/protocol"
+	"weaveftpd/internal/protocol"
 )
 
 const (

@@ -5,11 +5,10 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/internal/protocol"
+	"weaveftpd/internal/protocol"
 )
 
 // RemoteTransfer represents a transfer happening on a slave, tracked by the master.
-// 
 type RemoteTransfer struct {
 	connectInfo protocol.ConnectInfo
 	slave       *RemoteSlave

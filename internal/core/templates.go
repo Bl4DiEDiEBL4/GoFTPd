@@ -21,7 +21,7 @@ func LoadTemplate(templatePath string, vars map[string]string, config *Config) (
 	}
 
 	content := string(data)
-	
+
 	// Replace format specs like %2n, %31u, %9.1m, etc.
 	// Pattern: %[flags][width][.precision]varname
 	// Then format the raw variable value according to the spec
@@ -32,17 +32,17 @@ func LoadTemplate(templatePath string, vars map[string]string, config *Config) (
 		if len(parts) != 5 {
 			return match // couldn't parse, keep original
 		}
-		
-		flags := parts[1]      // "-" for left-align
-		width := parts[2]      // e.g., "31", "9"
-		precision := parts[3]  // e.g., "1" from %.1f
-		varname := parts[4]    // e.g., "n", "u", "m"
-		
+
+		flags := parts[1]     // "-" for left-align
+		width := parts[2]     // e.g., "31", "9"
+		precision := parts[3] // e.g., "1" from %.1f
+		varname := parts[4]   // e.g., "n", "u", "m"
+
 		rawValue, ok := vars[varname]
 		if !ok {
 			return match // variable not found
 		}
-		
+
 		// Try to format the value
 		// First try to parse as float for decimal formatting
 		if precision != "" {
@@ -55,7 +55,7 @@ func LoadTemplate(templatePath string, vars map[string]string, config *Config) (
 				return fmt.Sprintf("%*.*f", w, prec, f)
 			}
 		}
-		
+
 		// Otherwise format as string
 		if width != "" {
 			w, _ := strconv.Atoi(width)
@@ -64,7 +64,7 @@ func LoadTemplate(templatePath string, vars map[string]string, config *Config) (
 			}
 			return fmt.Sprintf("%*s", w, rawValue)
 		}
-		
+
 		// No formatting
 		return rawValue
 	})

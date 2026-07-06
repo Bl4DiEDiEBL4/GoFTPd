@@ -16,11 +16,11 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/internal/core"
-	"goftpd/internal/metrics"
-	"goftpd/internal/netutil"
-	"goftpd/internal/plugin"
-	"goftpd/internal/protocol"
+	"weaveftpd/internal/core"
+	"weaveftpd/internal/metrics"
+	"weaveftpd/internal/netutil"
+	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/protocol"
 )
 
 // Bridge implements core.MasterBridge by wrapping a SlaveManager.
@@ -35,7 +35,6 @@ type Bridge struct {
 	liveTransferStatsCache []core.LiveTransferStat
 	liveTransferStatsAt    time.Time
 	liveTransferStatsMu    sync.Mutex
-	transferSpeedPolicy    func(username, primaryGroup, transferPath, direction string) (int64, int64, int64)
 
 	pendingUploads sync.Map          // clean virtual path -> pendingUpload, visible to FTP listings only
 	uploadRecords  chan uploadRecord // async race-DB upload writes, off the 226 path
@@ -127,20 +126,6 @@ func NewBridge(sm *SlaveManager) *Bridge {
 	return b
 }
 
-func (b *Bridge) SetTransferSpeedPolicy(fn func(username, primaryGroup, transferPath, direction string) (int64, int64, int64)) {
-	if b == nil {
-		return
-	}
-	b.transferSpeedPolicy = fn
-}
-
-func (b *Bridge) transferSpeedLimits(username, primaryGroup, transferPath, direction string) (int64, int64, int64) {
-	if b == nil || b.transferSpeedPolicy == nil {
-		return 0, 0, 0
-	}
-	return b.transferSpeedPolicy(username, primaryGroup, transferPath, direction)
-}
-
 func (b *Bridge) StartRemergeJobs(slaveName string) (int, []string) {
 	return b.sm.StartRemergeJobs(slaveName)
 }
@@ -178,76 +163,106 @@ func (b *Bridge) getLiveTransferStats(useCache bool) []core.LiveTransferStat {
 		return nil
 	}
 	if useCache {
-		b.cacheMu.Lock()
-		if !b.liveTransferStatsAt.IsZero() && time.Since(b.liveTransferStatsAt) < liveTransferStatsCacheTTL {
-			cached := append([]core.LiveTransferStat(nil), b.liveTransferStatsCache...)
-			b.cacheMu.Unlock()
+		if cached, ok := b.cachedLiveTransferStats(liveTransferStatsCacheTTL); ok {
 			return cached
 		}
-		b.cacheMu.Unlock()
+		if !b.liveTransferStatsMu.TryLock() {
+			if cached, ok := b.cachedLiveTransferStats(0); ok {
+				return cached
+			}
+			b.liveTransferStatsMu.Lock()
+		}
+	} else {
+		b.liveTransferStatsMu.Lock()
 	}
-
-	b.liveTransferStatsMu.Lock()
 	defer b.liveTransferStatsMu.Unlock()
 
 	if useCache {
-		b.cacheMu.Lock()
-		if !b.liveTransferStatsAt.IsZero() && time.Since(b.liveTransferStatsAt) < liveTransferStatsCacheTTL {
-			cached := append([]core.LiveTransferStat(nil), b.liveTransferStatsCache...)
-			b.cacheMu.Unlock()
+		if cached, ok := b.cachedLiveTransferStats(liveTransferStatsCacheTTL); ok {
 			return cached
 		}
-		b.cacheMu.Unlock()
 	}
 
-	var out []core.LiveTransferStat
-	for _, slave := range b.sm.GetAllSlaves() {
+	slaves := b.sm.GetAllSlaves()
+	type result struct {
+		stats []core.LiveTransferStat
+	}
+	results := make(chan result, len(slaves))
+	var wg sync.WaitGroup
+	for _, slave := range slaves {
 		if slave == nil || !slave.IsOnline() {
 			continue
 		}
-		idx, err := IssueTransferStats(slave)
-		if err != nil {
-			continue
-		}
-		resp, err := slave.FetchResponse(idx, 5*time.Second)
-		if err != nil {
-			continue
-		}
-		statsResp, ok := resp.(*protocol.AsyncResponseTransferStats)
-		if !ok {
-			continue
-		}
-		for _, stat := range statsResp.Stats {
-			direction := ""
-			switch stat.Direction {
-			case 'R':
-				direction = "upload"
-			case 'S':
-				direction = "download"
+		wg.Add(1)
+		go func(slave *RemoteSlave) {
+			defer wg.Done()
+			idx, err := IssueTransferStats(slave)
+			if err != nil {
+				return
 			}
-			if direction == "" {
-				continue
+			resp, err := slave.FetchResponse(idx, 5*time.Second)
+			if err != nil {
+				return
 			}
-			var startedAt time.Time
-			if stat.StartedUnixMs > 0 {
-				startedAt = time.UnixMilli(stat.StartedUnixMs)
+			statsResp, ok := resp.(*protocol.AsyncResponseTransferStats)
+			if !ok {
+				return
 			}
-			out = append(out, core.LiveTransferStat{
-				SlaveName:     slave.Name(),
-				TransferIndex: stat.TransferIndex,
-				Direction:     direction,
-				Path:          stat.Path,
-				StartedAt:     startedAt,
-				Transferred:   stat.Transferred,
-				SpeedBytes:    float64(stat.SpeedBytes),
-			})
-		}
+			out := make([]core.LiveTransferStat, 0, len(statsResp.Stats))
+			for _, stat := range statsResp.Stats {
+				direction := ""
+				switch stat.Direction {
+				case 'R':
+					direction = "upload"
+				case 'S':
+					direction = "download"
+				}
+				if direction == "" {
+					continue
+				}
+				var startedAt time.Time
+				if stat.StartedUnixMs > 0 {
+					startedAt = time.UnixMilli(stat.StartedUnixMs)
+				}
+				out = append(out, core.LiveTransferStat{
+					SlaveName:     slave.Name(),
+					TransferIndex: stat.TransferIndex,
+					Direction:     direction,
+					Path:          stat.Path,
+					StartedAt:     startedAt,
+					Transferred:   stat.Transferred,
+					SpeedBytes:    float64(stat.SpeedBytes),
+				})
+			}
+			if len(out) > 0 {
+				results <- result{stats: out}
+			}
+		}(slave)
+	}
+	wg.Wait()
+	close(results)
+
+	var out []core.LiveTransferStat
+	for res := range results {
+		out = append(out, res.stats...)
 	}
 	b.cacheMu.Lock()
 	b.liveTransferStatsCache = append([]core.LiveTransferStat(nil), out...)
 	b.liveTransferStatsAt = time.Now()
 	b.cacheMu.Unlock()
 	return out
+}
+
+func (b *Bridge) cachedLiveTransferStats(maxAge time.Duration) ([]core.LiveTransferStat, bool) {
+	b.cacheMu.Lock()
+	defer b.cacheMu.Unlock()
+	if b.liveTransferStatsAt.IsZero() {
+		return nil, false
+	}
+	if maxAge > 0 && time.Since(b.liveTransferStatsAt) >= maxAge {
+		return nil, false
+	}
+	return append([]core.LiveTransferStat(nil), b.liveTransferStatsCache...), true
 }
 
 func (b *Bridge) GetAggregateDiskUsage() (freeBytes int64, totalBytes int64, ok bool) {
@@ -475,11 +490,11 @@ func (b *Bridge) pendingUploadEntriesForDir(dirPath string) []core.MasterFileEnt
 func pendingUploadEntry(pu pendingUpload) core.MasterFileEntry {
 	owner := pu.owner
 	if owner == "" {
-		owner = "GoFTPd"
+		owner = "WeaveFTPd"
 	}
 	group := pu.group
 	if group == "" {
-		group = "GoFTPd"
+		group = "WeaveFTPd"
 	}
 	modTime := pu.started.Unix()
 	if modTime <= 0 {
@@ -664,7 +679,7 @@ func nukeVirtualEntriesFromHistory(entry *core.NukeHistoryEntry) []core.MasterFi
 	}
 	owner := strings.TrimSpace(entry.NukedBy)
 	if owner == "" {
-		owner = "goftpd"
+		owner = "weaveftpd"
 	}
 	group := "NUKED"
 	multiplier := entry.Multiplier
@@ -811,9 +826,8 @@ func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group s
 	configureBridgeDataSocket(slaveConn)
 
 	// Tell slave to receive the file
-	minSpeed, maxSpeed, graceSeconds := b.transferSpeedLimits(owner, group, filePath, "upload")
 	recvIdx, err := IssueReceive(slave, filePath, transferType, position, "master",
-		transferResp.Info.TransferIndex, minSpeed, maxSpeed, graceSeconds)
+		transferResp.Info.TransferIndex)
 	if err != nil {
 		slaveConn.Close()
 		return 0, 0, fmt.Errorf("issue receive: %w", err)
@@ -990,9 +1004,8 @@ func (b *Bridge) DownloadFile(filePath string, clientData net.Conn, username, pr
 	configureBridgeDataSocket(slaveConn)
 
 	// Tell slave to send the file
-	minSpeed, maxSpeed, graceSeconds := b.transferSpeedLimits(username, primaryGroup, filePath, "download")
 	sendIdx, err := IssueSend(slave, filePath, transferType, position, "master",
-		transferResp.Info.TransferIndex, minSpeed, maxSpeed, graceSeconds)
+		transferResp.Info.TransferIndex)
 	if err != nil {
 		slaveConn.Close()
 		return 0, fmt.Errorf("issue send: %w", err)
@@ -1199,8 +1212,8 @@ func (b *Bridge) ensureVFSParents(filePath, slaveName string) {
 			Mode:         0755,
 			LastModified: now,
 			SlaveName:    slaveName,
-			Owner:        "GoFTPd",
-			Group:        "GoFTPd",
+			Owner:        "WeaveFTPd",
+			Group:        "WeaveFTPd",
 			Seen:         true,
 		})
 	}
@@ -1527,13 +1540,13 @@ func (b *Bridge) copyFileBetweenSlaves(sourceSlave, destSlave *RemoteSlave, from
 		return fmt.Errorf("unexpected destination connect response for %s: %T", toPath, connectResp)
 	}
 
-	sendIdx, err := IssueSend(sourceSlave, fromPath, 'I', 0, remoteAddr, transferResp.Info.TransferIndex, 0, 0, 0)
+	sendIdx, err := IssueSend(sourceSlave, fromPath, 'I', 0, remoteAddr, transferResp.Info.TransferIndex)
 	if err != nil {
 		IssueAbort(sourceSlave, transferResp.Info.TransferIndex, "archive send setup failed")
 		IssueAbort(destSlave, destTransferResp.Info.TransferIndex, "archive send setup failed")
 		return fmt.Errorf("source send failed for %s: %w", fromPath, err)
 	}
-	recvIdx, err := IssueReceive(destSlave, toPath, 'I', 0, remoteAddr, destTransferResp.Info.TransferIndex, 0, 0, 0)
+	recvIdx, err := IssueReceive(destSlave, toPath, 'I', 0, remoteAddr, destTransferResp.Info.TransferIndex)
 	if err != nil {
 		IssueAbort(sourceSlave, transferResp.Info.TransferIndex, "archive receive setup failed")
 		IssueAbort(destSlave, destTransferResp.Info.TransferIndex, "archive receive setup failed")
@@ -2251,8 +2264,8 @@ func (v *VFSAdapter) RemoveAll(filePath string) error {
 
 func (v *VFSAdapter) MkdirAll(dirPath string, perm os.FileMode) error {
 	parentDir := filepath.Dir(dirPath)
-	owner := "GoFTPd"
-	group := "GoFTPd"
+	owner := "WeaveFTPd"
+	group := "WeaveFTPd"
 
 	// Inherit owner/group from the parent directory (e.g., the Release folder)
 	parentFile := v.b.sm.GetVFS().GetFile(parentDir)
@@ -2710,8 +2723,7 @@ func (b *Bridge) SlaveReceivePassthrough(filePath string, transferIdx int32, sla
 	slave.IncActiveTransfers()
 	defer slave.DecActiveTransfers()
 
-	minSpeed, maxSpeed, graceSeconds := b.transferSpeedLimits(owner, group, filePath, "upload")
-	recvIdx, err := IssueReceive(slave, filePath, transferType, position, "master", transferIdx, minSpeed, maxSpeed, graceSeconds)
+	recvIdx, err := IssueReceive(slave, filePath, transferType, position, "master", transferIdx)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("issue receive: %w", err)
 	}
@@ -2774,8 +2786,7 @@ func (b *Bridge) SlaveSendPassthrough(filePath string, transferIdx int32, slaveN
 	slave.IncActiveTransfers()
 	defer slave.DecActiveTransfers()
 
-	minSpeed, maxSpeed, graceSeconds := b.transferSpeedLimits(username, primaryGroup, filePath, "download")
-	sendIdx, err := IssueSend(slave, filePath, transferType, position, "master", transferIdx, minSpeed, maxSpeed, graceSeconds)
+	sendIdx, err := IssueSend(slave, filePath, transferType, position, "master", transferIdx)
 	if err != nil {
 		return 0, 0, fmt.Errorf("issue send: %w", err)
 	}
@@ -2848,9 +2859,8 @@ func (b *Bridge) SlaveConnectAndReceive(filePath, remoteAddr, owner, group strin
 	}
 
 	// Tell slave to receive the file on this connection
-	minSpeed, maxSpeed, graceSeconds := b.transferSpeedLimits(owner, group, filePath, "upload")
 	recvIdx, err := IssueReceive(slave, filePath, transferType, position, remoteAddr,
-		transferResp.Info.TransferIndex, minSpeed, maxSpeed, graceSeconds)
+		transferResp.Info.TransferIndex)
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("issue receive: %w", err)
 	}
@@ -2941,8 +2951,7 @@ func (b *Bridge) SlaveConnectAndSend(filePath, remoteAddr, username, primaryGrou
 		onReady(slave.Name(), transferResp.Info.TransferIndex)
 	}
 
-	minSpeed, maxSpeed, graceSeconds := b.transferSpeedLimits(username, primaryGroup, filePath, "download")
-	sendIdx, err := IssueSend(slave, filePath, transferType, position, remoteAddr, transferResp.Info.TransferIndex, minSpeed, maxSpeed, graceSeconds)
+	sendIdx, err := IssueSend(slave, filePath, transferType, position, remoteAddr, transferResp.Info.TransferIndex)
 	if err != nil {
 		IssueAbort(slave, transferResp.Info.TransferIndex, "download send setup failed")
 		return 0, 0, fmt.Errorf("issue send: %w", err)
