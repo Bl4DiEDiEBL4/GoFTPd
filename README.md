@@ -640,11 +640,13 @@ sidecar file is not used either; the request list also lives in VFS metadata.
 
 The slowkick plugin watches live uploads and downloads and only acts after a
 transfer stays below the configured speed floor for the full verify window.
-When it fires, the master tells the slave to abort the transfer first and then
-disconnects the FTP session, so partial uploads are cleaned up on the slave
-side instead of being left behind as junk. Upload and download thresholds can
-be tuned independently, and the plugin can temporarily ban the FTP user after
-a slow kick so they cannot immediately reconnect and grab the slot again.
+It never caps or throttles transfer speed. When it fires on a direct slave
+transfer, the master tells the slave to abort that transfer so partial uploads
+are cleaned up on the slave side instead of being left behind as junk. For
+local/proxied transfers it disconnects the FTP session. Upload and download
+thresholds can be tuned independently, and the plugin can temporarily ban the
+FTP user after a slow kick so they cannot immediately reconnect and grab the
+slot again.
 
 ### Pretime
 

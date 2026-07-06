@@ -163,7 +163,7 @@ func IssueConnect(rs *RemoteSlave, ip string, port int, encrypted bool, sslClien
 
 // IssueReceive tells the slave to receive (upload) a file from the FTP client.
 // ().
-func IssueReceive(rs *RemoteSlave, path string, transferType byte, position int64, inetAddress string, transferIndex int32, minSpeed, maxSpeed, graceSeconds int64) (string, error) {
+func IssueReceive(rs *RemoteSlave, path string, transferType byte, position int64, inetAddress string, transferIndex int32) (string, error) {
 	index, err := rs.FetchIndex()
 	if err != nil {
 		return "", err
@@ -177,16 +177,13 @@ func IssueReceive(rs *RemoteSlave, path string, transferType byte, position int6
 			fmt.Sprintf("%d", transferIndex),
 			inetAddress,
 			path,
-			fmt.Sprintf("%d", minSpeed),
-			fmt.Sprintf("%d", maxSpeed),
-			fmt.Sprintf("%d", graceSeconds),
 		},
 	})
 }
 
 // IssueSend tells the slave to send (download) a file to the FTP client.
 // ().
-func IssueSend(rs *RemoteSlave, path string, transferType byte, position int64, inetAddress string, transferIndex int32, minSpeed, maxSpeed, graceSeconds int64) (string, error) {
+func IssueSend(rs *RemoteSlave, path string, transferType byte, position int64, inetAddress string, transferIndex int32) (string, error) {
 	index, err := rs.FetchIndex()
 	if err != nil {
 		return "", err
@@ -200,9 +197,6 @@ func IssueSend(rs *RemoteSlave, path string, transferType byte, position int64, 
 			fmt.Sprintf("%d", transferIndex),
 			inetAddress,
 			path,
-			fmt.Sprintf("%d", minSpeed),
-			fmt.Sprintf("%d", maxSpeed),
-			fmt.Sprintf("%d", graceSeconds),
 		},
 	})
 }

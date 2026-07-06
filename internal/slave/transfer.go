@@ -20,6 +20,40 @@ import (
 	"goftpd/internal/protocol"
 )
 
+var transferBufferPools sync.Map
+
+func getTransferBuffer(size int) *[]byte {
+	if size < minTransferBufferSize {
+		size = defaultTransferBufferSize
+	}
+	poolIface, _ := transferBufferPools.LoadOrStore(size, &sync.Pool{
+		New: func() interface{} {
+			buf := make([]byte, size)
+			return &buf
+		},
+	})
+	return poolIface.(*sync.Pool).Get().(*[]byte)
+}
+
+func putTransferBuffer(bufPtr *[]byte) {
+	if bufPtr == nil || *bufPtr == nil {
+		return
+	}
+	size := cap(*bufPtr)
+	if size <= 0 {
+		return
+	}
+	buf := (*bufPtr)[:size]
+	*bufPtr = buf
+	poolIface, _ := transferBufferPools.LoadOrStore(size, &sync.Pool{
+		New: func() interface{} {
+			b := make([]byte, size)
+			return &b
+		},
+	})
+	poolIface.(*sync.Pool).Put(bufPtr)
+}
+
 const (
 	TransferUnknown    = 'U'
 	TransferReceiving  = 'R' // upload from client to slave
@@ -60,9 +94,6 @@ type Transfer struct {
 	encrypted     bool
 	sslClientMode bool
 	activeAddress string
-	minSpeed      int64
-	maxSpeed      int64
-	minSpeedGrace time.Duration
 	mode          byte
 
 	path        string
@@ -95,17 +126,6 @@ func (t *Transfer) SetActiveAddress(address string) {
 	t.mu.Unlock()
 }
 
-func (t *Transfer) SetSpeedLimits(minSpeed, maxSpeed int64, graceSeconds int64) {
-	t.mu.Lock()
-	t.minSpeed = minSpeed
-	t.maxSpeed = maxSpeed
-	if graceSeconds < 0 {
-		graceSeconds = 0
-	}
-	t.minSpeedGrace = time.Duration(graceSeconds) * time.Second
-	t.mu.Unlock()
-}
-
 func (t *Transfer) SetTransferMode(mode byte) {
 	t.mu.Lock()
 	switch mode {
@@ -121,6 +141,30 @@ func (t *Transfer) SetPath(path string) {
 	t.mu.Lock()
 	t.path = path
 	t.mu.Unlock()
+}
+
+func (t *Transfer) currentConn() net.Conn {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.conn
+}
+
+func (t *Transfer) setConn(conn net.Conn) {
+	t.mu.Lock()
+	t.conn = conn
+	t.mu.Unlock()
+}
+
+func (t *Transfer) currentListener() net.Listener {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.listener
+}
+
+func (t *Transfer) abortSnapshot() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.abortReason
 }
 
 func (t *Transfer) Path() string {
@@ -174,10 +218,11 @@ func (t *Transfer) ReceiveFile(path string, position int64, expectedPeer string)
 		return t.errorStatus(err.Error())
 	}
 
-	if t.conn == nil {
+	conn := t.currentConn()
+	if conn == nil {
 		return t.errorStatus("no connection")
 	}
-	defer t.conn.Close()
+	defer conn.Close()
 
 	// Determine where to write
 	fullPath, err := t.slave.getDirForUpload(path)
@@ -207,7 +252,7 @@ func (t *Transfer) ReceiveFile(path string, position int64, expectedPeer string)
 		return t.errorStatus(fmt.Sprintf("create failed: %v", err))
 	}
 	defer file.Close()
-	if isUnexpectedTransferPeer(expectedPeer, t.conn.RemoteAddr()) {
+	if isUnexpectedTransferPeer(expectedPeer, conn.RemoteAddr()) {
 		cleanupFailedReceive(file, fullPath, position)
 		return t.errorStatus("The IP that connected to the socket was not the one that was expected.")
 	}
@@ -215,41 +260,38 @@ func (t *Transfer) ReceiveFile(path string, position int64, expectedPeer string)
 	t.direction = TransferReceiving
 	t.started = time.Now()
 	t.mu.Unlock()
+	t.slave.registerUpload(t)
+	defer t.slave.unregisterUpload(t)
 
 	// Transfer with CRC32
 	h := crc32.NewIEEE()
 	var out io.Writer = io.MultiWriter(file, h)
-	buf := make([]byte, t.slave.getTransferBufferSize())
+	bufPtr := getTransferBuffer(t.slave.getTransferBufferSize())
+	defer putTransferBuffer(bufPtr)
+	buf := *bufPtr
 	lastStatus := time.Now()
-	firstMinCheck := true
-	lastMinCheck := time.Now()
 	lastProgress := time.Now()
 	nextReadDeadline := time.Now().Add(transferPollTick)
-	_ = t.conn.SetReadDeadline(nextReadDeadline)
+	_ = conn.SetReadDeadline(nextReadDeadline)
 
 	for {
-		if t.abortReason != "" {
+		if reason := t.abortSnapshot(); reason != "" {
 			cleanupFailedReceive(file, fullPath, position)
-			return t.errorStatus("aborted: " + t.abortReason)
+			return t.errorStatus("aborted: " + reason)
 		}
 
-		n, err := t.conn.Read(buf)
+		n, err := conn.Read(buf)
 		if n > 0 {
 			if _, werr := out.Write(buf[:n]); werr != nil {
 				cleanupFailedReceive(file, fullPath, position)
 				return t.errorStatus(fmt.Sprintf("write error: %v", werr))
 			}
 			t.transferred.Add(int64(n))
-			t.applyMaxSpeed()
 			lastProgress = time.Now()
 		}
 		if time.Since(lastStatus) >= transferStatusTick {
 			t.slave.writeStatusObject(&protocol.AsyncResponseTransferStatus{Status: t.currentStatus(false, "")})
 			lastStatus = time.Now()
-		}
-		if err := t.checkMinSpeed(&lastMinCheck, &firstMinCheck); err != nil {
-			cleanupFailedReceive(file, fullPath, position)
-			return t.errorStatus(err.Error())
 		}
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
@@ -261,7 +303,7 @@ func (t *Transfer) ReceiveFile(path string, position int64, expectedPeer string)
 					return t.errorStatus("receive idle timeout: no data from source")
 				}
 				nextReadDeadline = time.Now().Add(transferPollTick)
-				_ = t.conn.SetReadDeadline(nextReadDeadline)
+				_ = conn.SetReadDeadline(nextReadDeadline)
 				continue
 			}
 			if err == io.EOF {
@@ -272,7 +314,7 @@ func (t *Transfer) ReceiveFile(path string, position int64, expectedPeer string)
 		}
 		if time.Until(nextReadDeadline) <= 0 {
 			nextReadDeadline = time.Now().Add(transferPollTick)
-			_ = t.conn.SetReadDeadline(nextReadDeadline)
+			_ = conn.SetReadDeadline(nextReadDeadline)
 		}
 	}
 
@@ -328,11 +370,12 @@ func (t *Transfer) SendFile(path string, position int64, expectedPeer string) pr
 		return t.errorStatus(err.Error())
 	}
 
-	if t.conn == nil {
+	conn := t.currentConn()
+	if conn == nil {
 		return t.errorStatus("no connection")
 	}
-	defer t.conn.Close()
-	if isUnexpectedTransferPeer(expectedPeer, t.conn.RemoteAddr()) {
+	defer conn.Close()
+	if isUnexpectedTransferPeer(expectedPeer, conn.RemoteAddr()) {
 		return t.errorStatus("The IP that connected to the socket was not the one that was expected.")
 	}
 	t.mu.Lock()
@@ -358,37 +401,32 @@ func (t *Transfer) SendFile(path string, position int64, expectedPeer string) pr
 	}
 
 	lastStatus := time.Now()
-	firstMinCheck := true
-	lastMinCheck := time.Now()
 	lastProgress := time.Now()
 	associatedUpload := t.findAssociatedUpload(path)
 
-	// Snapshot transfer settings once to pick the copy strategy. The zero-copy
-	// sendfile(2) fast path is only valid for plaintext, unthrottled downloads:
-	// TLS needs userspace encryption, and a max-speed cap needs per-write
-	// pacing. When eligible, io.CopyN(*net.TCPConn, *os.File) keeps the copy in
-	// the kernel.
-	t.mu.Lock()
-	maxSpeed := t.maxSpeed
-	t.mu.Unlock()
-	useSendfile := !t.encrypted && maxSpeed <= 0
+	// The zero-copy sendfile(2) fast path is valid for plaintext downloads. TLS
+	// needs userspace encryption.
+	useSendfile := !t.encrypted
 
 	chunkSize := int64(t.slave.getTransferBufferSize())
 	var buf []byte
+	var bufPtr *[]byte
 	if !useSendfile {
-		buf = make([]byte, chunkSize)
+		bufPtr = getTransferBuffer(int(chunkSize))
+		defer putTransferBuffer(bufPtr)
+		buf = *bufPtr
 	}
 
 	for {
-		if t.abortReason != "" {
-			return t.errorStatus("aborted: " + t.abortReason)
+		if reason := t.abortSnapshot(); reason != "" {
+			return t.errorStatus("aborted: " + reason)
 		}
 
 		var n int64
 		var err error
 		if useSendfile {
-			_ = t.conn.SetWriteDeadline(time.Now().Add(dataWriteTimeout))
-			n, err = io.CopyN(t.conn, file, chunkSize)
+			_ = conn.SetWriteDeadline(time.Now().Add(dataWriteTimeout))
+			n, err = io.CopyN(conn, file, chunkSize)
 			if n > 0 {
 				t.transferred.Add(n)
 			}
@@ -396,8 +434,8 @@ func (t *Transfer) SendFile(path string, position int64, expectedPeer string) pr
 			var r int
 			r, err = file.Read(buf)
 			if r > 0 {
-				_ = t.conn.SetWriteDeadline(time.Now().Add(dataWriteTimeout))
-				written, werr := t.conn.Write(buf[:r])
+				_ = conn.SetWriteDeadline(time.Now().Add(dataWriteTimeout))
+				written, werr := conn.Write(buf[:r])
 				if werr != nil {
 					return t.errorStatus(fmt.Sprintf("write error: %v", werr))
 				}
@@ -406,7 +444,6 @@ func (t *Transfer) SendFile(path string, position int64, expectedPeer string) pr
 				}
 				n = int64(r)
 				t.transferred.Add(n)
-				t.applyMaxSpeed()
 			}
 		}
 		if n > 0 {
@@ -416,9 +453,6 @@ func (t *Transfer) SendFile(path string, position int64, expectedPeer string) pr
 		if time.Since(lastStatus) >= transferStatusTick {
 			t.slave.writeStatusObject(&protocol.AsyncResponseTransferStatus{Status: t.currentStatus(false, "")})
 			lastStatus = time.Now()
-		}
-		if err := t.checkMinSpeed(&lastMinCheck, &firstMinCheck); err != nil {
-			return t.errorStatus(err.Error())
 		}
 		if err != nil {
 			if err == io.EOF {
@@ -461,24 +495,25 @@ func (t *Transfer) SendFile(path string, position int64, expectedPeer string) pr
 }
 
 func (t *Transfer) acceptPassiveConn() error {
-	if t.conn != nil {
+	if t.currentConn() != nil {
 		return nil
 	}
-	if t.listener == nil {
+	listener := t.currentListener()
+	if listener == nil {
 		return t.connectActive()
 	}
 	timeout := t.setupTimeout()
-	if deadlineListener, ok := t.listener.(interface{ SetDeadline(time.Time) error }); ok {
+	if deadlineListener, ok := listener.(interface{ SetDeadline(time.Time) error }); ok {
 		deadlineListener.SetDeadline(time.Now().Add(timeout))
 	}
-	conn, err := t.listener.Accept()
-	t.listener.Close()
+	conn, err := listener.Accept()
+	listener.Close()
 	if err != nil {
 		return fmt.Errorf("accept failed: %v", err)
 	}
 	t.configureDataSocket(conn)
+	t.setConn(conn)
 	if !t.encrypted {
-		t.conn = conn
 		return nil
 	}
 
@@ -491,7 +526,7 @@ func (t *Transfer) acceptPassiveConn() error {
 			conn.Close()
 			return fmt.Errorf("TLS client handshake failed: %v", err)
 		}
-		t.conn = tlsConn
+		t.setConn(tlsConn)
 		return nil
 	}
 
@@ -505,7 +540,7 @@ func (t *Transfer) acceptPassiveConn() error {
 		conn.Close()
 		return fmt.Errorf("TLS server handshake failed: %v", err)
 	}
-	t.conn = tlsConn
+	t.setConn(tlsConn)
 	return nil
 }
 
@@ -529,9 +564,9 @@ func (t *Transfer) connectActive() error {
 		return fmt.Errorf("connect failed: %v", err)
 	}
 	t.configureDataSocket(conn)
+	t.setConn(conn)
 
 	if !t.encrypted {
-		t.conn = conn
 		return nil
 	}
 
@@ -544,7 +579,7 @@ func (t *Transfer) connectActive() error {
 			conn.Close()
 			return fmt.Errorf("TLS client handshake failed: %v", err)
 		}
-		t.conn = tlsConn
+		t.setConn(tlsConn)
 		return nil
 	}
 
@@ -558,7 +593,7 @@ func (t *Transfer) connectActive() error {
 		conn.Close()
 		return fmt.Errorf("TLS server handshake failed: %v", err)
 	}
-	t.conn = tlsConn
+	t.setConn(tlsConn)
 	return nil
 }
 
@@ -605,12 +640,14 @@ func (t *Transfer) setupTimeout() time.Duration {
 func (t *Transfer) Abort(reason string) {
 	t.mu.Lock()
 	t.abortReason = reason
+	conn := t.conn
+	listener := t.listener
 	t.mu.Unlock()
-	if t.conn != nil {
-		t.conn.Close()
+	if conn != nil {
+		conn.Close()
 	}
-	if t.listener != nil {
-		t.listener.Close()
+	if listener != nil {
+		listener.Close()
 	}
 }
 
@@ -625,95 +662,83 @@ func (t *Transfer) isFinished() bool {
 }
 
 func (t *Transfer) findAssociatedUpload(path string) *Transfer {
-	path = filepath.ToSlash(strings.TrimSpace(path))
-	if path == "" {
-		return nil
-	}
-	var upload *Transfer
-	t.slave.transfers.Range(func(_, value interface{}) bool {
-		other, ok := value.(*Transfer)
-		if !ok || other == nil || other == t {
-			return true
-		}
-		other.mu.Lock()
-		otherPath := filepath.ToSlash(strings.TrimSpace(other.path))
-		otherDir := other.direction
-		otherFinished := !other.finished.IsZero() || other.abortReason != ""
-		other.mu.Unlock()
-		if otherDir == TransferReceiving && !otherFinished && strings.EqualFold(otherPath, path) {
-			upload = other
-			return false
-		}
-		return true
-	})
-	return upload
+	return t.slave.findUploadByPath(path, t)
 }
 
 func (t *Transfer) currentStatus(finished bool, errMsg string) protocol.TransferStatus {
+	t.mu.Lock()
+	started := t.started
+	checksum := t.checksum
+	t.mu.Unlock()
 	elapsed := int64(0)
-	if !t.started.IsZero() {
-		elapsed = time.Since(t.started).Milliseconds()
+	if !started.IsZero() {
+		elapsed = time.Since(started).Milliseconds()
 	}
 	transferred := t.transferred.Load()
 	return protocol.TransferStatus{
 		TransferIndex: t.transferIndex,
 		Elapsed:       elapsed,
 		Transferred:   transferred,
-		Checksum:      t.checksum,
+		Checksum:      checksum,
 		Finished:      finished,
 		Error:         errMsg,
 	}
 }
 
-func (t *Transfer) applyMaxSpeed() {
-	t.mu.Lock()
-	maxSpeed := t.maxSpeed
-	started := t.started
-	t.mu.Unlock()
-	transferred := t.transferred.Load()
-	if maxSpeed <= 0 || started.IsZero() || transferred <= 0 {
-		return
+func transferPathKey(p string) string {
+	p = strings.TrimSpace(filepath.ToSlash(p))
+	if p == "" {
+		return ""
 	}
-	elapsed := time.Since(started)
-	expected := time.Duration(float64(transferred) / float64(maxSpeed) * float64(time.Second))
-	if expected > elapsed {
-		time.Sleep(expected - elapsed)
-	}
+	return strings.ToLower(cleanVirtualPath(p))
 }
 
-func (t *Transfer) checkMinSpeed(lastCheck *time.Time, first *bool) error {
+func (s *Slave) registerUpload(t *Transfer) {
+	if s == nil || t == nil {
+		return
+	}
 	t.mu.Lock()
-	minSpeed := t.minSpeed
-	started := t.started
-	grace := t.minSpeedGrace
+	key := transferPathKey(t.path)
 	t.mu.Unlock()
-	transferred := t.transferred.Load()
-	if minSpeed <= 0 || started.IsZero() || transferred <= 0 {
+	if key == "" {
+		return
+	}
+	s.uploadByPath.Store(key, t)
+}
+
+func (s *Slave) unregisterUpload(t *Transfer) {
+	if s == nil || t == nil {
+		return
+	}
+	t.mu.Lock()
+	key := transferPathKey(t.path)
+	t.mu.Unlock()
+	if key == "" {
+		return
+	}
+	s.uploadByPath.CompareAndDelete(key, t)
+}
+
+func (s *Slave) findUploadByPath(p string, exclude *Transfer) *Transfer {
+	if s == nil {
 		return nil
 	}
-	if grace > 0 && time.Since(started) < grace {
+	key := transferPathKey(p)
+	if key == "" {
 		return nil
 	}
-	delay := 200 * time.Millisecond
-	if *first {
-		delay = 500 * time.Millisecond
-	}
-	if time.Since(*lastCheck) < delay {
+	value, ok := s.uploadByPath.Load(key)
+	if !ok {
 		return nil
 	}
-	elapsedMs := time.Since(started).Milliseconds()
-	if elapsedMs <= 0 {
-		*lastCheck = time.Now()
-		*first = false
+	upload, ok := value.(*Transfer)
+	if !ok || upload == nil || upload == exclude || upload.isFinished() {
+		if ok && upload != nil {
+			s.unregisterUpload(upload)
+		}
 		return nil
 	}
-	currentSpeed := transferred * 1000 / elapsedMs
-	*lastCheck = time.Now()
-	*first = false
-	if currentSpeed < minSpeed {
-		return fmt.Errorf("transfer was aborted - '%d' is < '%d'", currentSpeed, minSpeed)
-	}
-	return nil
+	return upload
 }
 
 func isUnexpectedTransferPeer(expected string, remote net.Addr) bool {

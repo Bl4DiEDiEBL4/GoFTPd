@@ -444,14 +444,6 @@ func main() {
 	if err := cfg.PluginManager.InitializePlugins(pluginConfigs); err != nil {
 		log.Fatalf("Failed to initialize plugins: %v", err)
 	}
-	if masterBridge != nil {
-		masterBridge.SetTransferSpeedPolicy(func(username, primaryGroup, transferPath, direction string) (int64, int64, int64) {
-			if cfg.PluginManager == nil {
-				return 0, 0, 0
-			}
-			return cfg.PluginManager.TransferSpeedLimits(username, primaryGroup, transferPath, direction)
-		})
-	}
 	if cfg.Debug {
 		log.Printf("[PLUGINS] All plugins initialized")
 	}

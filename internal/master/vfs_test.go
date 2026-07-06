@@ -262,6 +262,7 @@ func TestVFSDeleteDirRemovesSubtreeAndMetadataWithoutRebuild(t *testing.T) {
 	vfs.AddFile("/site/TV/release/Sample", VFSFile{IsDir: true, Seen: true})
 	vfs.AddFile("/site/TV/release/Sample/sample.mkv", VFSFile{Size: 200, Seen: true})
 	vfs.SetSFVData("/site/TV/release", "release.sfv", map[string]uint32{"file1.r00": 1})
+	vfs.CacheZipExpectedParts("/site/TV/release", 10, 0x1234)
 
 	vfs.DeleteFile("/site/TV/release")
 
@@ -276,6 +277,9 @@ func TestVFSDeleteDirRemovesSubtreeAndMetadataWithoutRebuild(t *testing.T) {
 	}
 	if got := vfs.GetSFVData("/site/TV/release"); got != nil {
 		t.Fatalf("expected deleted release sfv metadata to be gone, got %+v", got)
+	}
+	if expected, ok := vfs.GetZipExpectedParts("/site/TV/release"); ok {
+		t.Fatalf("expected deleted release zip metadata to be gone, got expected=%d", expected)
 	}
 	children := vfs.ListDirectory("/site/TV")
 	if len(children) != 0 {
@@ -512,6 +516,29 @@ func TestVFSRelocateFileMovesOwnership(t *testing.T) {
 	}
 	if meta := vfs.GetSFVData("/ARCHiVE/0DAY/release"); meta == nil || meta.SFVEntries["file1.zip"] != 1 {
 		t.Fatalf("expected sfv metadata to move with relocate")
+	}
+}
+
+func TestVFSClearSlaveKeepsOtherSlaveDescendantsReachable(t *testing.T) {
+	vfs := NewVirtualFileSystem()
+	vfs.AddFile("/MIXED/release", VFSFile{IsDir: true, Seen: true, SlaveName: "SLAVE1"})
+	vfs.AddFile("/MIXED/release/other.r00", VFSFile{Seen: true, Size: 100, SlaveName: "SLAVE2"})
+	vfs.AddFile("/MIXED/release/gone.r01", VFSFile{Seen: true, Size: 100, SlaveName: "SLAVE1"})
+
+	vfs.ClearSlave("SLAVE1")
+
+	if got := vfs.GetFile("/MIXED/release/gone.r01"); got != nil {
+		t.Fatalf("expected SLAVE1 file to be removed, got %+v", got)
+	}
+	if got := vfs.GetFile("/MIXED/release/other.r00"); got == nil {
+		t.Fatalf("expected SLAVE2 descendant to remain")
+	}
+	if got := vfs.GetFile("/MIXED/release"); got == nil || !got.IsDir || got.SlaveName != "SLAVE2" {
+		t.Fatalf("expected parent dir to be repaired for SLAVE2 child, got %+v", got)
+	}
+	children := vfs.ListDirectory("/MIXED/release")
+	if len(children) != 1 || children[0].Path != "/MIXED/release/other.r00" {
+		t.Fatalf("expected surviving child to remain indexed, got %+v", children)
 	}
 }
 

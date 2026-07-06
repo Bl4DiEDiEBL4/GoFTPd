@@ -1,6 +1,7 @@
 package core
 
 import (
+	"io"
 	"net"
 	"time"
 
@@ -112,6 +113,28 @@ func (c *bandwidthTrackingConn) Write(p []byte) (int, error) {
 		c.session.addTransferBytes(int64(n))
 	}
 	return n, err
+}
+
+func (c *bandwidthTrackingConn) ReadFrom(r io.Reader) (int64, error) {
+	if rf, ok := c.Conn.(io.ReaderFrom); ok {
+		n, err := rf.ReadFrom(r)
+		if n > 0 && c.direction == "download" {
+			c.session.addTransferBytes(n)
+		}
+		return n, err
+	}
+	return copyTransferDataLoop(c, r)
+}
+
+func (c *bandwidthTrackingConn) WriteTo(w io.Writer) (int64, error) {
+	if wt, ok := c.Conn.(io.WriterTo); ok {
+		n, err := wt.WriteTo(w)
+		if n > 0 && c.direction == "upload" {
+			c.session.addTransferBytes(n)
+		}
+		return n, err
+	}
+	return copyTransferDataLoop(w, c)
 }
 
 func trackTransferConn(s *Session, conn net.Conn, direction string) net.Conn {

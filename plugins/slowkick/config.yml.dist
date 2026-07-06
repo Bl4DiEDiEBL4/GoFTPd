@@ -3,9 +3,9 @@
 
 # Slow transfer kicker.
 #
-# The actual slow-transfer abort now happens in the live slave transfer loop,
-# similar to DrFTPD. This config provides the transfer policy:
-# min speed floors, path/user/group exclusions, and optional tempban/announce.
+# The plugin monitors live sessions and aborts transfers that stay below the
+# configured floor long enough, with path/user/group exclusions and optional
+# tempban/announce. It never caps or throttles transfer speed.
 
 # Watch uploads and/or downloads.
 monitor_uploads: true

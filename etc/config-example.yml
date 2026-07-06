@@ -637,8 +637,8 @@ plugins:
     config_file: "plugins/speedtest/config.yml"
   slowkick:
     enabled: true
-    # Live transfer speed floors with optional tempban/announce. Enforcement
-    # happens in the slave transfer loop, not via a coarse polling observer.
+    # Live transfer speed floors with optional tempban/announce. The plugin
+    # monitors live sessions and aborts slow transfers through daemon services.
     config_file: "plugins/slowkick/config.yml"
     # In plugins/slowkick/config.yml you can also exclude tiny metadata files:
     #   exclude_extensions:

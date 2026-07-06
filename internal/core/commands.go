@@ -1622,11 +1622,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				fmt.Fprintf(s.Conn, "150 Opening %s mode data connection.\r\n", transferTypeReplyName(s.TransferType))
 				s.beginTransfer("upload", filePath)
 				defer s.endTransfer()
-				var transferSlaveName string
-				var transferSlaveIdx int32
 				onTransferReady := func(slaveName string, transferIdx int32) {
-					transferSlaveName = slaveName
-					transferSlaveIdx = transferIdx
 					s.attachTransferToSlave(slaveName, transferIdx)
 				}
 
@@ -1640,7 +1636,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					if s.Config != nil && s.Config.Debug {
 						log.Printf("[Passthrough] PORT upload failed for user %s path %s: %s", s.User.Name, filePath, formatTransferFailureLog(err))
 					}
-					maybeHandleSlowTransfer(s, "upload", filePath, transferSlaveName, transferSlaveIdx, err)
 					writeTransferFailure(s.Conn, "Upload", err)
 					return false
 				}
@@ -1719,7 +1714,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						if s.Config != nil && s.Config.Debug {
 							log.Printf("[Passthrough] Upload failed for user %s path %s: %s", s.User.Name, filePath, formatTransferFailureLog(err))
 						}
-						maybeHandleSlowTransfer(s, "upload", filePath, slaveName, s.PassthruXferIdx, err)
 						writeTransferFailure(s.Conn, "Upload", err)
 						return false
 					}
@@ -1741,7 +1735,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 
 					if err != nil {
 						log.Printf("[MASTER] Upload failed: %v", err)
-						maybeHandleSlowTransfer(s, "upload", filePath, "", 0, err)
 						writeTransferFailure(s.Conn, "Upload", err)
 						return false
 					}
@@ -2034,11 +2027,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					log.Printf("[Passthrough] PORT RETR %s by %s -> %s", filePath, s.User.Name, portAddr)
 					s.beginTransfer("download", filePath)
 					defer s.endTransfer()
-					var transferSlaveName string
-					var transferSlaveIdx int32
 					onTransferReady := func(slaveName string, transferIdx int32) {
-						transferSlaveName = slaveName
-						transferSlaveIdx = transferIdx
 						s.attachTransferToSlave(slaveName, transferIdx)
 					}
 
@@ -2047,7 +2036,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						if s.Config != nil && s.Config.Debug {
 							log.Printf("[Passthrough] PORT download failed for user %s path %s: %s", s.User.Name, filePath, formatTransferFailureLog(err))
 						}
-						maybeHandleSlowTransfer(s, "download", filePath, transferSlaveName, transferSlaveIdx, err)
 						writeTransferFailure(s.Conn, "Download", err)
 						return false
 					}
@@ -2083,7 +2071,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						if s.Config != nil && s.Config.Debug {
 							log.Printf("[Passthrough] Download failed for user %s path %s: %s", s.User.Name, filePath, formatTransferFailureLog(err))
 						}
-						maybeHandleSlowTransfer(s, "download", filePath, slaveName, s.PassthruXferIdx, err)
 						writeTransferFailure(s.Conn, "Download", err)
 					} else {
 						if restOffset == 0 {
@@ -2118,7 +2105,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					s.PretArg = ""
 					if err != nil {
 						log.Printf("[MASTER] Download failed: %v", err)
-						maybeHandleSlowTransfer(s, "download", filePath, "", 0, err)
 						writeTransferFailure(s.Conn, "Download", err)
 					} else {
 						if restOffset == 0 {

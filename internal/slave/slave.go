@@ -59,6 +59,7 @@ type Slave struct {
 	stream          *protocol.ObjectStream
 	writeMu         sync.Mutex // protects stream writes (gob is not thread-safe)
 	transfers       sync.Map   // transferIndex (int32) -> *Transfer
+	uploadByPath    sync.Map   // normalized virtual path -> *Transfer receiving that path
 	nextTransferIdx int32
 
 	online        atomic.Bool
@@ -991,7 +992,7 @@ func (s *Slave) handleConnect(ac *protocol.AsyncCommand) interface{} {
 
 // handleReceive - slave receives (uploads) a file from the FTP client via the data connection.
 //
-// Args: [type, position, transferIndex, inetAddress, path, minSpeed, maxSpeed, graceSeconds]
+// Args: [type, position, transferIndex, inetAddress, path]
 func (s *Slave) handleReceive(ac *protocol.AsyncCommand) interface{} {
 	if len(ac.Args) < 5 {
 		return &protocol.AsyncResponseError{Index: ac.Index, Message: "receive: not enough args"}
@@ -999,9 +1000,6 @@ func (s *Slave) handleReceive(ac *protocol.AsyncCommand) interface{} {
 
 	var transferIdx int32
 	var position int64
-	var minSpeed int64
-	var maxSpeed int64
-	var graceSeconds int64
 	var transferType byte = 'I'
 	if len(ac.Args) > 0 && strings.TrimSpace(ac.Args[0]) != "" {
 		transferType = strings.ToUpper(strings.TrimSpace(ac.Args[0]))[0]
@@ -1010,15 +1008,6 @@ func (s *Slave) handleReceive(ac *protocol.AsyncCommand) interface{} {
 	fmt.Sscanf(ac.Args[2], "%d", &transferIdx)
 	expectedPeer := ac.Args[3]
 	path := ac.Args[4]
-	if len(ac.Args) > 5 {
-		fmt.Sscanf(ac.Args[5], "%d", &minSpeed)
-	}
-	if len(ac.Args) > 6 {
-		fmt.Sscanf(ac.Args[6], "%d", &maxSpeed)
-	}
-	if len(ac.Args) > 7 {
-		fmt.Sscanf(ac.Args[7], "%d", &graceSeconds)
-	}
 
 	val, ok := s.transfers.Load(transferIdx)
 	if !ok {
@@ -1026,7 +1015,6 @@ func (s *Slave) handleReceive(ac *protocol.AsyncCommand) interface{} {
 	}
 	t := val.(*Transfer)
 	t.SetPath(path)
-	t.SetSpeedLimits(minSpeed, maxSpeed, graceSeconds)
 	t.SetTransferMode(transferType)
 
 	// Acknowledge to master that we're starting (: sendResponse(new AsyncResponse(ac.getIndex())))
@@ -1039,7 +1027,7 @@ func (s *Slave) handleReceive(ac *protocol.AsyncCommand) interface{} {
 
 // handleSend - slave sends (downloads) a file to the FTP client via the data connection.
 //
-// Args: [type, position, transferIndex, inetAddress, path, minSpeed, maxSpeed, graceSeconds]
+// Args: [type, position, transferIndex, inetAddress, path]
 func (s *Slave) handleSend(ac *protocol.AsyncCommand) interface{} {
 	if len(ac.Args) < 5 {
 		return &protocol.AsyncResponseError{Index: ac.Index, Message: "send: not enough args"}
@@ -1047,9 +1035,6 @@ func (s *Slave) handleSend(ac *protocol.AsyncCommand) interface{} {
 
 	var transferIdx int32
 	var position int64
-	var minSpeed int64
-	var maxSpeed int64
-	var graceSeconds int64
 	var transferType byte = 'I'
 	if len(ac.Args) > 0 && strings.TrimSpace(ac.Args[0]) != "" {
 		transferType = strings.ToUpper(strings.TrimSpace(ac.Args[0]))[0]
@@ -1058,15 +1043,6 @@ func (s *Slave) handleSend(ac *protocol.AsyncCommand) interface{} {
 	fmt.Sscanf(ac.Args[2], "%d", &transferIdx)
 	expectedPeer := ac.Args[3]
 	path := ac.Args[4]
-	if len(ac.Args) > 5 {
-		fmt.Sscanf(ac.Args[5], "%d", &minSpeed)
-	}
-	if len(ac.Args) > 6 {
-		fmt.Sscanf(ac.Args[6], "%d", &maxSpeed)
-	}
-	if len(ac.Args) > 7 {
-		fmt.Sscanf(ac.Args[7], "%d", &graceSeconds)
-	}
 
 	val, ok := s.transfers.Load(transferIdx)
 	if !ok {
@@ -1074,7 +1050,6 @@ func (s *Slave) handleSend(ac *protocol.AsyncCommand) interface{} {
 	}
 	t := val.(*Transfer)
 	t.SetPath(path)
-	t.SetSpeedLimits(minSpeed, maxSpeed, graceSeconds)
 	t.SetTransferMode(transferType)
 
 	// Acknowledge to master
@@ -2124,7 +2099,11 @@ func (s *Slave) listenOnPortRange() (net.Listener, error) {
 }
 
 func (s *Slave) removeTransfer(idx int32) {
-	s.transfers.Delete(idx)
+	if value, ok := s.transfers.LoadAndDelete(idx); ok {
+		if t, ok := value.(*Transfer); ok && t != nil {
+			s.unregisterUpload(t)
+		}
+	}
 }
 
 func (s *Slave) cleanEmptyParents(path string, root string) {
