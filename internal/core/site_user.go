@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"goftpd/internal/user"
 	"gopkg.in/yaml.v3"
+	"weaveftpd/internal/user"
 )
 
 const defaultUserTemplate = "etc/users/default.user"
@@ -734,12 +734,12 @@ func renderSiteInfoBlock(w io.Writer, version, title string, lines []string) {
 	width := 70
 
 	infoRaw(w, infoLine(infoCpTL, infoCpHZ, infoCpTR, width))
-	infoText(w, "   ____       _____ _____ ____     _  ", width)
-	infoText(w, "  / ___| ___ |  ___|_   _|  _ \\ __| | ", width)
-	infoText(w, " | |  _ / _ \\| |_    | | | |_) / _` | ", width)
-	infoText(w, " | |_| | (_) |  _|   | | |  __/ (_| | ", width)
-	infoText(w, "  \\____|\\___/|_|     |_| |_|   \\__,_| ", width)
-	infoText(w, fmt.Sprintf(" You are using GoFTPd v%s ", version), width)
+	infoText(w, " __        __                    _____ _____ ____      _ ", width)
+	infoText(w, " \\ \\      / /__  __ ___   _____ |  ___|_   _|  _ \\  __| | ", width)
+	infoText(w, "  \\ \\ /\\ / / _ \\/ _` \\ \\ / / _ \\| |_    | | | |_) |/ _` | ", width)
+	infoText(w, "   \\ V  V /  __/ (_| |\\ V /  __/|  _|   | | |  __/| (_| | ", width)
+	infoText(w, "    \\_/\\_/ \\___|\\__,_| \\_/ \\___||_|     |_| |_|    \\__,_| ", width)
+	infoText(w, fmt.Sprintf(" You are using WeaveFTPd v%s ", version), width)
 	infoRaw(w, infoLine(infoCpLT, infoCpHZ, infoCpRT, width))
 	infoText(w, fmt.Sprintf(" %s ", title), width)
 	infoRaw(w, infoLine(infoCpLT, infoCpHZ, infoCpRT, width))

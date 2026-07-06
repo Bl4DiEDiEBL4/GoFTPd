@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"goftpd/internal/plugin"
+	"weaveftpd/internal/plugin"
 )
 
 func TestVFSListDirectoryUsesDirectChildren(t *testing.T) {
@@ -709,7 +709,7 @@ func TestVFSAddFilePreservesStrongOwnerAcrossRescan(t *testing.T) {
 		Size:      476800000,
 		Seen:      true,
 		SlaveName: "LOCAL",
-		Owner:     "GoFTPd",
+		Owner:     "WeaveFTPd",
 		Group:     "root",
 	})
 
@@ -1120,7 +1120,7 @@ func TestVFSZipPayloadPreservesStrongerCompletedSizeOnWeakOverwrite(t *testing.T
 	vfs.AddFile("/0DAY/release/part1.zip", VFSFile{
 		Seen:         true,
 		Size:         1024,
-		Owner:        "GoFTPd",
+		Owner:        "WeaveFTPd",
 		Group:        "root",
 		LastModified: 2,
 	})
@@ -1153,7 +1153,7 @@ func TestVFSNonZipPreservesStrongerCompletedSizeOnWeakOverwrite(t *testing.T) {
 	vfs.AddFile("/MP3/release/release.sfv", VFSFile{
 		Seen:         true,
 		Size:         0,
-		Owner:        "GoFTPd",
+		Owner:        "WeaveFTPd",
 		Group:        "root",
 		LastModified: 2,
 	})
@@ -1176,7 +1176,7 @@ func TestVFSHydrateRaceFileRestoresStrongerZipSize(t *testing.T) {
 	vfs.AddFile("/0DAY/release/part1.zip", VFSFile{
 		Seen:         true,
 		Size:         1024,
-		Owner:        "GoFTPd",
+		Owner:        "WeaveFTPd",
 		Group:        "root",
 		LastModified: 1,
 	})
@@ -1210,7 +1210,7 @@ func TestVFSHydrateRaceFileRestoresZeroByteListingSize(t *testing.T) {
 	vfs.AddFile("/X265/release/file.r15", VFSFile{
 		Seen:         true,
 		Size:         0,
-		Owner:        "GoFTPd",
+		Owner:        "WeaveFTPd",
 		Group:        "root",
 		XferTime:     1500,
 		Checksum:     0x12345678,

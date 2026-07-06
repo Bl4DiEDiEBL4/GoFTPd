@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/internal/plugin"
-	"goftpd/internal/timeutil"
+	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/timeutil"
 )
 
 type Handler struct {
@@ -96,20 +96,20 @@ func (h *Handler) apply(now time.Time) {
 
 		todayPath := "/" + section + "/" + today
 		if !h.pathExists(todayPath) {
-			h.svc.Bridge.MakeDir(todayPath, "GoFTPd", "GoFTPd")
+			h.svc.Bridge.MakeDir(todayPath, "WeaveFTPd", "WeaveFTPd")
 		}
 
 		linkPath := ""
 		if h.todaySymlink {
-		linkPath = "/" + h.symlinkPrefix + section
-		if h.symlinkCurrent(linkPath, todayPath) {
-			if h.debug {
-				log.Printf("[DATEDDIRS] symlink %s already points to %s", linkPath, todayPath)
+			linkPath = "/" + h.symlinkPrefix + section
+			if h.symlinkCurrent(linkPath, todayPath) {
+				if h.debug {
+					log.Printf("[DATEDDIRS] symlink %s already points to %s", linkPath, todayPath)
+				}
+			} else if err := h.svc.Bridge.VFSSymlink(linkPath, todayPath); err != nil && h.debug {
+				log.Printf("[DATEDDIRS] symlink %s -> %s failed: %v", linkPath, todayPath, err)
 			}
-		} else if err := h.svc.Bridge.VFSSymlink(linkPath, todayPath); err != nil && h.debug {
-			log.Printf("[DATEDDIRS] symlink %s -> %s failed: %v", linkPath, todayPath, err)
 		}
-	}
 
 		if announce && h.svc.EmitEvent != nil {
 			h.svc.EmitEvent("NEWDAY", todayPath, today, section, 0, 0, map[string]string{

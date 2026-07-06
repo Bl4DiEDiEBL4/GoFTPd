@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"goftpd/internal/plugin"
-	"goftpd/internal/timeutil"
+	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/timeutil"
 )
 
 type Plugin struct {
@@ -73,8 +73,8 @@ func New() *Plugin {
 		maxRequests:  30,
 		reqwipeFlags: "1",
 		reqTopLimit:  10,
-		proxyUsers:   []string{"goftpd"},
-		sitename:     "GoFTPd",
+		proxyUsers:   []string{"weaveftpd"},
+		sitename:     "WeaveFTPd",
 		stopCh:       make(chan struct{}),
 	}
 }
@@ -622,8 +622,8 @@ func (p *Plugin) ensureRequestDir(ctx plugin.SiteContext, release, ownerOverride
 		return err
 	}
 	dirPath := p.requestDir(release)
-	owner := "GoFTPd"
-	group := "GoFTPd"
+	owner := "WeaveFTPd"
+	group := "WeaveFTPd"
 	if ctx != nil {
 		owner = ctx.UserName()
 		group = ctx.UserPrimaryGroup()
@@ -903,8 +903,8 @@ func (p *Plugin) emitRequestFilled(entry requestEntry, filledBy, key string) {
 }
 
 func (p *Plugin) ensureBaseDir(ctx plugin.SiteContext) error {
-	owner := "GoFTPd"
-	group := "GoFTPd"
+	owner := "WeaveFTPd"
+	group := "WeaveFTPd"
 	if ctx != nil {
 		owner = ctx.UserName()
 		group = ctx.UserPrimaryGroup()

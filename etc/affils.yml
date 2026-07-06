@@ -23,17 +23,17 @@
 base: "/PRE"
 
 groups:
-  - group: "GoFTPd"
-    predir: "/PRE/GoFTPd"
+  - group: "WeaveFTPd"
+    predir: "/PRE/WeaveFTPd"
     allowed_sections: ["0DAY", "TV-1080P"]
     credit_ratio: 0
     permissions:
-      acl_path: "/PRE/GoFTPd"
+      acl_path: "/PRE/WeaveFTPd"
       privpath: true
       list: true
       dirlog: true
       siteop_override: true
-      owner_group: "GoFTPd"
+      owner_group: "WeaveFTPd"
       mode: "0777"
 
   - group: "GRPTST"

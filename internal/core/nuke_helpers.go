@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"goftpd/internal/user"
+	"weaveftpd/internal/user"
 )
 
 // NukeeRecord is what was actually taken from one user by a nuke, so an unnuke

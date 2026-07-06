@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// CreateM3UEnabled reports whether goftpd should auto-generate an .m3u playlist
+// CreateM3UEnabled reports whether weaveftpd should auto-generate an .m3u playlist
 // from the SFV for a completed MP3 release in dirPath. It is on by default
 // (matching glftpd/pzs-ng's create_m3u) and turns off only when
 // audio.create_m3u is explicitly false or the section is not MP3.

@@ -1,4 +1,4 @@
-module goftpd/sitebot
+module weaveftpd/sitebot
 
 go 1.25.0
 

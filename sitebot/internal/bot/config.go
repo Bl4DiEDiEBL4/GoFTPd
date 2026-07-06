@@ -139,7 +139,7 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.Plugins.Config = map[string]interface{}{}
 	}
 	if len(cfg.Help.Channels) == 0 {
-		cfg.Help.Channels = []string{"#goftpd"}
+		cfg.Help.Channels = []string{"#weaveftpd"}
 	}
 	if strings.TrimSpace(cfg.IRC.NickServ.Service) == "" {
 		cfg.IRC.NickServ.Service = "NickServ"

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"goftpd/internal/plugin"
-	"goftpd/internal/user"
+	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/user"
 )
 
 // PluginManager owns the registered plugins and dispatches events to them.

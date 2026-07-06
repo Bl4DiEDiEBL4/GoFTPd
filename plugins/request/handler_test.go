@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"goftpd/internal/plugin"
+	"weaveftpd/internal/plugin"
 )
 
 func TestRequestStoresMetadata(t *testing.T) {
@@ -110,7 +110,7 @@ func TestProxyRequestDoesNotEmitDuplicateAnnounceEvent(t *testing.T) {
 		},
 	}
 
-	bot := &requestTestCtx{user: "goftpd", group: "sitebot", flags: "1"}
+	bot := &requestTestCtx{user: "weaveftpd", group: "sitebot", flags: "1"}
 	p.HandleSiteCommand(bot, "REQUEST", []string{"-by:ircUser", "Proxy.Request-TEST"})
 
 	if emitted {
@@ -120,7 +120,7 @@ func TestProxyRequestDoesNotEmitDuplicateAnnounceEvent(t *testing.T) {
 
 func TestReqFillRecoversExistingRequestDirWithoutMetadata(t *testing.T) {
 	bridge := newRequestTestBridge()
-	bridge.addDir("/REQUESTS", "GoFTPd", "GoFTPd")
+	bridge.addDir("/REQUESTS", "WeaveFTPd", "WeaveFTPd")
 	bridge.addDir("/REQUESTS/REQ-Old.Release-TEST", "alice", "iND")
 	bridge.files["/REQUESTS/REQ-Old.Release-TEST/file.rar"] = []byte("data")
 
@@ -253,7 +253,7 @@ func TestRequestStateHydrateDedupesRestoredFillStats(t *testing.T) {
 
 func TestDuplicateRequestRepairsMissingDirectory(t *testing.T) {
 	bridge := newRequestTestBridge()
-	bridge.addDir("/REQUESTS", "GoFTPd", "GoFTPd")
+	bridge.addDir("/REQUESTS", "WeaveFTPd", "WeaveFTPd")
 	bridge.requestData = []plugin.RequestRecord{{
 		Release: "Repair.Release-TEST",
 		By:      "alice",
@@ -290,7 +290,7 @@ func TestReqFillProxyTracksProvidedUser(t *testing.T) {
 	bridge.files["/REQUESTS/REQ-Proxy.Release-TEST/file.rar"] = []byte("data")
 	emitted = false
 
-	bot := &requestTestCtx{user: "goftpd", group: "sitebot", flags: "1"}
+	bot := &requestTestCtx{user: "weaveftpd", group: "sitebot", flags: "1"}
 	p.HandleSiteCommand(bot, "REQFILL", []string{"-by:ircUser", "Proxy.Release-TEST"})
 
 	if len(bridge.fillData) != 1 || bridge.fillData[0].FilledBy != "ircUser" {
@@ -306,7 +306,7 @@ func TestRequestProxyTracksProvidedUser(t *testing.T) {
 	p := New()
 	p.svc = &plugin.Services{Bridge: bridge}
 
-	bot := &requestTestCtx{user: "goftpd", group: "sitebot", flags: "1"}
+	bot := &requestTestCtx{user: "weaveftpd", group: "sitebot", flags: "1"}
 	p.HandleSiteCommand(bot, "REQUEST", []string{"-by:ircUser", "Proxy.Request-TEST"})
 
 	if len(bridge.requestData) != 1 || bridge.requestData[0].By != "ircUser" {
@@ -340,7 +340,7 @@ func TestRequestUsesConfiguredStorageSlave(t *testing.T) {
 
 func TestReqFillRelocatesMixedSlaveRequestTreeBeforeRename(t *testing.T) {
 	bridge := newRequestTestBridge()
-	bridge.addDir("/REQUESTS", "GoFTPd", "GoFTPd")
+	bridge.addDir("/REQUESTS", "WeaveFTPd", "WeaveFTPd")
 	bridge.addDirOnSlave("/REQUESTS/REQ-Mixed.Release-TEST", "alice", "iND", "LOCAL")
 	bridge.addDirOnSlave("/REQUESTS/REQ-Mixed.Release-TEST/Mixed.Release-TEST", "alice", "iND", "OTHER")
 	bridge.addFileOnSlave("/REQUESTS/REQ-Mixed.Release-TEST/Mixed.Release-TEST/file.r00", []byte("data"), "OTHER")

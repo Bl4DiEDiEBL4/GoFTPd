@@ -1,18 +1,18 @@
 package master
 
 import (
-	"goftpd/internal/core"
-	"goftpd/internal/protocol"
 	"path/filepath"
 	"strings"
 	"testing"
+	"weaveftpd/internal/core"
+	"weaveftpd/internal/protocol"
 )
 
 func TestNukeVirtualEntriesFromHistory(t *testing.T) {
 	entry := &core.NukeHistoryEntry{
 		Multiplier: 10,
 		Reason:     "-Auto- Incomplete",
-		NukedBy:    "goftpd",
+		NukedBy:    "weaveftpd",
 		Nukees:     "Neptun,probe",
 		NukedAt:    12345,
 	}
@@ -32,7 +32,7 @@ func TestNukeVirtualEntriesFromHistory(t *testing.T) {
 			sawReason = true
 		case strings.Contains(e.Name, "!NUKEES") && strings.Contains(e.Name, "Neptun,probe"):
 			sawNukees = true
-		case strings.Contains(e.Name, "!NUKER") && strings.Contains(e.Name, "goftpd"):
+		case strings.Contains(e.Name, "!NUKER") && strings.Contains(e.Name, "weaveftpd"):
 			sawNuker = true
 		}
 	}
@@ -224,8 +224,8 @@ func TestListDirRepairsZeroSizeFromVerifiedRaceDB(t *testing.T) {
 		Size:         0,
 		IsDir:        false,
 		SlaveName:    "LOCAL",
-		Owner:        "GoFTPd",
-		Group:        "GoFTPd",
+		Owner:        "WeaveFTPd",
+		Group:        "WeaveFTPd",
 		XferTime:     1000,
 		Checksum:     checksum,
 		LastModified: 1234,

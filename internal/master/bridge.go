@@ -16,11 +16,11 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/internal/core"
-	"goftpd/internal/metrics"
-	"goftpd/internal/netutil"
-	"goftpd/internal/plugin"
-	"goftpd/internal/protocol"
+	"weaveftpd/internal/core"
+	"weaveftpd/internal/metrics"
+	"weaveftpd/internal/netutil"
+	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/protocol"
 )
 
 // Bridge implements core.MasterBridge by wrapping a SlaveManager.
@@ -490,11 +490,11 @@ func (b *Bridge) pendingUploadEntriesForDir(dirPath string) []core.MasterFileEnt
 func pendingUploadEntry(pu pendingUpload) core.MasterFileEntry {
 	owner := pu.owner
 	if owner == "" {
-		owner = "GoFTPd"
+		owner = "WeaveFTPd"
 	}
 	group := pu.group
 	if group == "" {
-		group = "GoFTPd"
+		group = "WeaveFTPd"
 	}
 	modTime := pu.started.Unix()
 	if modTime <= 0 {
@@ -679,7 +679,7 @@ func nukeVirtualEntriesFromHistory(entry *core.NukeHistoryEntry) []core.MasterFi
 	}
 	owner := strings.TrimSpace(entry.NukedBy)
 	if owner == "" {
-		owner = "goftpd"
+		owner = "weaveftpd"
 	}
 	group := "NUKED"
 	multiplier := entry.Multiplier
@@ -1212,8 +1212,8 @@ func (b *Bridge) ensureVFSParents(filePath, slaveName string) {
 			Mode:         0755,
 			LastModified: now,
 			SlaveName:    slaveName,
-			Owner:        "GoFTPd",
-			Group:        "GoFTPd",
+			Owner:        "WeaveFTPd",
+			Group:        "WeaveFTPd",
 			Seen:         true,
 		})
 	}
@@ -2264,8 +2264,8 @@ func (v *VFSAdapter) RemoveAll(filePath string) error {
 
 func (v *VFSAdapter) MkdirAll(dirPath string, perm os.FileMode) error {
 	parentDir := filepath.Dir(dirPath)
-	owner := "GoFTPd"
-	group := "GoFTPd"
+	owner := "WeaveFTPd"
+	group := "WeaveFTPd"
 
 	// Inherit owner/group from the parent directory (e.g., the Release folder)
 	parentFile := v.b.sm.GetVFS().GetFile(parentDir)

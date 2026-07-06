@@ -22,8 +22,8 @@ import (
 	"time"
 	"unicode"
 
-	"goftpd/internal/metrics"
-	"goftpd/internal/protocol"
+	"weaveftpd/internal/metrics"
+	"weaveftpd/internal/protocol"
 )
 
 const (
@@ -1146,10 +1146,10 @@ func (s *Slave) handleRunCommand(ac *protocol.AsyncCommand) interface{} {
 
 	dirPath := strings.TrimSpace(ac.Args[4])
 	localPath := s.resolveLocalPath(dirPath)
-	env["GOFTPD_HOOK_TARGET"] = "slave"
-	env["GOFTPD_SLAVE_NAME"] = s.name
+	env["WEAVEFTPD_HOOK_TARGET"] = "slave"
+	env["WEAVEFTPD_SLAVE_NAME"] = s.name
 	if localPath != "" {
-		env["GOFTPD_LOCAL_PATH"] = localPath
+		env["WEAVEFTPD_LOCAL_PATH"] = localPath
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSeconds)*time.Second)

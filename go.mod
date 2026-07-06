@@ -1,4 +1,4 @@
-module goftpd
+module weaveftpd
 
 go 1.25.0
 

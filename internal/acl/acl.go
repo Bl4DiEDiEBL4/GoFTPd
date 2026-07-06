@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"goftpd/internal/user"
 	"gopkg.in/yaml.v3"
+	"weaveftpd/internal/user"
 )
 
 // requirementCache memoizes parsed scalar requirements. checkRequired is called

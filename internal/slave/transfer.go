@@ -16,8 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"goftpd/internal/netutil"
-	"goftpd/internal/protocol"
+	"weaveftpd/internal/netutil"
+	"weaveftpd/internal/protocol"
 )
 
 var transferBufferPools sync.Map

@@ -19,9 +19,9 @@ import (
 	"syscall"
 	"time"
 
-	"goftpd/internal/timeutil"
-	"goftpd/internal/user"
-	"goftpd/internal/zipscript"
+	"weaveftpd/internal/timeutil"
+	"weaveftpd/internal/user"
+	"weaveftpd/internal/zipscript"
 )
 
 // getMlsdPerm returns MLSD permissions string for a file
@@ -1116,7 +1116,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				// Keep MLSD rich for cbftp, but only from already-available state.
 				siteName := s.Config.SiteNameShort
 				if siteName == "" {
-					siteName = "GoFTPd"
+					siteName = "WeaveFTPd"
 				}
 				if zipscript.ShowStatusBarForDir(s.Config.Zipscript, targetPath) {
 					if statusName := dirRaceStatusName(bridge, s.Config, targetPath, siteName); strings.TrimSpace(statusName) != "" {
@@ -1358,7 +1358,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				now := timeutil.Now().Format("Jan _2 15:04")
 				siteName := s.Config.SiteNameShort
 				if siteName == "" {
-					siteName = "GoFTPd"
+					siteName = "WeaveFTPd"
 				}
 
 				if zipscript.ShowStatusBarForDir(s.Config.Zipscript, targetPath) {
@@ -1370,7 +1370,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 							size = "0"
 						}
 						output.WriteString(fmt.Sprintf("%s   1 %-8s %-8s %10s %s %s\r\n",
-							mode, "GoFTPd", "GoFTPd", size, now, statusName))
+							mode, "WeaveFTPd", "WeaveFTPd", size, now, statusName))
 					}
 				}
 
@@ -1400,16 +1400,16 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						size = "4096"
 					}
 					ts := timeutil.Unix(e.ModTime).Format("Jan _2 15:04")
-					owner := "GoFTPd"
-					group := "GoFTPd"
+					owner := "WeaveFTPd"
+					group := "WeaveFTPd"
 					if s.Config.ShowRealOwnerGroup {
 						owner = strings.TrimSpace(e.Owner)
 						group = strings.TrimSpace(e.Group)
 						if owner == "" {
-							owner = "GoFTPd"
+							owner = "WeaveFTPd"
 						}
 						if group == "" {
-							group = "GoFTPd"
+							group = "WeaveFTPd"
 						}
 					}
 					output.WriteString(fmt.Sprintf("%s   1 %-8s %-8s %10s %s %s\r\n",
@@ -1447,7 +1447,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					}
 					ts := timeutil.In(info.ModTime()).Format("Jan _2 15:04")
 					output.WriteString(fmt.Sprintf("%s   1 %-8s %-8s %10s %s %s\r\n",
-						mode, "GoFTPd", "GoFTPd", size, ts, f.Name()))
+						mode, "WeaveFTPd", "WeaveFTPd", size, ts, f.Name()))
 				}
 			}
 		}
@@ -2228,7 +2228,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			if strings.EqualFold(s.TransferType, "I") {
 				typeName = "BINARY"
 			}
-			siteName := "GoFTPd"
+			siteName := "WeaveFTPd"
 			if s.Config != nil && strings.TrimSpace(s.Config.SiteNameShort) != "" {
 				siteName = s.Config.SiteNameShort
 			}
@@ -2266,7 +2266,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				now := timeutil.Now().Format("Jan _2 15:04")
 				siteName := s.Config.SiteNameShort
 				if siteName == "" {
-					siteName = "GoFTPd"
+					siteName = "WeaveFTPd"
 				}
 
 				if zipscript.ShowStatusBarForDir(s.Config.Zipscript, target) {
@@ -2278,7 +2278,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 							size = "0"
 						}
 						fmt.Fprintf(s.Conn, " %s   1 %-8s %-8s %10s %s %s\r\n",
-							mode, "GoFTPd", "GoFTPd", size, now, statusName)
+							mode, "WeaveFTPd", "WeaveFTPd", size, now, statusName)
 					}
 				}
 
@@ -2307,16 +2307,16 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						size = "4096"
 					}
 					ts := timeutil.Unix(e.ModTime).Format("Jan _2 15:04")
-					owner := "GoFTPd"
-					group := "GoFTPd"
+					owner := "WeaveFTPd"
+					group := "WeaveFTPd"
 					if s.Config.ShowRealOwnerGroup {
 						owner = strings.TrimSpace(e.Owner)
 						group = strings.TrimSpace(e.Group)
 						if owner == "" {
-							owner = "GoFTPd"
+							owner = "WeaveFTPd"
 						}
 						if group == "" {
-							group = "GoFTPd"
+							group = "WeaveFTPd"
 						}
 					}
 					fmt.Fprintf(s.Conn, " %s   1 %-8s %-8s %10s %s %s\r\n",
@@ -2352,7 +2352,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					}
 					ts := timeutil.In(info.ModTime()).Format("Jan _2 15:04")
 					fmt.Fprintf(s.Conn, " %s   1 %-8s %-8s %10s %s %s\r\n",
-						mode, "GoFTPd", "GoFTPd", size, ts, f.Name())
+						mode, "WeaveFTPd", "WeaveFTPd", size, ts, f.Name())
 				}
 			}
 		}
@@ -2479,10 +2479,10 @@ func appendMLSDOwnerGroupFacts(facts []string, e MasterFileEntry, showReal bool)
 	owner := strings.TrimSpace(e.Owner)
 	group := strings.TrimSpace(e.Group)
 	if owner == "" {
-		owner = "GoFTPd"
+		owner = "WeaveFTPd"
 	}
 	if group == "" {
-		group = "GoFTPd"
+		group = "WeaveFTPd"
 	}
 	return append(facts, "UNIX.owner="+owner, "UNIX.group="+group)
 }

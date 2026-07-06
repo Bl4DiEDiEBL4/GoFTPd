@@ -5,7 +5,7 @@ import (
 	"net"
 	"time"
 
-	"goftpd/internal/metrics"
+	"weaveftpd/internal/metrics"
 )
 
 func (s *Session) touchActivity() {

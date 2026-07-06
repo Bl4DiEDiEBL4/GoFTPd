@@ -60,8 +60,8 @@ func main() {
 	userdata := flag.String("userdata", "", "DrFTPD v4 userdata root")
 	outRoot := flag.String("out", "", "Output directory root")
 	importLog := flag.String("log", "", "Import log path")
-	existingPasswd := flag.String("existing-passwd", "", "Existing GoFTPd passwd path")
-	existingGroup := flag.String("existing-group", "", "Existing GoFTPd group path")
+	existingPasswd := flag.String("existing-passwd", "", "Existing WeaveFTPd passwd path")
+	existingGroup := flag.String("existing-group", "", "Existing WeaveFTPd group path")
 	flag.Parse()
 
 	if strings.TrimSpace(*userdata) == "" || strings.TrimSpace(*outRoot) == "" || strings.TrimSpace(*importLog) == "" {

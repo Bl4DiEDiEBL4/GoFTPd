@@ -5,8 +5,8 @@ import (
 )
 
 const (
-	defaultFileOwner = "GoFTPd"
-	defaultFileGroup = "GoFTPd"
+	defaultFileOwner = "WeaveFTPd"
+	defaultFileGroup = "WeaveFTPd"
 )
 
 // getDiskSpace returns available and total space for a filesystem path.

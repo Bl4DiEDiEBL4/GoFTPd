@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"goftpd/sitebot/internal/event"
+	"weaveftpd/sitebot/internal/event"
 )
 
 func TestReqTopResponseFormatsLikeTop(t *testing.T) {

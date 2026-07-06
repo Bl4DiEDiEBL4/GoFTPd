@@ -4,18 +4,18 @@ log_delete_after_days: 1
 log_keep_days: 1
 log_console:   true
 
-event_fifo: "/GoFTPd/etc/goftpd.sitebot.fifo"
+event_fifo: "/WeaveFTPd/etc/weaveftpd.sitebot.fifo"
 
 # Channel sets are YAML anchors. The sitebot ignores this top-level block, but
 # YAML expands the anchors anywhere they are referenced below.
 channel_sets:
-  main:    &chan_main    ["#goftpd"]
-  chat:    &chan_chat    ["#goftpd-chat"]
-  spam:    &chan_spam    ["#goftpd-spam"]
-  staff:   &chan_staff   ["#goftpd-staff"]
-  foreign: &chan_foreign ["#goftpd-foreign"]
-  archive: &chan_archive ["#goftpd-archive"]
-  nuke:    &chan_nuke    ["#goftpd-nuke"]
+  main:    &chan_main    ["#weaveftpd"]
+  chat:    &chan_chat    ["#weaveftpd-chat"]
+  spam:    &chan_spam    ["#weaveftpd-spam"]
+  staff:   &chan_staff   ["#weaveftpd-staff"]
+  foreign: &chan_foreign ["#weaveftpd-foreign"]
+  archive: &chan_archive ["#weaveftpd-archive"]
+  nuke:    &chan_nuke    ["#weaveftpd-nuke"]
 
 irc:
   host: "irc.example.net"
@@ -42,13 +42,13 @@ irc:
   user_modes: "+Hi"
   autojoin_delay_ms: 250
   channels:
-    - "#goftpd"
-    - "#goftpd-chat"
-    - "#goftpd-spam"
-    - "#goftpd-staff"
-    - "#goftpd-foreign"
-    - "#goftpd-archive"
-    - "#goftpd-nuke"
+    - "#weaveftpd"
+    - "#weaveftpd-chat"
+    - "#weaveftpd-spam"
+    - "#weaveftpd-staff"
+    - "#weaveftpd-foreign"
+    - "#weaveftpd-archive"
+    - "#weaveftpd-nuke"
 
 # ============================================================================
 # SITE INVITE channel visibility
@@ -58,7 +58,7 @@ irc:
 # Flags are matched character-by-character: "12" means flag 1 OR flag 2.
 # ============================================================================
 invite_channels:
-  - channel: "#goftpd-staff"
+  - channel: "#weaveftpd-staff"
     flags: "1"
 
 encryption:
@@ -77,13 +77,13 @@ encryption:
   # Leave this empty if you want to rely on DH1080 auto-exchange instead.
   private_key: "cbc:YourBlowfishKeyHere123456"
   keys:
-    "#goftpd": "cbc:YourBlowfishKeyHere123456"
-    "#goftpd-chat": "cbc:YourBlowfishKeyHere123456"
-    "#goftpd-spam": "cbc:YourBlowfishKeyHere123456"
-    "#goftpd-staff": "cbc:YourBlowfishKeyHere123456"
-    "#goftpd-foreign": "cbc:YourBlowfishKeyHere123456"
-    "#goftpd-archive": "cbc:YourBlowfishKeyHere123456"
-    "#goftpd-nuke": "cbc:YourBlowfishKeyHere123456"
+    "#weaveftpd": "cbc:YourBlowfishKeyHere123456"
+    "#weaveftpd-chat": "cbc:YourBlowfishKeyHere123456"
+    "#weaveftpd-spam": "cbc:YourBlowfishKeyHere123456"
+    "#weaveftpd-staff": "cbc:YourBlowfishKeyHere123456"
+    "#weaveftpd-foreign": "cbc:YourBlowfishKeyHere123456"
+    "#weaveftpd-archive": "cbc:YourBlowfishKeyHere123456"
+    "#weaveftpd-nuke": "cbc:YourBlowfishKeyHere123456"
 
 announce:
   config_file: "plugins/announce/config.yml"
@@ -97,9 +97,9 @@ announce:
   # event_fifo. Give them an announce_type like SPACEARCHIVE / SPACEOFFSITE /
   # SPACEDELETE and route those in plugins/announce/config.yml:
   #   type_routes:
-  #     SPACEARCHIVE: ["#goftpd-archive"]
-  #     SPACEOFFSITE: ["#goftpd-archive"]
-  #     SPACEDELETE: ["#goftpd-archive"]
+  #     SPACEARCHIVE: ["#weaveftpd-archive"]
+  #     SPACEOFFSITE: ["#weaveftpd-archive"]
+  #     SPACEDELETE: ["#weaveftpd-archive"]
 
 help:
   channels: *chan_chat
@@ -118,7 +118,7 @@ sections:
     paths: []
 
 #########################
-# #goftpd-chat
+# #weaveftpd-chat
 #########################
 
   - name: "REQUESTS"
@@ -132,7 +132,7 @@ sections:
       - "/SPEEDTEST/*"
 
 #########################
-# #goftpd-foreign
+# #weaveftpd-foreign
 #########################
 
   - name: "TV-CZ"
@@ -211,7 +211,7 @@ sections:
       - "/FOREIGN/X265-FOREIGN/*"
 
 #########################
-# #goftpd-archive
+# #weaveftpd-archive
 #########################
 
   - name: "ARCHIVE"
@@ -220,7 +220,7 @@ sections:
       - "/ARCHiVE/*"
 
 #########################
-# #goftpd
+# #weaveftpd
 #########################
 
   - name: "APPS"
@@ -339,7 +339,7 @@ sections:
       - "/X265/*"
 
 #########################
-# #goftpd-spam
+# #weaveftpd-spam
 #########################
 
   - name: "MP3"

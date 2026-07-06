@@ -12,7 +12,7 @@ import (
 )
 
 // rotatingLog is an io.Writer that writes to a file and rotates it daily.
-// The active file is always `<basePath>` (e.g. logs/goftpd.log). At midnight
+// The active file is always `<basePath>` (e.g. logs/weaveftpd.log). At midnight
 // (local time), the previous day's file is renamed to `<basePath>.YYYY-MM-DD`
 // and any rotated file older than `deleteAfterDays` is deleted.
 type rotatingLog struct {
@@ -56,11 +56,11 @@ func PrintStartupBanner(version, subtitle string) {
 		text  string
 	}{
 		{cyan + bold, "=============================================================="},
-		{cyan + bold, "   ______      ________________  ____ "},
-		{green + bold, "  / ____/___  / ____/_  __/ __ \\/ __ \\"},
-		{green + bold, " / / __/ __ \\/ /_    / / / /_/ / / / /"},
-		{yellow + bold, "/ /_/ / /_/ / __/   / / / ____/ /_/ / "},
-		{yellow + bold, "\\____/\\____/_/     /_/ /_/   /_____/  "},
+		{cyan + bold, "__        __                    _____ _____ ____      _"},
+		{green + bold, "\\ \\      / /__  __ ___   _____ |  ___|_   _|  _ \\  __| |"},
+		{green + bold, " \\ \\ /\\ / / _ \\/ _` \\ \\ / / _ \\| |_    | | | |_) |/ _` |"},
+		{yellow + bold, "  \\ V  V /  __/ (_| |\\ V /  __/|  _|   | | |  __/| (_| |"},
+		{yellow + bold, "   \\_/\\_/ \\___|\\__,_| \\_/ \\___||_|     |_| |_|    \\__,_|"},
 		{cyan + bold, "=============================================================="},
 	}
 	for _, line := range lines {
@@ -177,7 +177,7 @@ func shouldWriteConsoleLog(p []byte) bool {
 		" connected from ",
 		"reusing cached vfs for slave",
 		"slave mode [name=",
-		"starting goftpd",
+		"starting weaveftpd",
 		"shutting down",
 		"going offline",
 		"reconnecting to master in",

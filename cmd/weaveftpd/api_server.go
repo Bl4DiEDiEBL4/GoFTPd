@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"goftpd/internal/core"
-	"goftpd/internal/master"
-	"goftpd/internal/metrics"
+	"weaveftpd/internal/core"
+	"weaveftpd/internal/master"
+	"weaveftpd/internal/metrics"
 )
 
 type vfsMoveRequest struct {
@@ -225,7 +225,7 @@ func (a *vfsAPI) authorize(w http.ResponseWriter, r *http.Request) bool {
 	}
 	got := bearerToken(r.Header.Get("Authorization"))
 	if got == "" {
-		got = strings.TrimSpace(r.Header.Get("X-GoFTPd-Token"))
+		got = strings.TrimSpace(r.Header.Get("X-WeaveFTPd-Token"))
 	}
 	if subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
 		writeAPIError(w, http.StatusUnauthorized, "unauthorized")

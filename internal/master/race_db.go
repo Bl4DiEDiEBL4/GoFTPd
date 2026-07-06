@@ -12,7 +12,7 @@ import (
 	"sync"
 
 	_ "github.com/mattn/go-sqlite3"
-	"goftpd/internal/core"
+	"weaveftpd/internal/core"
 )
 
 type RaceDB struct {
@@ -292,7 +292,7 @@ func (r *RaceDB) RecordUpload(filePath, owner, group string, size int64, duratio
             updated_at = strftime('%s','now')
         WHERE release_files.is_present = 0
            OR trim(release_files.uploader) = ''
-           OR lower(trim(release_files.uploader)) IN ('goftpd', 'ftp', 'root', '0')
+           OR lower(trim(release_files.uploader)) IN ('weaveftpd', 'ftp', 'root', '0')
     `, releaseID, fileName, owner, group, size, durationMs, int64(checksum))
 	return err
 }

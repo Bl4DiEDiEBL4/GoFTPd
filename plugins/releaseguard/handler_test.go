@@ -3,8 +3,8 @@ package releaseguard
 import (
 	"testing"
 
-	"goftpd/internal/plugin"
-	"goftpd/internal/user"
+	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/user"
 )
 
 type testBridge struct {

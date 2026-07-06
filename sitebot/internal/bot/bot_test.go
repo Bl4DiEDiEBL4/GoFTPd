@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"goftpd/sitebot/internal/event"
-	"goftpd/sitebot/internal/irc"
+	"weaveftpd/sitebot/internal/event"
+	"weaveftpd/sitebot/internal/irc"
 )
 
 type recordingConn struct {
@@ -57,8 +57,8 @@ func TestRouteChannelsPrefersBestPathMatchOverDuplicateSectionName(t *testing.T)
 	b := &Bot{
 		Config: &Config{
 			Sections: []SectionRoute{
-				{Name: "REQUESTS", Channels: []string{"#goftpd-chat"}, Paths: []string{"/REQUESTS/*/*"}},
-				{Name: "REQUESTS", Channels: []string{"#goftpd"}, Paths: []string{"/REQUESTS_SPECIAL/*/*"}},
+				{Name: "REQUESTS", Channels: []string{"#weaveftpd-chat"}, Paths: []string{"/REQUESTS/*/*"}},
+				{Name: "REQUESTS", Channels: []string{"#weaveftpd"}, Paths: []string{"/REQUESTS_SPECIAL/*/*"}},
 			},
 		},
 	}
@@ -69,8 +69,8 @@ func TestRouteChannelsPrefersBestPathMatchOverDuplicateSectionName(t *testing.T)
 	}
 
 	got := b.routeChannels(evt, "RACE")
-	if len(got) != 1 || got[0] != "#goftpd" {
-		t.Fatalf("routeChannels() = %#v, want %#v", got, []string{"#goftpd"})
+	if len(got) != 1 || got[0] != "#weaveftpd" {
+		t.Fatalf("routeChannels() = %#v, want %#v", got, []string{"#weaveftpd"})
 	}
 }
 
@@ -107,14 +107,14 @@ func TestCommandEventFromPrivmsgDecryptsChannelCommandWithPlainCBCKey(t *testing
 		Config: cfg,
 		IRC:    irc.NewBot("irc.example.net", 6697, "GoSitebot", "sitebot", "GoSitebot"),
 	}
-	if err := b.IRC.SetChannelKey("#goftpd", "SuperSecretChannelKey123"); err != nil {
+	if err := b.IRC.SetChannelKey("#weaveftpd", "SuperSecretChannelKey123"); err != nil {
 		t.Fatalf("SetChannelKey: %v", err)
 	}
 	enc, err := irc.NewBlowfishEncryptor("cbc:SuperSecretChannelKey123")
 	if err != nil {
 		t.Fatalf("NewBlowfishEncryptor: %v", err)
 	}
-	line := ":Alice!user@example PRIVMSG #goftpd :+OK *" + enc.Encrypt("!refresh")
+	line := ":Alice!user@example PRIVMSG #weaveftpd :+OK *" + enc.Encrypt("!refresh")
 	evt := b.commandEventFromPrivmsg(line)
 	if evt == nil {
 		t.Fatalf("expected decrypted channel command event")
@@ -122,8 +122,8 @@ func TestCommandEventFromPrivmsgDecryptsChannelCommandWithPlainCBCKey(t *testing
 	if got := evt.Data["command"]; got != "refresh" {
 		t.Fatalf("command = %q, want %q", got, "refresh")
 	}
-	if got := evt.Data["channel"]; got != "#goftpd" {
-		t.Fatalf("channel = %q, want %q", got, "#goftpd")
+	if got := evt.Data["channel"]; got != "#weaveftpd" {
+		t.Fatalf("channel = %q, want %q", got, "#weaveftpd")
 	}
 }
 
@@ -135,7 +135,7 @@ func TestCommandEventFromPrivmsgDoesNotPanicOnMalformedEncryptedChannelCommand(t
 		Config: cfg,
 		IRC:    irc.NewBot("irc.example.net", 6697, "GoSitebot", "sitebot", "GoSitebot"),
 	}
-	if err := b.IRC.SetChannelKey("#goftpd", "SuperSecretChannelKey123"); err != nil {
+	if err := b.IRC.SetChannelKey("#weaveftpd", "SuperSecretChannelKey123"); err != nil {
 		t.Fatalf("SetChannelKey: %v", err)
 	}
 	defer func() {
@@ -143,7 +143,7 @@ func TestCommandEventFromPrivmsgDoesNotPanicOnMalformedEncryptedChannelCommand(t
 			t.Fatalf("commandEventFromPrivmsg panicked: %v", r)
 		}
 	}()
-	line := ":Alice!user@example PRIVMSG #goftpd :+OK *AAAA"
+	line := ":Alice!user@example PRIVMSG #weaveftpd :+OK *AAAA"
 	if evt := b.commandEventFromPrivmsg(line); evt != nil {
 		t.Fatalf("expected malformed encrypted line to be ignored")
 	}
@@ -154,7 +154,7 @@ func TestLoadConfigPreservesAnnouncePretimeConfig(t *testing.T) {
 	announceCfg := filepath.Join(tmp, "announce.yml")
 	mainCfg := filepath.Join(tmp, "sitebot.yml")
 
-	if err := os.WriteFile(announceCfg, []byte("default_channel: \"#goftpd\"\npretime:\n  mode: \"inline\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(announceCfg, []byte("default_channel: \"#weaveftpd\"\npretime:\n  mode: \"inline\"\n"), 0o644); err != nil {
 		t.Fatalf("write announce config: %v", err)
 	}
 	if err := os.WriteFile(mainCfg, []byte("irc:\n  host: \"irc.example.net\"\n  port: 6697\n  nick: \"GoSitebot\"\n  user: \"sitebot\"\n  realname: \"GoSitebot\"\nannounce:\n  config_file: \""+filepath.Base(announceCfg)+"\"\nplugins:\n  enabled:\n    Announce: true\n  config: {}\n"), 0o644); err != nil {
@@ -207,7 +207,7 @@ func TestOnRegisteredNickServIdentifyBeforeJoin(t *testing.T) {
 		Config: &Config{
 			IRC: IRCConfig{
 				Nick:          "GoSitebot",
-				Channels:      []string{"#goftpd"},
+				Channels:      []string{"#weaveftpd"},
 				AutoJoinDelay: 0,
 				NickServ: NickServConfig{
 					Enabled:  true,
@@ -230,7 +230,7 @@ func TestOnRegisteredNickServIdentifyBeforeJoin(t *testing.T) {
 	if got := strings.TrimSpace(conn.writes[0]); got != "PRIVMSG NickServ :IDENTIFY secret" {
 		t.Fatalf("first write = %q", got)
 	}
-	if got := strings.TrimSpace(conn.writes[1]); got != "JOIN #goftpd" {
+	if got := strings.TrimSpace(conn.writes[1]); got != "JOIN #weaveftpd" {
 		t.Fatalf("second write = %q", got)
 	}
 }
@@ -241,7 +241,7 @@ func TestOnRegisteredNickServRegisterThenIdentify(t *testing.T) {
 		Config: &Config{
 			IRC: IRCConfig{
 				Nick:          "GoSitebot",
-				Channels:      []string{"#goftpd"},
+				Channels:      []string{"#weaveftpd"},
 				AutoJoinDelay: 0,
 				NickServ: NickServConfig{
 					Enabled:      true,
@@ -270,7 +270,7 @@ func TestOnRegisteredNickServRegisterThenIdentify(t *testing.T) {
 	if got := strings.TrimSpace(conn.writes[1]); got != "PRIVMSG NickServ :IDENTIFY GoSitebot secret" {
 		t.Fatalf("second write = %q", got)
 	}
-	if got := strings.TrimSpace(conn.writes[2]); got != "JOIN #goftpd" {
+	if got := strings.TrimSpace(conn.writes[2]); got != "JOIN #weaveftpd" {
 		t.Fatalf("third write = %q", got)
 	}
 }

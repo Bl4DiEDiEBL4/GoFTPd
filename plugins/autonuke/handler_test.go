@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"goftpd/internal/core"
-	"goftpd/internal/plugin"
+	"weaveftpd/internal/core"
+	"weaveftpd/internal/plugin"
 )
 
 type testBridge struct {

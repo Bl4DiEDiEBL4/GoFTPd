@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/internal/plugin"
-	"goftpd/internal/user"
+	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/user"
 )
 
 const slowkickMonitorInterval = time.Second

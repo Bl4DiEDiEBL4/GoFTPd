@@ -18,8 +18,8 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/internal/core"
-	pluginpkg "goftpd/internal/plugin"
+	"weaveftpd/internal/core"
+	pluginpkg "weaveftpd/internal/plugin"
 )
 
 type Handler struct {
@@ -1019,7 +1019,7 @@ func loadConfig(raw map[string]interface{}) config {
 		StateDir:            stringValue(raw, "logs/autonuke", "state_dir", "TEMPDIR"),
 		NukedPrefix:         stringValue(raw, "[NUKED]-", "nuked_prefix"),
 		CheckCompleteDir:    boolValue(raw, true, "check_complete_dir", "CHECK_COMPLETE_DIR"),
-		UserExclude:         stringValue(raw, "goftpd", "user_exclude", "USEREXCLUDE"),
+		UserExclude:         stringValue(raw, "weaveftpd", "user_exclude", "USEREXCLUDE"),
 	}
 
 	cfg.Sections = normalizeSectionPatterns(stringSliceValue(raw, "sections"))

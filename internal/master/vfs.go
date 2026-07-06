@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/internal/core"
-	"goftpd/internal/metrics"
-	"goftpd/internal/plugin"
-	"goftpd/internal/zipscript"
+	"weaveftpd/internal/core"
+	"weaveftpd/internal/metrics"
+	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/zipscript"
 )
 
 // VFSFile represents a file or directory in the master's virtual file system.
@@ -966,7 +966,7 @@ func isWeakMetadataValue(value string) bool {
 		return true
 	case len(value) == 4 && strings.EqualFold(value, "root"):
 		return true
-	case len(value) == 6 && strings.EqualFold(value, "goftpd"):
+	case len(value) == 6 && strings.EqualFold(value, "weaveftpd"):
 		return true
 	default:
 		return false

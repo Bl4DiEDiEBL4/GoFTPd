@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"goftpd/internal/protocol"
+	"weaveftpd/internal/protocol"
 )
 
 // --------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import (
 	"path"
 	"strings"
 
-	"goftpd/internal/zipscript"
+	"weaveftpd/internal/zipscript"
 )
 
 type statusMarkerConfig struct {

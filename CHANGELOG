@@ -1,4 +1,4 @@
-GoFTPd Changelog
+WeaveFTPd Changelog
 ================
 
 1.2.0
@@ -104,7 +104,7 @@ Data integrity
   etc. were clobbered. AddFile now refuses to let an evidence-free re-scan (no
   checksum/xfertime) shrink a completed size, for all file types. This was making
   a valid .sfv list as 0 bytes, which cbftp skips, so it never raced.
-- goftpd now generates the <release>.m3u from the SFV when an MP3 release
+- weaveftpd now generates the <release>.m3u from the SFV when an MP3 release
   completes, matching glftpd/pzs-ng. It lists the SFV's MP3 files, is written to
   the release's slave before the complete announce/hook fires, and is skipped if
   the release already ships an .m3u. Toggle with audio.create_m3u (default true).
@@ -126,7 +126,7 @@ Data integrity
 - REQUEST/REQFILL metadata is now flushed to disk immediately and mirrored to a
   readable JSON state file so REQTOP fill counters survive daemon restarts
   instead of depending on the periodic VFS save loop.
-- Fixed intermittent missing .sfv (and .nfo/.diz) on goftpd->goftpd FXP races.
+- Fixed intermittent missing .sfv (and .nfo/.diz) on weaveftpd->weaveftpd FXP races.
   Root cause: when a file was FXP-pulled at the same instant a racer was
   uploading it to the source, the "leech-while-upload" detection was only checked
   once at the start of the send, so an upload that registered a moment later was
@@ -166,7 +166,7 @@ Display
 - MP3, FLAC, IMDB and TVMaze info on CWD are now CP437 boxes at one shared width
   matching the race-stats banner.
 - The CWD race-stats banner now uses a compact "R A C E S T A T S" title.
-- The GoFTPd ASCII art moved to the login MOTD.
+- The WeaveFTPd ASCII art moved to the login MOTD.
 
 Plugins
 - releaseguard: a banned release can no longer slip in via STOR. An upload that
@@ -375,5 +375,5 @@ Plugins
 1.0.0b
 ------
 
-- Initial beta baseline for the current GoFTPd codebase.
+- Initial beta baseline for the current WeaveFTPd codebase.
 - Core FTP daemon, sitebot, VFS, ACL, and race-tracking foundations in place.

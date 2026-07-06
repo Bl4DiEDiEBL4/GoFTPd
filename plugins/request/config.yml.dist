@@ -50,6 +50,6 @@ reqwipe_flags: "1"
 
 # FTP users allowed to submit hidden -by:<irc nick> ownership on behalf of
 # sitebot commands. Keep this to the dedicated sitebot/admin FTP account.
-proxy_users: ["goftpd"]
+proxy_users: ["weaveftpd"]
 
 debug: false

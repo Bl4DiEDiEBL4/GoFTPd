@@ -2,10 +2,10 @@
 #
 # Build the daemon, edit the values below, then start from this directory with:
 #
-#   ./goftpd --config etc/config-slave-example.yml
+#   ./weaveftpd --config etc/config-slave-example.yml
 #
 # If you prefer the default config path, copy this file to etc/config.yml and
-# run ./goftpd without --config.
+# run ./weaveftpd without --config.
 
 mode: "slave"
 version: "dev"
@@ -13,7 +13,7 @@ timezone: "Europe/Amsterdam"
 debug: false
 
 # Optional but useful when running the slave detached.
-log_file: "logs/goftpd-slave.log"
+log_file: "logs/weaveftpd-slave.log"
 log_console: true
 log_keep_days: 2
 
@@ -42,7 +42,7 @@ slave:
   # Optional: expose separate physical disks under one virtual archive path.
   # Leave this as [] when the slave only serves the normal roots above.
   # This is useful for NFS-mounted archive disks without putting mergerfs in
-  # front of GoFTPd.
+  # front of WeaveFTPd.
   mounted_roots: []
   # To use archive mounts, replace mounted_roots: [] above with:
   #

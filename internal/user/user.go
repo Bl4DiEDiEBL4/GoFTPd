@@ -209,7 +209,7 @@ func MutateAndSave(name string, groupMap map[string]int, mutate func(*User) erro
 
 // LoadUser reads user file - supports userfile format
 func LoadUser(name string, groupMap map[string]int) (*User, error) {
-	// Use exact case - usernames are case-sensitive like goftpd
+	// Use exact case - usernames are case-sensitive like weaveftpd
 	path := filepath.Join("etc", "users", name)
 	return loadUserFile(name, path, groupMap)
 }
@@ -279,7 +279,7 @@ func loadUserFile(name, path string, groupMap map[string]int) (*User, error) {
 		}
 	}
 
-	// Simple goftpd parser inline
+	// Simple weaveftpd parser inline
 	lines := strings.Split(string(data), "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -474,7 +474,7 @@ func loadUserFile(name, path string, groupMap map[string]int) (*User, error) {
 		}
 	}
 	if u.UserLine == "" {
-		u.UserLine = "Added by GoFTPd"
+		u.UserLine = "Added by WeaveFTPd"
 	}
 	if u.GeneralLine == "" {
 		u.GeneralLine = "0,120 -1 0 0"
@@ -486,7 +486,7 @@ func loadUserFile(name, path string, groupMap map[string]int) (*User, error) {
 		u.TimeframeLine = "0 0"
 	}
 	if u.AddedBy == "" {
-		u.AddedBy = "goftpd"
+		u.AddedBy = "weaveftpd"
 	}
 	if u.LoginsLine != "" {
 		u.deriveLoginLimitsFromLine()
@@ -606,7 +606,7 @@ func (u *User) saveLocked() error {
 		}
 	}
 	if u.UserLine == "" {
-		u.UserLine = "Added by GoFTPd"
+		u.UserLine = "Added by WeaveFTPd"
 	}
 	if u.GeneralLine == "" {
 		u.GeneralLine = "0,120 -1 0 0"
@@ -618,7 +618,7 @@ func (u *User) saveLocked() error {
 		u.TimeframeLine = "0 0"
 	}
 	if u.AddedBy == "" {
-		u.AddedBy = "goftpd"
+		u.AddedBy = "weaveftpd"
 	}
 	if u.StatExtras == nil {
 		u.StatExtras = make(map[string]string)

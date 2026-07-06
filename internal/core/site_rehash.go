@@ -5,7 +5,7 @@ import (
 	"log"
 )
 
-// HandleSiteRehash handles SITE REHASH — reloads the main goftpd config
+// HandleSiteRehash handles SITE REHASH — reloads the main weaveftpd config
 // from disk. Restricted to siteops (flag 1). Fields that require process
 // restart (listen ports, TLS certs, storage path, mode) are not reloaded.
 func (s *Session) HandleSiteRehash(args []string) bool {

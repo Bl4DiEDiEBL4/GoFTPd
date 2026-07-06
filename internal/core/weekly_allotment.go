@@ -8,7 +8,7 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
-	"goftpd/internal/user"
+	"weaveftpd/internal/user"
 )
 
 var weeklyAllotmentSchema = `

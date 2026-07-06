@@ -1,5 +1,5 @@
 # Trial/quota tracker inspired by the old fin-bot, without the !df/free bits.
-# It watches GoFTPd user files directly, tracks trial/quota state in a small
+# It watches WeaveFTPd user files directly, tracks trial/quota state in a small
 # YAML state file, and can disable users with flag 6 when they fail.
 users_dir: "../etc/users"
 bye_dir: "../etc/byefiles"
@@ -18,14 +18,14 @@ status_commands: ["quota"]
 staff_command: "quotactl"
 
 reply_target: "channel"
-channels: ["#goftpd-chat"]
-staff_channels: ["#goftpd-staff"]
+channels: ["#weaveftpd-chat"]
+staff_channels: ["#weaveftpd-staff"]
 staff_hosts: []
 staff_users: []
 
 # Only manage these groups. Leave empty to manage every user not in skip_users.
 included_groups: []
-skip_users: ["default.user", "glftpd", "goftpd", "NUKEBOT"]
+skip_users: ["default.user", "glftpd", "weaveftpd", "NUKEBOT"]
 
 scan_interval_seconds: 300
 
@@ -37,7 +37,7 @@ quota_enabled: true
 quota_gb: 250
 quota_fail_back_to_trial: true
 
-# Flag(s) added when a user is disabled. GoFTPd now rejects flag 6 at login.
+# Flag(s) added when a user is disabled. WeaveFTPd now rejects flag 6 at login.
 disabled_flag: "6"
 
 # If a user has linked their IRC nick with SITE INVITE, the bot can kick them

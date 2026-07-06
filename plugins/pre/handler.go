@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"goftpd/internal/plugin"
-	"goftpd/internal/timeutil"
-	"goftpd/internal/user"
 	"gopkg.in/yaml.v3"
+	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/timeutil"
+	"weaveftpd/internal/user"
 )
 
 type Plugin struct {
@@ -1916,7 +1916,7 @@ func savePermissionsFile(filePath string, cfg permissionsFileConfig) error {
 
 func renderPermissionsFile(cfg permissionsFileConfig) string {
 	var b strings.Builder
-	b.WriteString(`# GoFTPd ACL rules.
+	b.WriteString(`# WeaveFTPd ACL rules.
 #
 # How matching works:
 #   - Rules are checked top to bottom inside the requested type.

@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/internal/plugin"
+	"weaveftpd/internal/plugin"
 
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"

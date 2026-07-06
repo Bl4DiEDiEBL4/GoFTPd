@@ -31,8 +31,8 @@ func writeConfigFixtureWithVersion(t *testing.T, body, version string) string {
 
 func TestLoadConfigRejectsMissingSlaveHost(t *testing.T) {
 	path := writeConfigFixture(t, `
-sitename_long: "GoFTPd"
-sitename_short: "GoFTPd"
+sitename_long: "WeaveFTPd"
+sitename_short: "WeaveFTPd"
 version: "1.0.6b"
 timezone: "Europe/Amsterdam"
 mode: "slave"
@@ -51,8 +51,8 @@ slave:
 
 func TestLoadConfigRejectsTLSRequirementWithoutTLS(t *testing.T) {
 	path := writeConfigFixture(t, `
-sitename_long: "GoFTPd"
-sitename_short: "GoFTPd"
+sitename_long: "WeaveFTPd"
+sitename_short: "WeaveFTPd"
 version: "1.0.6b"
 timezone: "Europe/Amsterdam"
 mode: "master"
@@ -74,8 +74,8 @@ master:
 
 func TestLoadConfigSlaveIgnoresMissingPluginConfigFiles(t *testing.T) {
 	path := writeConfigFixture(t, `
-sitename_long: "GoFTPd"
-sitename_short: "GoFTPd"
+sitename_long: "WeaveFTPd"
+sitename_short: "WeaveFTPd"
 version: "1.0.6b"
 timezone: "Europe/Amsterdam"
 mode: "slave"
@@ -103,8 +103,8 @@ plugins:
 
 func TestLoadConfigVersionFileOverridesYamlVersion(t *testing.T) {
 	path := writeConfigFixtureWithVersion(t, `
-sitename_long: "GoFTPd"
-sitename_short: "GoFTPd"
+sitename_long: "WeaveFTPd"
+sitename_short: "WeaveFTPd"
 version: "old"
 timezone: "Europe/Amsterdam"
 mode: "master"
@@ -128,8 +128,8 @@ master:
 
 func TestRehashHookCanPublishEvents(t *testing.T) {
 	path := writeConfigFixture(t, `
-sitename_long: "GoFTPd"
-sitename_short: "GoFTPd"
+sitename_long: "WeaveFTPd"
+sitename_short: "WeaveFTPd"
 version: "1.0.6b"
 timezone: "Europe/Amsterdam"
 mode: "master"

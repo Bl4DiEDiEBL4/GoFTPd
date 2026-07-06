@@ -1,11 +1,11 @@
 # Staff-only IRC topic setter.
 # IRC command:
 #   !topic #channel your topic text here
-staff_channels: ["#goftpd-staff"]
+staff_channels: ["#weaveftpd-staff"]
 staff_hosts: []
 
 # Optional allowlist of channels that may be targeted by !topic.
-# Example: ["#goftpd", "#goftpd-chat"]
+# Example: ["#weaveftpd", "#weaveftpd-chat"]
 allowed_targets: []
 
 # When true and the bot has a FiSH key for the target channel, send TOPIC

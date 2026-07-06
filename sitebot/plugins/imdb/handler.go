@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/sitebot/internal/event"
-	"goftpd/sitebot/internal/plugin"
-	tmpl "goftpd/sitebot/internal/template"
+	"weaveftpd/sitebot/internal/event"
+	"weaveftpd/sitebot/internal/plugin"
+	tmpl "weaveftpd/sitebot/internal/template"
 )
 
 func normalizePlotText(plot string, maxRunes int) string {

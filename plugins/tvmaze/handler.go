@@ -1,8 +1,8 @@
-// Package tvmaze is a goftpd plugin that looks up TV show metadata on
+// Package tvmaze is a weaveftpd plugin that looks up TV show metadata on
 // TVMaze when a release directory is created, and writes a .tvmaze file
 // into the release dir for display via show_diz.
 //
-// Config (in the main goftpd config.yml under plugins.tvmaze):
+// Config (in the main weaveftpd config.yml under plugins.tvmaze):
 //
 //	plugins:
 //	  tvmaze:
@@ -24,10 +24,10 @@ import (
 	"sync"
 	"time"
 
-	"goftpd/internal/plugin"
+	"weaveftpd/internal/plugin"
 )
 
-// Handler is the tvmaze plugin. One instance per goftpd process.
+// Handler is the tvmaze plugin. One instance per weaveftpd process.
 type Handler struct {
 	svc      *plugin.Services
 	debug    bool
@@ -689,7 +689,7 @@ func newInfoBox(title, version string) *infoBox {
 	b.lines = append(b.lines,
 		boxTL+strings.Repeat(boxH, boxInnerWidth)+boxTR,
 		boxV+boxCenterCell(title, boxInnerWidth)+boxV,
-		boxV+boxRightCell("GoFTPd v"+version+" ", boxInnerWidth)+boxV,
+		boxV+boxRightCell("WeaveFTPd v"+version+" ", boxInnerWidth)+boxV,
 		boxLT+strings.Repeat(boxH, boxInnerWidth)+boxRT,
 	)
 	return b

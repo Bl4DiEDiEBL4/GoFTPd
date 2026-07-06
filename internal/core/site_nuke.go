@@ -91,7 +91,7 @@ func (s *Session) HandleSiteNuke(args []string) bool {
 		uploaderBytes[username] += info.Size()
 	}
 
-	nukeeLine := FormatNukees(BuildNukeUserStats(uploaderBytes), []string{"goftpd", s.User.Name})
+	nukeeLine := FormatNukees(BuildNukeUserStats(uploaderBytes), []string{"weaveftpd", s.User.Name})
 
 	// Rename first so a failed rename never leaves users penalized for a dir that
 	// wasn't actually nuked (which a retry would then double-penalize).
@@ -332,7 +332,7 @@ func (s *Session) handleSiteNukeVFS(bridge MasterBridge, target string, multipli
 	}
 
 	uploaderBytes := DirUploaderBytes(bridge, dirPath)
-	nukeeLine := FormatNukees(BuildNukeUserStats(uploaderBytes), []string{"goftpd", s.User.Name})
+	nukeeLine := FormatNukees(BuildNukeUserStats(uploaderBytes), []string{"weaveftpd", s.User.Name})
 	result, err := PerformSystemNuke(bridge, s.GroupMap, dirPath, multiplier, reason, "[NUKED]-")
 	if err != nil {
 		fmt.Fprintf(s.Conn, "550 Nuke failed: %v\r\n", err)

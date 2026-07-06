@@ -4,14 +4,14 @@
 # staff-only.
 host: "127.0.0.1"
 port: 21212
-user: "goftpd"
-password: "goftpd"
+user: "weaveftpd"
+password: "weaveftpd"
 tls: true
 insecure_skip_verify: true
 timeout_seconds: 10
 
-channels: ["#goftpd-chat"]
-staff_channels: ["#goftpd-staff"]
+channels: ["#weaveftpd-chat"]
+staff_channels: ["#weaveftpd-staff"]
 staff_hosts: []
 
 # reply_target supports "channel", "notice", or a fixed "#channel".

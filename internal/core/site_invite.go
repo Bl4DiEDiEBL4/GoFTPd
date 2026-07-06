@@ -100,7 +100,7 @@ func anyFlagMatches(userFlags, required string) bool {
 
 // getSitebotInviteConfig reads channels and invite rules from the sitebot's
 // config.yml. The sitebot config is the source of truth set via
-// `sitebot_config:` in the main goftpd config.yml.
+// `sitebot_config:` in the main weaveftpd config.yml.
 func (s *Session) getSitebotInviteConfig() ([]string, []InviteRule) {
 	if s.Config.SitebotConfig == "" {
 		if s.Config.Debug {

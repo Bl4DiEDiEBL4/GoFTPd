@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	pluginpkg "goftpd/internal/plugin"
-	"goftpd/internal/user"
-	"goftpd/internal/zipscript"
+	pluginpkg "weaveftpd/internal/plugin"
+	"weaveftpd/internal/user"
+	"weaveftpd/internal/zipscript"
 )
 
 // EventType describes a daemon event published for external consumers such as the sitebot.

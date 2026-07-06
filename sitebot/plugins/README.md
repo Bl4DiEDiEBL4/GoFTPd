@@ -1,6 +1,6 @@
 # GoSitebot Plugins
 
-Plugins extend the sitebot by reacting to events from goftpd (uploads, race
+Plugins extend the sitebot by reacting to events from weaveftpd (uploads, race
 finishes, nukes, IRC commands, etc.) and producing IRC output (PRIVMSG /
 NOTICE) that the bot sends to channels.
 
@@ -18,8 +18,8 @@ NOTICE) that the bot sends to channels.
 - **admincommander** - staff bridge for `!site`, `!nuke`, `!unnuke` and other allowed SITE commands
 - **banned** - handles `!banned` by querying `SITE BANNED`
 - **selfip** - handles `!ip`, `!ips`, `!addip`, `!delip`, `!chgip` through `SITE SELFIP`
-- **quota** - tracks trial/quota users from GoFTPd user files and handles `!quota` plus staff `!quotactl ...`
-- **top** - handles `!top`, reading daily upload stats from goftpd user files with optional user/group excludes and timed auto-announce
+- **quota** - tracks trial/quota users from WeaveFTPd user files and handles `!quota` plus staff `!quotactl ...`
+- **top** - handles `!top`, reading daily upload stats from weaveftpd user files with optional user/group excludes and timed auto-announce
 - **rules** - handles `!rules`, reading a configured rules file or falling back to `SITE RULES`
 - **topic** - handles staff-only `!topic #channel topic text`, using FiSH topic encryption when a channel key exists
 - **control** - built-in staff control surface for `!refresh` and `!restart`
@@ -39,8 +39,8 @@ package myplugin
 import (
     "log"
 
-    "goftpd/sitebot/internal/event"
-    "goftpd/sitebot/internal/plugin"
+    "weaveftpd/sitebot/internal/event"
+    "weaveftpd/sitebot/internal/plugin"
 )
 
 type MyPlugin struct {
@@ -76,7 +76,7 @@ func (p *MyPlugin) Close() error { return nil }
 Then in `sitebot/internal/bot/bot.go` `initializePlugins()`:
 
 ```go
-import myplugin "goftpd/sitebot/plugins/myplugin"
+import myplugin "weaveftpd/sitebot/plugins/myplugin"
 
 if enabled, ok := b.Config.Plugins.Enabled["MyPlugin"]; !ok || enabled {
     p := myplugin.New()
@@ -126,10 +126,10 @@ type Output struct {
 
 Two ways your plugin's output gets to a channel:
 
-**1. Explicit Target** - used by command-driven plugins (news, free). When `Output.Target` is set, the bot sends straight there. Example: `!news` typed in `#goftpd-chat` -> the news plugin returns `Output{Target: "#goftpd-chat", Text: "..."}` -> reply lands in `#goftpd-chat`.
+**1. Explicit Target** - used by command-driven plugins (news, free). When `Output.Target` is set, the bot sends straight there. Example: `!news` typed in `#weaveftpd-chat` -> the news plugin returns `Output{Target: "#weaveftpd-chat", Text: "..."}` -> reply lands in `#weaveftpd-chat`.
 
 **2. Empty Target -> routeChannels** - used by event-driven plugins (announce, tvmaze, imdb). The bot looks up channels via:
-  - `announce.type_routes[Output.Type]` first (per-type override, e.g. NUKE -> `#goftpd-nuke`)
+  - `announce.type_routes[Output.Type]` first (per-type override, e.g. NUKE -> `#weaveftpd-nuke`)
   - then `sections[*].channels` matching `evt.Section` or path glob
   - then `announce.default_channel`
   - then `irc.channels`
@@ -154,7 +154,7 @@ func (p *MyPlugin) SetAsyncEmitter(fn func(outType, text, section, relpath strin
 
 ...and the bot wires it in `initializePlugins` like the existing tvmaze block.
 
-## Event types (from goftpd FIFO)
+## Event types (from weaveftpd FIFO)
 
 | Constant              | Fires when                                              |
 |-----------------------|---------------------------------------------------------|
@@ -226,9 +226,9 @@ Those can be routed in `sitebot/plugins/announce/config.yml` like:
 
 ```yaml
 type_routes:
-  SPACEARCHIVE: ["#goftpd-archive"]
-  SPACEOFFSITE: ["#goftpd-archive"]
-  SPACEDELETE: ["#goftpd-archive"]
+  SPACEARCHIVE: ["#weaveftpd-archive"]
+  SPACEOFFSITE: ["#weaveftpd-archive"]
+  SPACEDELETE: ["#weaveftpd-archive"]
 ```
 
 Example JSON line:
@@ -261,7 +261,7 @@ Example Python:
 import json
 from datetime import datetime, timezone
 
-fifo_path = "/GoFTPd_master/etc/goftpd.sitebot.fifo"
+fifo_path = "/WeaveFTPd_master/etc/weaveftpd.sitebot.fifo"
 
 evt = {
     "type": "CUSTOM",
@@ -317,11 +317,11 @@ RACE: [%section] %relname got its first rar from %u_name at %u_speed
 
 Variables come from `vars()` in the announce plugin - anything in `evt.Data` is also exposed as `%key`. Templates are pure substitution, no logic.
 
-For easier theme translation, the announce plugin also exposes a small DrFTPD-style alias set in addition to GoFTPd's native names: `%user`, `%group`, `%file`, `%path`, `%speed`, `%size`, `%files`, `%racers`, `%leaduser`, `%leadsize`, `%leadfiles`, `%leadpercent`, `%leadspeed`, `%filesleft`, and `%sectioncolor`.
+For easier theme translation, the announce plugin also exposes a small DrFTPD-style alias set in addition to WeaveFTPd's native names: `%user`, `%group`, `%file`, `%path`, `%speed`, `%size`, `%files`, `%racers`, `%leaduser`, `%leadsize`, `%leadfiles`, `%leadpercent`, `%leadspeed`, `%filesleft`, and `%sectioncolor`.
 
 ## Examples to study
 
 - **announce** - pure event consumer, no I/O, returns formatted strings. Good template for new event-driven plugins.
 - **news** - command-driven (replies to `!news`), uses `Output.Target`, persists to JSONL.
 - **tvmaze / imdb** - event-driven + async HTTP via `SetAsyncEmitter` pattern.
-- **free** - minimal command-driven plugin, talks to goftpd's disk-status feed.
+- **free** - minimal command-driven plugin, talks to weaveftpd's disk-status feed.

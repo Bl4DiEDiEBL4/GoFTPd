@@ -2,7 +2,7 @@
 # IRC commands:
 #   !refresh
 #   !restart
-staff_channels: ["#goftpd-staff"]
+staff_channels: ["#weaveftpd-staff"]
 staff_hosts: []
 
 # reply_target supports "channel", "notice", or a fixed "#channel".

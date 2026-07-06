@@ -16,9 +16,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"goftpd/internal/core"
-	"goftpd/internal/protocol"
-	"goftpd/internal/zipscript"
+	"weaveftpd/internal/core"
+	"weaveftpd/internal/protocol"
+	"weaveftpd/internal/zipscript"
 )
 
 // SlaveManager listens for slave connections and manages all RemoteSlave objects.
@@ -1651,7 +1651,7 @@ func (sm *SlaveManager) ProcessRemerge(rs *RemoteSlave, resp *protocol.AsyncResp
 		group := inode.Group
 		if existingFile := sm.vfs.GetFile(fullPath); existingFile != nil {
 			// ALWAYS trust the Master's VFS owner over the Slave's physical OS owner.
-			// This prevents the Slave OS (GoFTPd/ftp) from wiping out real FTP users (N0pe) on restart.
+			// This prevents the Slave OS (WeaveFTPd/ftp) from wiping out real FTP users (N0pe) on restart.
 			if !isWeakMetadataValue(existingFile.Owner) {
 				owner = existingFile.Owner
 				group = existingFile.Group
@@ -2180,8 +2180,8 @@ func (sm *SlaveManager) ensureBootstrapDirsOnSlave(rs *RemoteSlave) {
 			Path:         dirPath,
 			IsDir:        true,
 			LastModified: lastModified,
-			Owner:        "GoFTPd",
-			Group:        "GoFTPd",
+			Owner:        "WeaveFTPd",
+			Group:        "WeaveFTPd",
 			Seen:         true,
 		})
 		index, err := IssueMakeDirAllRoots(rs, dirPath)

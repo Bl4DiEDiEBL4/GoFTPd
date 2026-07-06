@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"goftpd/internal/protocol"
+	"weaveftpd/internal/protocol"
 )
 
 // --------------------------------------------------------------------------
