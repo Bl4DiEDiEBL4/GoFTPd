@@ -118,6 +118,11 @@ Data integrity
   file; it is now reported as a failed check and deleted, like a CRC-bad zip and
   like the local path already did. Combined with the leech-while-upload fix this
   stops a zip release from ever reading complete with a short/corrupt volume.
+- Fixed cbftp missing one file when racing from one WeaveFTPd into another while
+  the source file was still landing. CRC/zip validation deletes now return `426`
+  instead of `226`, so clients retry instead of marking a deleted upload as
+  successful. In-flight upload collisions now return temporary `450` replies;
+  `553 X-DUPE` is reserved for real completed duplicates.
 - Fixed stuck "incomplete" releases when two racers/cbftp instances hit the same
   release: a file whose checksum already matches the SFV now counts as present
   even while a concurrent duplicate upload still shows it as "uploading", so a

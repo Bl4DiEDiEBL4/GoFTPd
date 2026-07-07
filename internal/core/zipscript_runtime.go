@@ -514,10 +514,27 @@ func handleMasterUploadSFVStatusAndCleanup(s *Session, bridge MasterBridge, uplo
 	}
 	_ = bridge.MarkFileMissing(filePath)
 	createMasterSFVMissingMarker(s.Config, bridge, uploadDir, fileName)
-	log.Printf("[MASTER-ZS] CRC mismatch for %s: got %08X, expected %08X - deleted before final 226",
+	log.Printf("[MASTER-ZS] CRC mismatch for %s: got %08X, expected %08X - deleted before final reply",
 		fileName, checksum, expectedCRC)
-	fmt.Fprintf(s.Conn, "226- checksum mismatch: SLAVE: %08X SFV: %08X\r\n", checksum, expectedCRC)
-	fmt.Fprintf(s.Conn, "226 Checksum mismatch, deleting file\r\n")
+	writeChecksumMismatchDeleteResponse(s.Conn, checksum, expectedCRC)
+	return true
+}
+
+func handleMasterUploadZipIntegrityAndCleanup(s *Session, bridge MasterBridge, uploadDir, filePath, fileName string) bool {
+	if s == nil || s.Config == nil || bridge == nil {
+		return false
+	}
+	badZip, err := zipscript.CheckUploadedZipIntegrity(zipBridge(bridge), s.Config.Zipscript, uploadDir, filePath, fileName)
+	if err != nil {
+		if s.Config.Debug {
+			log.Printf("[MASTER-ZS] zip integrity check skipped for %s: %v", filePath, err)
+		}
+		return false
+	}
+	if !badZip {
+		return false
+	}
+	writeZipIntegrityFailureDeleteResponse(s.Conn)
 	return true
 }
 
@@ -1115,12 +1132,6 @@ func runReleaseUploadPipeline(s *Session, bridge MasterBridge, in releaseUploadP
 
 func finalizeReleaseUpload(s *Session, bridge MasterBridge, in releaseUploadPipelineInput) bool {
 	if s == nil || s.Config == nil || bridge == nil {
-		return false
-	}
-
-	if badZip, err := zipscript.CheckUploadedZipIntegrity(zipBridge(bridge), s.Config.Zipscript, in.UploadDir, in.FilePath, in.FileName); err != nil && s.Config.Debug {
-		log.Printf("[MASTER-ZS] zip integrity check skipped for %s: %v", in.FilePath, err)
-	} else if badZip {
 		return false
 	}
 

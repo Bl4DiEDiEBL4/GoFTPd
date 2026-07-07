@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"strings"
 )
@@ -15,6 +16,37 @@ func writeTransferFailure(conn net.Conn, operation string, err error) {
 		return
 	}
 	fmt.Fprintf(conn, "426 %s failed: %v\r\n", operation, err)
+}
+
+func writeTemporaryUploadBusyResponse(conn io.Writer, fileName string) {
+	if conn == nil {
+		return
+	}
+	fmt.Fprintf(conn, "450 %s: upload already in progress, retry later\r\n", fileName)
+}
+
+func writeZipIntegrityFailureDeleteResponse(conn io.Writer) {
+	if conn == nil {
+		return
+	}
+	fmt.Fprintf(conn, "426 Zip integrity check failed, deleting file\r\n")
+}
+
+func writeChecksumMismatchDeleteResponse(conn io.Writer, checksum, expectedCRC uint32) {
+	if conn == nil {
+		return
+	}
+	fmt.Fprintf(conn, "426- checksum mismatch: SLAVE: %08X SFV: %08X\r\n", checksum, expectedCRC)
+	fmt.Fprintf(conn, "426 Checksum mismatch, deleting file\r\n")
+}
+
+type pendingUploadReplyChecker interface {
+	PendingUploadExists(filePath string) bool
+}
+
+func pendingUploadForReply(bridge interface{}, filePath string) bool {
+	checker, ok := bridge.(pendingUploadReplyChecker)
+	return ok && checker.PendingUploadExists(filePath)
 }
 
 func describeTransferFailure(err error) string {

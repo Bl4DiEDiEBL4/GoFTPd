@@ -1741,6 +1741,11 @@ func (b *Bridge) FileExists(filePath string) bool {
 	return ok
 }
 
+func (b *Bridge) PendingUploadExists(filePath string) bool {
+	_, ok := b.pendingUploadForPath(filePath)
+	return ok
+}
+
 func (b *Bridge) GetKnownChecksum(filePath string) (uint32, bool) {
 	f := b.sm.GetVFS().GetFile(filePath)
 	if f == nil || f.IsDir || f.Checksum == 0 {
