@@ -1,0 +1,60 @@
+# Master machine compose file.
+#
+# Runs the master daemon and sitebot on the same host. That is intentional:
+# the sitebot reads a local FIFO created in the shared etc volume.
+#
+# Optional same-box slave:
+#   docker compose --env-file master.env -f master-sitebot.compose.yml --profile local-slave up -d
+
+services:
+  master:
+    image: ${WEAVEFTPD_IMAGE:-ghcr.io/bl4diediebl4/weaveftpd:dev}
+    container_name: weaveftpd-master
+    network_mode: host
+    restart: unless-stopped
+    user: "${WEAVEFTPD_UID:-0}:${WEAVEFTPD_GID:-0}"
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    volumes:
+      - ${WEAVEFTPD_RUNTIME:-./runtime/master}/etc:/app/etc
+      - ${WEAVEFTPD_RUNTIME:-./runtime/master}/plugins:/app/plugins
+      - ${WEAVEFTPD_RUNTIME:-./runtime/master}/userdata:/app/userdata
+      - ${WEAVEFTPD_RUNTIME:-./runtime/master}/logs:/app/logs
+      - ${WEAVEFTPD_SITE_PATH:-./runtime/master/site}:/app/site
+      - ${WEAVEFTPD_RUNTIME:-./runtime/master}/sitebot:/app/sitebot:ro
+    command: ["--config", "/app/etc/config.yml"]
+
+  sitebot:
+    image: ${WEAVEFTPD_SITEBOT_IMAGE:-ghcr.io/bl4diediebl4/weaveftpd-sitebot:dev}
+    container_name: weaveftpd-sitebot
+    network_mode: host
+    restart: unless-stopped
+    user: "${WEAVEFTPD_UID:-0}:${WEAVEFTPD_GID:-0}"
+    depends_on:
+      - master
+    volumes:
+      - ${WEAVEFTPD_RUNTIME:-./runtime/master}/sitebot:/app/sitebot
+      - ${WEAVEFTPD_RUNTIME:-./runtime/master}/etc:/app/etc
+    command: ["--config", "/app/sitebot/etc/config.yml"]
+
+  local-slave:
+    image: ${WEAVEFTPD_IMAGE:-ghcr.io/bl4diediebl4/weaveftpd:dev}
+    container_name: weaveftpd-local-slave
+    network_mode: host
+    restart: unless-stopped
+    profiles: ["local-slave"]
+    user: "${WEAVEFTPD_UID:-0}:${WEAVEFTPD_GID:-0}"
+    depends_on:
+      - master
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    volumes:
+      - ${WEAVEFTPD_RUNTIME:-./runtime/master}/etc:/app/etc
+      - ${WEAVEFTPD_RUNTIME:-./runtime/master}/plugins:/app/plugins:ro
+      - ${WEAVEFTPD_RUNTIME:-./runtime/master}/logs-local-slave:/app/logs
+      - ${WEAVEFTPD_SITE_PATH:-./runtime/master/site}:/app/site
+    command: ["--config", "/app/etc/config-slave-local.yml"]

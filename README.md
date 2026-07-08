@@ -155,6 +155,28 @@ Docker support is optional. You do not need a registry when you build and run
 from a local checkout on each machine. A registry is useful when slave boxes
 should pull the exact same image without keeping the source tree around.
 
+For the easiest production-style setup, use the deploy pack in
+`docker/deploy/`. It creates runtime directories, copies config templates,
+patches container paths, and keeps master/sitebot/slave layouts separated:
+
+```bash
+cd docker/deploy
+./init.sh master
+docker compose --env-file master.env -f master-sitebot.compose.yml up -d master sitebot
+```
+
+For a remote slave machine:
+
+```bash
+cd docker/deploy
+MASTER_HOST="203.0.113.10" SLAVE_NAME="SLAVE1" ./init.sh slave
+docker compose --env-file slave.env -f slave.compose.yml up -d slave
+```
+
+The sitebot should run on the master machine. It reads a local FIFO, so putting
+it in a separate container is fine only when both master and sitebot mount the
+same host directory at `/app/etc`. Remote slaves do not need that FIFO.
+
 The included `Dockerfile` has two targets:
 
 | Target | Binary | Use |

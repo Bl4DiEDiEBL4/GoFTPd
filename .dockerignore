@@ -35,6 +35,9 @@ sitebot/etc/config.yml
 sitebot/etc/certs
 sitebot/plugins/*/config.yml
 sitebot/logs
+docker/deploy/master.env
+docker/deploy/slave.env
+docker/deploy/runtime
 
 # Build outputs
 weaveftpd
