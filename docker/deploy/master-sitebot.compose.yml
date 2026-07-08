@@ -8,7 +8,7 @@
 
 services:
   master:
-    image: ${WEAVEFTPD_IMAGE:-ghcr.io/bl4diediebl4/weaveftpd:dev}
+    image: ${WEAVEFTPD_IMAGE:-weaveftpd:latest}
     container_name: weaveftpd-master
     network_mode: host
     restart: unless-stopped
@@ -27,7 +27,7 @@ services:
     command: ["--config", "/app/etc/config.yml"]
 
   sitebot:
-    image: ${WEAVEFTPD_SITEBOT_IMAGE:-ghcr.io/bl4diediebl4/weaveftpd-sitebot:dev}
+    image: ${WEAVEFTPD_SITEBOT_IMAGE:-weaveftpd-sitebot:latest}
     container_name: weaveftpd-sitebot
     network_mode: host
     restart: unless-stopped
@@ -40,7 +40,7 @@ services:
     command: ["--config", "/app/sitebot/etc/config.yml"]
 
   local-slave:
-    image: ${WEAVEFTPD_IMAGE:-ghcr.io/bl4diediebl4/weaveftpd:dev}
+    image: ${WEAVEFTPD_IMAGE:-weaveftpd:latest}
     container_name: weaveftpd-local-slave
     network_mode: host
     restart: unless-stopped

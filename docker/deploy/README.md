@@ -1,7 +1,8 @@
 # Docker Deploy Pack
 
-This directory is the easy path for running WeaveFTPd from registry images on
-real Linux servers.
+This directory is the easy path for running WeaveFTPd with Docker on real Linux
+servers. Build the images locally on each machine, then run the deploy compose
+files from those local images.
 
 There are two normal layouts:
 
@@ -34,6 +35,8 @@ master.env
 Start master + sitebot:
 
 ```bash
+docker build --target daemon -t weaveftpd:latest ../..
+docker build --target sitebot -t weaveftpd-sitebot:latest ../..
 docker compose --env-file master.env -f master-sitebot.compose.yml up -d master sitebot
 docker compose --env-file master.env -f master-sitebot.compose.yml logs -f master sitebot
 ```
@@ -72,6 +75,7 @@ slave.env
 Start the slave:
 
 ```bash
+docker build --target daemon -t weaveftpd:latest ../..
 docker compose --env-file slave.env -f slave.compose.yml up -d slave
 docker compose --env-file slave.env -f slave.compose.yml logs -f slave
 ```
@@ -93,41 +97,20 @@ runtime/master/etc:/app/etc
 Do not put the sitebot on a different machine unless you also add a network
 event transport. A POSIX FIFO is local filesystem IPC.
 
-## Registry Images
-
-The compose files default to:
-
-```text
-ghcr.io/bl4diediebl4/weaveftpd:dev
-ghcr.io/bl4diediebl4/weaveftpd-sitebot:dev
-```
-
-Use version tags for production and rollback:
-
-```bash
-WEAVEFTPD_IMAGE=ghcr.io/bl4diediebl4/weaveftpd:1.2.1
-WEAVEFTPD_SITEBOT_IMAGE=ghcr.io/bl4diediebl4/weaveftpd-sitebot:1.2.1
-```
-
-If the packages are private, login first:
-
-```bash
-echo "$GHCR_TOKEN" | docker login ghcr.io -u Bl4DiEDiEBL4 --password-stdin
-```
-
 ## Updating
 
-Pull the new image and restart:
+Rebuild the local image and restart:
 
 ```bash
-docker compose --env-file master.env -f master-sitebot.compose.yml pull
+docker build --target daemon -t weaveftpd:latest ../..
+docker build --target sitebot -t weaveftpd-sitebot:latest ../..
 docker compose --env-file master.env -f master-sitebot.compose.yml up -d
 ```
 
 For a remote slave:
 
 ```bash
-docker compose --env-file slave.env -f slave.compose.yml pull
+docker build --target daemon -t weaveftpd:latest ../..
 docker compose --env-file slave.env -f slave.compose.yml up -d
 ```
 

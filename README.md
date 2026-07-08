@@ -151,9 +151,9 @@ daemon.
 
 ## Docker
 
-Docker support is optional. You do not need a registry when you build and run
-from a local checkout on each machine. A registry is useful when slave boxes
-should pull the exact same image without keeping the source tree around.
+Docker support is optional. Build the images from a local checkout on each
+machine, then run the master, slave, and sitebot containers from those local
+images.
 
 For the easiest production-style setup, use the deploy pack in
 `docker/deploy/`. It creates runtime directories, copies config templates,
@@ -261,36 +261,6 @@ directories writable by that user and set:
 export WEAVEFTPD_UID="$(id -u)"
 export WEAVEFTPD_GID="$(id -g)"
 docker compose up -d master
-```
-
-### Publishing Images
-
-No registry is needed for one machine, or when every machine builds from the
-same checkout. Use a registry when you want:
-
-- one CI/build box to produce images
-- multiple slave machines to pull those exact images
-- easy rollback by image tag
-
-Example with GitHub Container Registry:
-
-```bash
-export WEAVEFTPD_IMAGE="ghcr.io/bl4diediebl4/weaveftpd:dev"
-export WEAVEFTPD_SITEBOT_IMAGE="ghcr.io/bl4diediebl4/weaveftpd-sitebot:dev"
-
-echo "$GHCR_TOKEN" | docker login ghcr.io -u Bl4DiEDiEBL4 --password-stdin
-docker compose build master sitebot
-docker compose push master sitebot
-```
-
-On another host, use the same image variables and pull instead of building:
-
-```bash
-export WEAVEFTPD_IMAGE="ghcr.io/bl4diediebl4/weaveftpd:dev"
-export WEAVEFTPD_SITEBOT_IMAGE="ghcr.io/bl4diediebl4/weaveftpd-sitebot:dev"
-
-docker compose pull
-docker compose --profile slave up -d slave
 ```
 
 Keep real configs, certs, user files, logs, and site data mounted from the host.
