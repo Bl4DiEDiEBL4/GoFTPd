@@ -149,6 +149,131 @@ direct IRC announces; see `sitebot/plugins/README.md` for examples.
 The example user is `weaveftpd` / `weaveftpd`. Change that before exposing the
 daemon.
 
+## Docker
+
+Docker support is optional. You do not need a registry when you build and run
+from a local checkout on each machine. A registry is useful when slave boxes
+should pull the exact same image without keeping the source tree around.
+
+The included `Dockerfile` has two targets:
+
+| Target | Binary | Use |
+|--------|--------|-----|
+| `daemon` | `weaveftpd` | master or slave daemon |
+| `sitebot` | `sitebot` | IRC announce bot |
+
+The compose file uses host networking because FTP passive ports, FXP peer
+checks, and PASV/CPSV address announcements are much simpler when the container
+uses the host network stack. This is meant for Linux servers.
+
+Prepare runtime configs on the host first:
+
+```bash
+cp etc/config-example.yml etc/config.yml
+cp etc/config-slave-example.yml etc/config-slave.yml
+cp sitebot/etc/config.yml.example sitebot/etc/config.yml
+```
+
+When running in Docker, paths inside the container start at `/app`. At minimum,
+adjust these config values:
+
+```yaml
+# etc/config.yml
+event_fifo: "/app/etc/weaveftpd.sitebot.fifo"
+sitebot_config: "/app/sitebot/etc/config.yml"
+
+# sitebot/etc/config.yml
+event_fifo: "/app/etc/weaveftpd.sitebot.fifo"
+```
+
+For a simple master using `./site` as storage, set roots and cert paths to
+container paths too:
+
+```yaml
+tls_cert: "/app/etc/certs/server.crt"
+tls_key: "/app/etc/certs/server.key"
+storage_path: "/app/site"
+```
+
+For a slave, make `slave.roots` match the compose volume mount:
+
+```yaml
+slave:
+  roots:
+    - "/app/site"
+```
+
+Build locally:
+
+```bash
+docker compose build
+```
+
+Run master only:
+
+```bash
+docker compose up -d master
+docker compose logs -f master
+```
+
+Run master plus sitebot:
+
+```bash
+docker compose --profile sitebot up -d master sitebot
+docker compose logs -f master sitebot
+```
+
+Run only the slave service on a slave box:
+
+```bash
+docker compose --profile slave up -d slave
+docker compose logs -f slave
+```
+
+The compose file defaults to running as root inside the container so existing
+bind-mounted `etc`, `logs`, `userdata`, and `site` directories keep working
+without permission surprises. To run as your host user instead, make the mounted
+directories writable by that user and set:
+
+```bash
+export WEAVEFTPD_UID="$(id -u)"
+export WEAVEFTPD_GID="$(id -g)"
+docker compose up -d master
+```
+
+### Publishing Images
+
+No registry is needed for one machine, or when every machine builds from the
+same checkout. Use a registry when you want:
+
+- one CI/build box to produce images
+- multiple slave machines to pull those exact images
+- easy rollback by image tag
+
+Example with GitHub Container Registry:
+
+```bash
+export WEAVEFTPD_IMAGE="ghcr.io/bl4diediebl4/weaveftpd:dev"
+export WEAVEFTPD_SITEBOT_IMAGE="ghcr.io/bl4diediebl4/weaveftpd-sitebot:dev"
+
+echo "$GHCR_TOKEN" | docker login ghcr.io -u Bl4DiEDiEBL4 --password-stdin
+docker compose build master sitebot
+docker compose push master sitebot
+```
+
+On another host, use the same image variables and pull instead of building:
+
+```bash
+export WEAVEFTPD_IMAGE="ghcr.io/bl4diediebl4/weaveftpd:dev"
+export WEAVEFTPD_SITEBOT_IMAGE="ghcr.io/bl4diediebl4/weaveftpd-sitebot:dev"
+
+docker compose pull
+docker compose --profile slave up -d slave
+```
+
+Keep real configs, certs, user files, logs, and site data mounted from the host.
+Do not bake them into the image.
+
 ## Configuration
 
 Main files:

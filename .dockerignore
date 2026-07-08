@@ -1,0 +1,44 @@
+.git
+.gocache
+.gomodcache
+.agents
+.codex
+
+# Runtime state and large local data
+logs
+logs-*
+site
+userdata
+*.db
+*.log
+
+# Local-only helper output
+.tmp*
+tmp
+copy.sh
+ftp-bench.sh
+link_watcher.py
+
+# Active daemon/sitebot secrets and generated state. The image builds from
+# source only; these files should be mounted at runtime, not baked into layers.
+etc/config.yml
+etc/config-slave.yml
+etc/certs
+etc/passwd
+etc/passwd-
+etc/group-
+etc/users
+etc/users-
+etc/groups
+etc/groups-
+sitebot/etc/config.yml
+sitebot/etc/certs
+sitebot/plugins/*/config.yml
+sitebot/logs
+
+# Build outputs
+weaveftpd
+goftpd
+sitebot/sitebot
+*.exe
+*.test
