@@ -300,6 +300,54 @@ func TestIgnoredReleaseSubdirNeverTriggersRaceEnd(t *testing.T) {
 	if CanTriggerRaceEndForDir(cfg, "/MP3/0503/Artist-Album-2026-GRP/Spam", sfvEntries, "01-track.mp3") {
 		t.Fatalf("expected ignored subdir to never trigger race end")
 	}
+	if RaceEndDirEligible(cfg, "/MP3/0503/Artist-Album-2026-GRP/Spam") {
+		t.Fatalf("expected ignored subdir to never be race-end eligible")
+	}
+}
+
+// TestRaceEndDirEligibleAndCanTriggerRaceEndForDirShareGuards locks in that
+// RaceEndDirEligible and CanTriggerRaceEndForDir agree on every dir-level
+// guard (ignored subdir, race-disabled dir, race-disabled globally), since
+// both now delegate to the same raceEndDirGuardsPass helper. A future change
+// to one guard set without the other would show up here as a mismatch.
+func TestRaceEndDirEligibleAndCanTriggerRaceEndForDirShareGuards(t *testing.T) {
+	announce := true
+	baseCfg := Config{
+		Enabled: true,
+		Race: RaceConfig{
+			Enabled:         true,
+			AnnounceSubdirs: &announce,
+		},
+		Sections: SectionsConfig{
+			SFV: []string{"/MP3/*"},
+		},
+	}
+	sfvEntries := map[string]uint32{"01-track.mp3": 1234}
+
+	cases := []struct {
+		name    string
+		cfg     Config
+		dirPath string
+		want    bool
+	}{
+		{"eligible race dir", baseCfg, "/MP3/Artist-Album-2026-GRP", true},
+		{"race disabled on dir", func() Config { c := baseCfg; c.Sections.NoCheck = []string{"/MP3/*"}; return c }(), "/MP3/Artist-Album-2026-GRP", false},
+		{"race disabled globally", func() Config { c := baseCfg; c.Race.Enabled = false; return c }(), "/MP3/Artist-Album-2026-GRP", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := RaceEndDirEligible(c.cfg, c.dirPath); got != c.want {
+				t.Fatalf("RaceEndDirEligible() = %v, want %v", got, c.want)
+			}
+			gotTrigger := CanTriggerRaceEndForDir(c.cfg, c.dirPath, sfvEntries, "01-track.mp3")
+			if c.want && !gotTrigger {
+				t.Fatalf("CanTriggerRaceEndForDir() = false, want dir-level guards to pass (SFV-listed file)")
+			}
+			if !c.want && gotTrigger {
+				t.Fatalf("CanTriggerRaceEndForDir() = true, want dir-level guards to reject like RaceEndDirEligible")
+			}
+		})
+	}
 }
 
 func TestValidateUploadDeniesSFVWhenMatchingSubdirExists(t *testing.T) {
