@@ -48,6 +48,13 @@ func (s *Session) canRenamePath(fromPath, toPath string) bool {
 	if !s.ACLEngine.CanPerform(s.User, "RENAMEOWN", fromACLPath) {
 		return false
 	}
+	// RENAMEOWN only grants renaming files the user owns; the destination
+	// still has to be somewhere the user is generally allowed to place a
+	// renamed file, otherwise an owned-file rename can land anywhere ACLed
+	// paths would otherwise forbid.
+	if !s.ACLEngine.CanPerform(s.User, "RENAMEOWN", toACLPath) {
+		return false
+	}
 	return s.pathOwnedByUser(fromPath)
 }
 

@@ -304,6 +304,15 @@ rules:
 
 
   # ---------------------------------------------------------------------------
+  # SITE CHMOD. This is checked per-path in addition to the sitecmd CHMOD
+  # gate above; without a matching rule here CHMOD defaults to siteop-only.
+  # ---------------------------------------------------------------------------
+  chmod:
+    - path: /*
+      required: $siteop
+
+
+  # ---------------------------------------------------------------------------
   # Nuke and unnuke
   # ---------------------------------------------------------------------------
   nuke:

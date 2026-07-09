@@ -802,14 +802,22 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		}
 		fromPath := path.Join(s.CurrentDir, s.RenameFrom)
 		toPath := path.Join(s.CurrentDir, args[0])
+		// toDir/toName must be derived from the already-cleaned toPath, not the
+		// raw client argument: path.Join above roots and collapses ".." so the
+		// resulting toName can never smuggle a traversal sequence past the
+		// slave's destination-directory jail.
+		toDir := path.Dir(toPath)
+		toName := path.Base(toPath)
+		if toName == "" || toName == "." || toName == "/" || toName == ".." {
+			fmt.Fprintf(s.Conn, "501 Invalid destination name.\r\n")
+			return false
+		}
 		if !s.canRenamePath(fromPath, toPath) {
 			fmt.Fprintf(s.Conn, "550 Access Denied: Insufficient flags.\r\n")
 			return false
 		}
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
-				toDir := s.CurrentDir
-				toName := args[0]
 				fromRelease := path.Clean(path.Dir(fromPath))
 				previousMedia := cloneStringMap(bridge.GetDirMediaInfo(fromRelease))
 				if err := bridge.RenameFile(fromPath, toDir, toName); err != nil {
