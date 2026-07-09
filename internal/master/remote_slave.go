@@ -30,6 +30,7 @@ type RemoteSlave struct {
 	commandNotify  chan struct{}
 	remergeQueue   chan *protocol.AsyncResponseRemerge
 	remergeDrained chan struct{}
+	remergeStop    chan struct{} // closed on SetOffline to stop runRemergeQueue without racing enqueueRemerge's send
 
 	// State
 	online            atomic.Bool
@@ -76,6 +77,7 @@ func NewRemoteSlave(name string, conn net.Conn, stream *protocol.ObjectStream, h
 		commandNotify:    make(chan struct{}, 256),
 		remergeQueue:     make(chan *protocol.AsyncResponseRemerge, 512),
 		remergeDrained:   make(chan struct{}, 1),
+		remergeStop:      make(chan struct{}),
 		properties:       make(map[string]string),
 		heartbeatTimeout: heartbeatTimeout,
 	}
@@ -386,22 +388,30 @@ func (rs *RemoteSlave) Run(masterSlaveManager *SlaveManager) {
 }
 
 func (rs *RemoteSlave) runRemergeQueue(masterSlaveManager *SlaveManager) {
-	for resp := range rs.remergeQueue {
-		if resp == nil {
-			continue
-		}
-		masterSlaveManager.ProcessRemerge(rs, resp)
-		depth := rs.remergeQueueDepth.Add(-1)
-		if depth < 0 {
-			rs.remergeQueueDepth.Store(0)
-			depth = 0
-		}
-		rs.applyRemergeFlowControl(masterSlaveManager, depth)
-		if depth == 0 {
-			select {
-			case rs.remergeDrained <- struct{}{}:
-			default:
+	// Selects on remergeStop (closed by SetOffline) instead of ranging over
+	// remergeQueue, since enqueueRemerge may still be sending concurrently on
+	// disconnect and closing remergeQueue itself would risk a send-on-closed-channel panic.
+	for {
+		select {
+		case resp := <-rs.remergeQueue:
+			if resp == nil {
+				continue
 			}
+			masterSlaveManager.ProcessRemerge(rs, resp)
+			depth := rs.remergeQueueDepth.Add(-1)
+			if depth < 0 {
+				rs.remergeQueueDepth.Store(0)
+				depth = 0
+			}
+			rs.applyRemergeFlowControl(masterSlaveManager, depth)
+			if depth == 0 {
+				select {
+				case rs.remergeDrained <- struct{}{}:
+				default:
+				}
+			}
+		case <-rs.remergeStop:
+			return
 		}
 	}
 }
@@ -503,6 +513,9 @@ func (rs *RemoteSlave) SetOffline(reason string) {
 	rs.available.Store(false)
 	rs.clearActiveRemerge("")
 	rs.remergeQueueDepth.Store(0)
+	if rs.remergeStop != nil {
+		close(rs.remergeStop)
+	}
 	if rs.conn != nil {
 		rs.conn.Close()
 	}
