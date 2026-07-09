@@ -5,6 +5,10 @@ import (
 	"strings"
 )
 
+type ownerDirLister interface {
+	ListDir(dirPath string) []MasterFileEntry
+}
+
 func (s *Session) canDeletePath(vpath string) bool {
 	if s == nil || s.ACLEngine == nil {
 		return false
@@ -48,6 +52,9 @@ func (s *Session) canRenamePath(fromPath, toPath string) bool {
 	if !s.ACLEngine.CanPerform(s.User, "RENAMEOWN", fromACLPath) {
 		return false
 	}
+	if !s.ACLEngine.CanPerform(s.User, "RENAMEOWN", toACLPath) {
+		return false
+	}
 	return s.pathOwnedByUser(fromPath)
 }
 
@@ -58,7 +65,7 @@ func (s *Session) pathOwnedByUser(vpath string) bool {
 	if s.Config == nil || s.Config.Mode != "master" || s.MasterManager == nil {
 		return false
 	}
-	bridge, ok := s.MasterManager.(MasterBridge)
+	bridge, ok := s.MasterManager.(ownerDirLister)
 	if !ok || bridge == nil {
 		return false
 	}

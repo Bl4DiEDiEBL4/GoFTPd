@@ -255,6 +255,19 @@ func (r MountedRoot) virtualPath(fullPath string) (string, bool) {
 	return cleanVirtualPath(path.Join(r.MountPath, filepath.ToSlash(rel))), true
 }
 
+func (r MountedRoot) contains(fullPath string) bool {
+	cleanRoot := filepath.Clean(r.Path)
+	cleanFull := filepath.Clean(fullPath)
+	if cleanFull == cleanRoot {
+		return true
+	}
+	rel, err := filepath.Rel(cleanRoot, cleanFull)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return true
+}
+
 func (s *Slave) rootsForVirtualPath(virtualPath string) []MountedRoot {
 	virtualPath = cleanVirtualPath(virtualPath)
 	matches := make([]MountedRoot, 0, len(s.roots))
@@ -744,8 +757,17 @@ func (s *Slave) handleRename(ac *protocol.AsyncCommand) interface{} {
 	}
 	toDirPath := destRoot.fullPath(toDir)
 	toPath := filepath.Join(toDirPath, toName)
+	if !destRoot.contains(toPath) {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "rename failed: destination escapes storage root"}
+	}
 
-	os.MkdirAll(toDirPath, 0755)
+	info, err := os.Stat(toDirPath)
+	if err != nil {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("rename failed: destination directory not found: %v", err)}
+	}
+	if !info.IsDir() {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "rename failed: destination is not a directory"}
+	}
 
 	if err := os.Rename(sourcePath, toPath); err != nil {
 		return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("rename failed: %v", err)}
@@ -781,6 +803,9 @@ func (s *Slave) handleRelocate(ac *protocol.AsyncCommand) interface{} {
 
 	toDirPath := destRoot.fullPath(toDir)
 	toPath := filepath.Join(toDirPath, toName)
+	if !destRoot.contains(toPath) {
+		return &protocol.AsyncResponseError{Index: ac.Index, Message: "relocate failed: destination escapes storage root"}
+	}
 	if err := os.MkdirAll(toDirPath, 0755); err != nil {
 		return &protocol.AsyncResponseError{Index: ac.Index, Message: fmt.Sprintf("relocate mkdir failed: %v", err)}
 	}
