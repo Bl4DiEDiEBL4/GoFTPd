@@ -259,6 +259,12 @@ func (rs *RemoteSlave) FetchResponse(index string, timeout time.Duration) (inter
 // It reads all responses from the slave and dispatches them.
 func (rs *RemoteSlave) Run(masterSlaveManager *SlaveManager) {
 	defer func() {
+		// Guard against a shutdown racing with normal traffic (e.g. SetOffline running
+		// concurrently on another goroutine): any unrecovered panic here would otherwise
+		// take down the whole master daemon instead of just this slave's connection.
+		if r := recover(); r != nil {
+			log.Printf("[Master] Recovered panic in read loop for slave %s: %v", rs.name, r)
+		}
 		rs.SetOffline("connection closed")
 	}()
 
@@ -386,6 +392,11 @@ func (rs *RemoteSlave) Run(masterSlaveManager *SlaveManager) {
 }
 
 func (rs *RemoteSlave) runRemergeQueue(masterSlaveManager *SlaveManager) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[Master] Recovered panic in remerge queue for slave %s: %v", rs.name, r)
+		}
+	}()
 	for resp := range rs.remergeQueue {
 		if resp == nil {
 			continue
@@ -510,10 +521,17 @@ func (rs *RemoteSlave) SetOffline(reason string) {
 		rs.onOffline(rs.name)
 	}
 
-	// [Added] Instantly unblocks any FetchResponse calls waiting for data from this dead slave
+	// [Added] Instantly unblocks any FetchResponse calls waiting for data from this dead slave.
+	// A nil send (not a close) is used deliberately: routeResponse can still be delivering a
+	// late response to this same channel from the Run() read-loop goroutine concurrently with
+	// this shutdown path, and sending on a closed channel panics regardless of select/default,
+	// crashing the whole daemon. FetchResponse already treats a nil resp as "connection closed".
 	rs.pendingCmds.Range(func(key, value interface{}) bool {
 		if ch, ok := value.(chan interface{}); ok {
-			close(ch)
+			select {
+			case ch <- nil:
+			default:
+			}
 		}
 		return true
 	})
