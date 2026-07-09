@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -133,4 +134,97 @@ func (s *Session) HandleSiteSlaveClearBan(args []string) bool {
 	}
 	fmt.Fprintf(s.Conn, "200 Cleared active slave temp ban.\r\n")
 	return false
+}
+
+// HandleSiteSlaveMask implements the mandatory-when-no-mTLS fallback
+// authentication for the master-slave link: an IP/CIDR/wildcard allowlist
+// per slave name, in the style of drftpd's "site slave <name> addmask <mask>".
+//
+//	SITE SLAVE <name> ADDMASK <mask>
+//	SITE SLAVE <name> DELMASK <mask>
+//	SITE SLAVE <name> MASKS
+//	SITE SLAVE MASKS               (lists every slave's masks)
+func (s *Session) HandleSiteSlaveMask(args []string) bool {
+	if s.Config.Mode != "master" || s.MasterManager == nil {
+		fmt.Fprintf(s.Conn, "550 SITE SLAVE is only available in master mode.\r\n")
+		return false
+	}
+	bridge, ok := s.MasterManager.(MasterBridge)
+	if !ok {
+		fmt.Fprintf(s.Conn, "550 Master not initialized.\r\n")
+		return false
+	}
+
+	if len(args) == 1 && strings.EqualFold(args[0], "MASKS") {
+		all := bridge.ListAllSlaveMasks()
+		if len(all) == 0 {
+			fmt.Fprintf(s.Conn, "200 No slave masks registered.\r\n")
+			return false
+		}
+		names := make([]string, 0, len(all))
+		for name := range all {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		fmt.Fprintf(s.Conn, "200- Slave IP masks:\r\n")
+		for _, name := range names {
+			masks := all[name]
+			if len(masks) == 0 {
+				fmt.Fprintf(s.Conn, "200-   %s: (none)\r\n", name)
+				continue
+			}
+			fmt.Fprintf(s.Conn, "200-   %s: %s\r\n", name, strings.Join(masks, ", "))
+		}
+		fmt.Fprintf(s.Conn, "200 End of SLAVE MASKS\r\n")
+		return false
+	}
+
+	if len(args) < 2 {
+		fmt.Fprintf(s.Conn, "501 Usage: SITE SLAVE <name> ADDMASK|DELMASK <mask>, or SITE SLAVE <name> MASKS\r\n")
+		return false
+	}
+
+	name := args[0]
+	sub := strings.ToUpper(strings.TrimSpace(args[1]))
+
+	switch sub {
+	case "MASKS":
+		masks := bridge.ListSlaveMasks(name)
+		if len(masks) == 0 {
+			fmt.Fprintf(s.Conn, "200 No masks registered for slave %s.\r\n", name)
+			return false
+		}
+		fmt.Fprintf(s.Conn, "200 Masks for slave %s: %s\r\n", name, strings.Join(masks, ", "))
+		return false
+	case "ADDMASK":
+		if len(args) != 3 {
+			fmt.Fprintf(s.Conn, "501 Usage: SITE SLAVE <name> ADDMASK <ip|cidr|wildcard>\r\n")
+			return false
+		}
+		if err := bridge.AddSlaveMask(name, args[2]); err != nil {
+			fmt.Fprintf(s.Conn, "550 ADDMASK failed: %v\r\n", err)
+			return false
+		}
+		fmt.Fprintf(s.Conn, "200 Added mask %s for slave %s.\r\n", args[2], name)
+		return false
+	case "DELMASK":
+		if len(args) != 3 {
+			fmt.Fprintf(s.Conn, "501 Usage: SITE SLAVE <name> DELMASK <ip|cidr|wildcard>\r\n")
+			return false
+		}
+		removed, err := bridge.RemoveSlaveMask(name, args[2])
+		if err != nil {
+			fmt.Fprintf(s.Conn, "550 DELMASK failed: %v\r\n", err)
+			return false
+		}
+		if !removed {
+			fmt.Fprintf(s.Conn, "550 Mask %s not found for slave %s.\r\n", args[2], name)
+			return false
+		}
+		fmt.Fprintf(s.Conn, "200 Removed mask %s for slave %s.\r\n", args[2], name)
+		return false
+	default:
+		fmt.Fprintf(s.Conn, "501 Usage: SITE SLAVE <name> ADDMASK|DELMASK <mask>, or SITE SLAVE <name> MASKS\r\n")
+		return false
+	}
 }

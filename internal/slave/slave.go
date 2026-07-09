@@ -24,6 +24,7 @@ import (
 
 	"weaveftpd/internal/metrics"
 	"weaveftpd/internal/protocol"
+	"weaveftpd/internal/tlsutil"
 )
 
 const (
@@ -50,6 +51,9 @@ type Slave struct {
 	tlsKey             string
 	tlsServerConfig    *tls.Config
 	tlsServerConfigErr error
+	masterCACert       string // CA used to verify the master's presented cert; empty = legacy InsecureSkipVerify
+	clientCert         string // this slave's own mTLS identity presented to the master
+	clientKey          string
 	bindIP             string
 	transferBufferSize int
 	freeSpaceMB        int
@@ -122,6 +126,9 @@ type SlaveConfig struct {
 	TLSEnabled         bool          `yaml:"tls_enabled"`
 	TLSCert            string        `yaml:"tls_cert"`
 	TLSKey             string        `yaml:"tls_key"`
+	MasterCACert       string        `yaml:"master_ca_cert"` // CA cert used to verify the master's server cert
+	ClientCert         string        `yaml:"client_cert"`    // this slave's mTLS client cert (CN must equal Name)
+	ClientKey          string        `yaml:"client_key"`
 	BindIP             string        `yaml:"bind_ip"`
 	Timeout            int           `yaml:"timeout"` // seconds, default 60
 	TransferBufferSize int           `yaml:"transfer_buffer_size"`
@@ -163,6 +170,9 @@ func NewSlave(cfg SlaveConfig) *Slave {
 		tlsKey:             cfg.TLSKey,
 		tlsServerConfig:    tlsServerConfig,
 		tlsServerConfigErr: tlsServerConfigErr,
+		masterCACert:       cfg.MasterCACert,
+		clientCert:         cfg.ClientCert,
+		clientKey:          cfg.ClientKey,
 		bindIP:             cfg.BindIP,
 		timeout:            timeout,
 		transferBufferSize: bufferSize,
@@ -177,6 +187,37 @@ func loadTLSServerConfig(certPath, keyPath string) (*tls.Config, error) {
 		return nil, err
 	}
 	return &tls.Config{Certificates: []tls.Certificate{cert}, DynamicRecordSizingDisabled: true}, nil
+}
+
+// buildMasterTLSConfig builds the TLS config used to dial the master's
+// control port. When masterCACert is configured, the master's presented
+// server certificate is verified against it (real verification, replacing
+// the historical InsecureSkipVerify bypass); when clientCert/clientKey are
+// also configured, this slave presents its own mTLS identity (CN must equal
+// its registered slave name for the master's handshake check to pass).
+func (s *Slave) buildMasterTLSConfig() (*tls.Config, error) {
+	tlsCfg := &tls.Config{ServerName: s.masterHost}
+
+	if s.masterCACert != "" {
+		pool, err := tlsutil.LoadCACertPool(s.masterCACert)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load master_ca_cert: %w", err)
+		}
+		tlsCfg.RootCAs = pool
+	} else {
+		log.Printf("[Slave] WARNING: slave.master_ca_cert is not set - the master's certificate will not be verified (InsecureSkipVerify). Configure mTLS for a verified master-slave link.")
+		tlsCfg.InsecureSkipVerify = true
+	}
+
+	if s.clientCert != "" && s.clientKey != "" {
+		cert, err := tls.LoadX509KeyPair(s.clientCert, s.clientKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client_cert/client_key: %w", err)
+		}
+		tlsCfg.Certificates = []tls.Certificate{cert}
+	}
+
+	return tlsCfg, nil
 }
 
 func normalizeMountedRoots(configured []MountedRoot, legacy []string) []MountedRoot {
@@ -475,7 +516,10 @@ func (s *Slave) connectAndRun() error {
 	var err error
 
 	if s.tlsEnabled {
-		tlsCfg := &tls.Config{InsecureSkipVerify: true}
+		tlsCfg, cfgErr := s.buildMasterTLSConfig()
+		if cfgErr != nil {
+			return fmt.Errorf("failed to build master TLS config: %w", cfgErr)
+		}
 		conn, err = tls.DialWithDialer(&net.Dialer{Timeout: socketTimeout}, "tcp", addr, tlsCfg)
 	} else {
 		conn, err = net.DialTimeout("tcp", addr, socketTimeout)

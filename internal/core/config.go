@@ -8,11 +8,12 @@ import (
 	"strings"
 	"sync"
 
-	"gopkg.in/yaml.v3"
 	"weaveftpd/internal/timeutil"
 	"weaveftpd/internal/user"
 	"weaveftpd/internal/versionfile"
 	"weaveftpd/internal/zipscript"
+
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -183,6 +184,7 @@ type SlavePolicyConfig struct {
 	Weight   int                `yaml:"weight"`   // default 1, higher = more uploads routed here
 	ReadOnly bool               `yaml:"readonly"` // true = scan/download only; never route uploads here
 	Remerge  SlaveRemergeConfig `yaml:"remerge"`  // master-side background remerge policy for this slave
+	Masks    []string           `yaml:"masks"`    // Masks apply when mTLS is not used between master and slave
 }
 
 type SlaveRemergeConfig struct {

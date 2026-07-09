@@ -60,6 +60,8 @@ func (b *Bot) Start() error {
 		b.Config.IRC.Host, b.Config.IRC.Port, b.Config.IRC.Nick, len(uniqueChannels(b.Config)))
 	b.IRC = irc.NewBot(b.Config.IRC.Host, b.Config.IRC.Port, b.Config.IRC.Nick, b.Config.IRC.User, b.Config.IRC.RealName)
 	b.IRC.SSL = b.Config.IRC.SSL
+	b.IRC.TLSVerify = b.Config.IRC.TLSVerify
+	b.IRC.TLSCACert = b.Config.IRC.TLSCACert
 	b.IRC.Password = b.Config.IRC.Password
 	b.IRC.Debug = b.Debug
 	if err := b.IRC.Connect(); err != nil {

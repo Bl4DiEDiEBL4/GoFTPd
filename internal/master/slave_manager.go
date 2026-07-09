@@ -2,6 +2,7 @@ package master
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 
 	"weaveftpd/internal/core"
 	"weaveftpd/internal/protocol"
+	"weaveftpd/internal/tlsutil"
 	"weaveftpd/internal/zipscript"
 )
 
@@ -86,6 +88,15 @@ type SlaveManager struct {
 	authAllowNets    []*net.IPNet
 	authDenyFile     string
 	authDenyEntries  []authNetworkEntry
+
+	// mTLS for the master-slave link. When slaveCACert is set, the listener
+	// requires and verifies a client certificate whose CN must match the
+	// claimed slave name (see handleSlaveConnection). When unset, masks
+	// below are the fallback (and mandatory) authentication mechanism.
+	slaveCACert string
+	slaveCAPool *x509.CertPool
+
+	masks slaveMasks
 
 	slaves   map[string]*RemoteSlave
 	slavesMu sync.RWMutex
@@ -208,6 +219,7 @@ func NewSlaveManager(host string, port int, tlsEnabled bool, tlsCert, tlsKey str
 		remergeCRCSem:         make(chan struct{}, defaultRemergeChecksumThreads),
 		backgroundRemergeWake: make(chan struct{}, 1),
 	}
+	sm.masks.byName = make(map[string][]string)
 	sm.remergeCRCSlots.Store(defaultRemergeChecksumThreads)
 	sm.remergeMode.Store("off")
 	sm.manualRemergeMode.Store("instant")
@@ -316,6 +328,45 @@ func (sm *SlaveManager) ConfigureAuthDenylistFile(filePath string) error {
 		return nil
 	}
 	return sm.loadAuthDenylistLocked()
+}
+
+// ConfigureSlaveMTLS sets the CA certificate used to verify slave client
+// certificates on the control-port TLS listener. An empty caCertPath
+// disables mTLS enforcement (masks become the mandatory fallback in
+// handleSlaveConnection).
+func (sm *SlaveManager) ConfigureSlaveMTLS(caCertPath string) error {
+	caCertPath = strings.TrimSpace(caCertPath)
+	if caCertPath == "" {
+		sm.slaveCACert = ""
+		sm.slaveCAPool = nil
+		return nil
+	}
+	pool, err := tlsutil.LoadCACertPool(caCertPath)
+	if err != nil {
+		return err
+	}
+	sm.slaveCACert = caCertPath
+	sm.slaveCAPool = pool
+	return nil
+}
+
+// mTLSActive reports whether slave client certificates are required and
+// verified on this listener.
+func (sm *SlaveManager) mTLSActive() bool {
+	return sm.slaveCACert != ""
+}
+
+// buildListenerTLSConfig builds the slave-control listener's TLS config,
+// requiring and verifying a slave client certificate when mTLS is active.
+// Extracted from Start() so tests can exercise it against a real
+// tls.Listen/tls.Dial pair without needing cert files on disk.
+func (sm *SlaveManager) buildListenerTLSConfig(cert tls.Certificate) *tls.Config {
+	cfg := &tls.Config{Certificates: []tls.Certificate{cert}}
+	if sm.mTLSActive() {
+		cfg.ClientCAs = sm.slaveCAPool
+		cfg.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+	return cfg
 }
 
 func (sm *SlaveManager) publishDiskStatus(rs *RemoteSlave) {
@@ -712,8 +763,12 @@ func (sm *SlaveManager) Start() error {
 		if err != nil {
 			return fmt.Errorf("failed to load TLS cert: %w", err)
 		}
-		tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}}
-		listener, err = tls.Listen("tcp", addr, tlsCfg)
+		if sm.mTLSActive() {
+			log.Printf("[SlaveManager] mTLS enforced for slave connections (CA: %s)", sm.slaveCACert)
+		} else {
+			log.Printf("[SlaveManager] master.slave_ca_cert not set - falling back to per-slave IP mask allowlist")
+		}
+		listener, err = tls.Listen("tcp", addr, sm.buildListenerTLSConfig(cert))
 		if err != nil {
 			return fmt.Errorf("failed to listen TLS: %w", err)
 		}
@@ -792,6 +847,37 @@ func (sm *SlaveManager) handleSlaveConnection(conn net.Conn) {
 		log.Printf("[SlaveManager] Invalid slave name from %s", conn.RemoteAddr())
 		sm.recordAuthFailure(ip, remoteAddr, "invalid slave name")
 		stream.WriteObject(&protocol.AsyncCommand{Index: "error", Name: "error", Args: []string{"invalid slave name"}})
+		conn.Close()
+		return
+	}
+
+	// Tie the claimed slave name to a cryptographic or network identity: an
+	// unauthenticated name string is not sufficient on its own.
+	// If mTLS is configured, the presented client certificate's CN must match slaveName.
+	// Otherwise, the connecting IP must match a mask explicitly registered for slaveName.
+	// A slave with zero registered masks is refused, not silently trusted.
+	if sm.mTLSActive() {
+		tlsConn, ok := conn.(*tls.Conn)
+		if !ok {
+			log.Printf("[SlaveManager] Slave '%s' from %s did not use TLS while mTLS is required", slaveName, conn.RemoteAddr())
+			sm.recordAuthFailure(ip, remoteAddr, "mTLS required but connection is not TLS")
+			stream.WriteObject(&protocol.AsyncCommand{Index: "error", Name: "error", Args: []string{"mTLS required"}})
+			conn.Close()
+			return
+		}
+		if err := tlsutil.VerifyPeerCommonName(tlsConn.ConnectionState(), slaveName); err != nil {
+			log.Printf("[SlaveManager] Slave '%s' from %s failed certificate identity check: %v", slaveName, conn.RemoteAddr(), err)
+			sm.recordAuthFailure(ip, remoteAddr, "client certificate does not match slave name")
+			sm.publishSecurityEvent(ip, remoteAddr, "deny", fmt.Sprintf("client certificate CN mismatch for slave %q", slaveName), 0, time.Time{})
+			stream.WriteObject(&protocol.AsyncCommand{Index: "error", Name: "error", Args: []string{"certificate identity mismatch"}})
+			conn.Close()
+			return
+		}
+	} else if !sm.slaveMaskAllows(slaveName, ip) {
+		log.Printf("[SlaveManager] Slave '%s' from %s has no matching IP mask registered, rejecting", slaveName, conn.RemoteAddr())
+		sm.recordAuthFailure(ip, remoteAddr, "no matching IP mask for slave")
+		sm.publishSecurityEvent(ip, remoteAddr, "deny", fmt.Sprintf("no IP mask registered for slave %q", slaveName), 0, time.Time{})
+		stream.WriteObject(&protocol.AsyncCommand{Index: "error", Name: "error", Args: []string{"no matching IP mask registered for this slave"}})
 		conn.Close()
 		return
 	}

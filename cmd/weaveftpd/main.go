@@ -18,7 +18,6 @@ import (
 	"syscall"
 	"time"
 
-	"gopkg.in/yaml.v3"
 	"weaveftpd/internal/acl"
 	"weaveftpd/internal/core"
 	"weaveftpd/internal/dupe"
@@ -38,6 +37,8 @@ import (
 	"weaveftpd/plugins/spacekeeper"
 	"weaveftpd/plugins/speedtest"
 	"weaveftpd/plugins/tvmaze"
+
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -133,6 +134,25 @@ func main() {
 		}
 		if err := sm.ConfigureAuthDenylistFile(stringFromCfg(cfg.Master, "slave_denylist_file", "etc/slave_denylist.txt")); err != nil {
 			log.Fatalf("Invalid master.slave_denylist_file: %v", err)
+		}
+		if err := sm.ConfigureSlaveMTLS(stringFromCfg(cfg.Master, "slave_ca_cert", "")); err != nil {
+			log.Fatalf("Invalid master.slave_ca_cert: %v", err)
+		}
+		if err := sm.ConfigureSlaveMasksFile(stringFromCfg(cfg.Master, "slave_masks_file", "etc/slave_masks.txt")); err != nil {
+			log.Fatalf("Invalid master.slave_masks_file: %v", err)
+		}
+		// One-time seed: apply any masks: entries from the slaves: config list
+		// for slave names that have no masks persisted yet. Once seeded,
+		// SITE SLAVE ADDMASK/DELMASK against slave_masks_file is authoritative.
+		for _, slaveCfg := range cfg.Slaves {
+			if len(slaveCfg.Masks) == 0 || len(sm.ListSlaveMasks(slaveCfg.Name)) > 0 {
+				continue
+			}
+			for _, mask := range slaveCfg.Masks {
+				if err := sm.AddSlaveMask(slaveCfg.Name, mask); err != nil {
+					log.Printf("[MASTER] failed to seed mask %q for slave %q: %v", mask, slaveCfg.Name, err)
+				}
+			}
 		}
 		sm.ConfigureAuthGuard(
 			intFromCfg(cfg.Master, "slave_auth_fail_limit", 2),
@@ -258,6 +278,12 @@ func main() {
 			}
 			if err := sm.ConfigureAuthDenylistFile(stringFromCfg(c.Master, "slave_denylist_file", "etc/slave_denylist.txt")); err != nil {
 				log.Printf("[REHASH] invalid master.slave_denylist_file: %v", err)
+			}
+			if err := sm.ConfigureSlaveMTLS(stringFromCfg(c.Master, "slave_ca_cert", "")); err != nil {
+				log.Printf("[REHASH] invalid master.slave_ca_cert: %v", err)
+			}
+			if err := sm.ConfigureSlaveMasksFile(stringFromCfg(c.Master, "slave_masks_file", "etc/slave_masks.txt")); err != nil {
+				log.Printf("[REHASH] invalid master.slave_masks_file: %v", err)
 			}
 			sm.ConfigureAuthGuard(
 				intFromCfg(c.Master, "slave_auth_fail_limit", 2),
@@ -566,6 +592,9 @@ func startSlave(cfg *core.Config) {
 	pasvMin := intFromCfg(slaveCfg, "pasv_port_min", 0)
 	pasvMax := intFromCfg(slaveCfg, "pasv_port_max", 0)
 	bindIP, _ := slaveCfg["bind_ip"].(string)
+	masterCACert, _ := slaveCfg["master_ca_cert"].(string)
+	clientCert, _ := slaveCfg["client_cert"].(string)
+	clientKey, _ := slaveCfg["client_key"].(string)
 	timeout := intFromCfg(slaveCfg, "timeout", 60)
 	transferBufferSize := intFromCfg(slaveCfg, "transfer_buffer_size", 0)
 	warnDeprecatedConfigKeys("slave", slaveCfg, map[string]string{
@@ -590,6 +619,9 @@ func startSlave(cfg *core.Config) {
 		TLSEnabled:         cfg.TLSEnabled,
 		TLSCert:            cfg.TLSCert,
 		TLSKey:             cfg.TLSKey,
+		MasterCACert:       masterCACert,
+		ClientCert:         clientCert,
+		ClientKey:          clientKey,
 		BindIP:             bindIP,
 		Timeout:            timeout,
 		TransferBufferSize: transferBufferSize,

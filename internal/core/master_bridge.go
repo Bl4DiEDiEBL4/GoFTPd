@@ -179,6 +179,13 @@ type MasterBridge interface {
 	ClearSlaveAuthTempBan(entry string) (bool, error)
 	ListSlaveAuthTempBans() []SlaveAuthBanInfo
 
+	// Per-slave IP mask allowlist: the fallback authentication mechanism for
+	// the master-slave link when mTLS isn't configured (SITE SLAVE <name> ADDMASK/DELMASK/MASKS).
+	AddSlaveMask(name, mask string) error
+	RemoveSlaveMask(name, mask string) (bool, error)
+	ListSlaveMasks(name string) []string
+	ListAllSlaveMasks() map[string][]string
+
 	// GetLiveTransferStats asks connected slaves for current live transfer counters.
 	GetLiveTransferStats() []LiveTransferStat
 

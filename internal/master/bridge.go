@@ -346,6 +346,34 @@ func (b *Bridge) ListSlaveAuthTempBans() []core.SlaveAuthBanInfo {
 	return out
 }
 
+func (b *Bridge) AddSlaveMask(name, mask string) error {
+	if b == nil || b.sm == nil {
+		return fmt.Errorf("master not initialized")
+	}
+	return b.sm.AddSlaveMask(name, mask)
+}
+
+func (b *Bridge) RemoveSlaveMask(name, mask string) (bool, error) {
+	if b == nil || b.sm == nil {
+		return false, fmt.Errorf("master not initialized")
+	}
+	return b.sm.RemoveSlaveMask(name, mask)
+}
+
+func (b *Bridge) ListSlaveMasks(name string) []string {
+	if b == nil || b.sm == nil {
+		return nil
+	}
+	return b.sm.ListSlaveMasks(name)
+}
+
+func (b *Bridge) ListAllSlaveMasks() map[string][]string {
+	if b == nil || b.sm == nil {
+		return nil
+	}
+	return b.sm.ListAllSlaveMasks()
+}
+
 func (b *Bridge) RunOnSlaveCommand(dirPath, command string, args []string, env map[string]string, timeoutSeconds int, preferredSlave string) (string, error) {
 	slave := b.resolveSlaveForDir(dirPath, preferredSlave)
 	if slave == nil {
