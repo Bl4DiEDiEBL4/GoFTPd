@@ -523,10 +523,17 @@ func (rs *RemoteSlave) SetOffline(reason string) {
 		rs.onOffline(rs.name)
 	}
 
-	// [Added] Instantly unblocks any FetchResponse calls waiting for data from this dead slave
+	// [Added] Instantly unblocks any FetchResponse calls waiting for data from this dead slave.
+	// A nil send (not a close) is used deliberately: routeResponse can still be delivering a
+	// late response to this same channel from the Run() read-loop goroutine concurrently with
+	// this shutdown path, and sending on a closed channel panics regardless of select/default,
+	// crashing the whole daemon. FetchResponse already treats a nil resp as "connection closed".
 	rs.pendingCmds.Range(func(key, value interface{}) bool {
 		if ch, ok := value.(chan interface{}); ok {
-			close(ch)
+			select {
+			case ch <- nil:
+			default:
+			}
 		}
 		return true
 	})

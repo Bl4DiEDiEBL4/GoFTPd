@@ -1,6 +1,7 @@
 package master
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -91,4 +92,83 @@ func TestWaitForRemergeDrainReturnsAfterQueueClears(t *testing.T) {
 	if err := rs.WaitForRemergeDrain(200 * time.Millisecond); err != nil {
 		t.Fatalf("WaitForRemergeDrain returned error: %v", err)
 	}
+}
+
+// TestSetOfflineDoesNotPanicOnConcurrentRouteResponse guards against a shutdown
+// racing with Run()'s read loop: SetOffline must never close a pendingCmds
+// channel while routeResponse is still sending on it, since that panics
+// regardless of the select/default guard on the send side.
+func TestSetOfflineDoesNotPanicOnConcurrentRouteResponse(t *testing.T) {
+	rs := &RemoteSlave{
+		commandNotify:    make(chan struct{}, 1),
+		remergeQueue:     make(chan *protocol.AsyncResponseRemerge, 1),
+		remergeDrained:   make(chan struct{}, 1),
+		remergeStop:      make(chan struct{}),
+		heartbeatTimeout: time.Second,
+	}
+	rs.online.Store(true)
+	rs.pendingCmds.Store("01", make(chan interface{}, 1))
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 1000; i++ {
+			rs.routeResponse("01", &protocol.AsyncResponse{Index: "01"})
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		rs.SetOffline("concurrent shutdown")
+	}()
+	wg.Wait()
+}
+
+// TestRunRemergeQueueExitsOnSetOffline verifies runRemergeQueue's goroutine
+// actually terminates once SetOffline closes remergeStop, instead of
+// leaking forever waiting on an unclosed remergeQueue.
+func TestRunRemergeQueueExitsOnSetOffline(t *testing.T) {
+	rs := &RemoteSlave{
+		commandNotify:    make(chan struct{}, 1),
+		remergeQueue:     make(chan *protocol.AsyncResponseRemerge, 1),
+		remergeDrained:   make(chan struct{}, 1),
+		remergeStop:      make(chan struct{}),
+		heartbeatTimeout: time.Second,
+	}
+	rs.online.Store(true)
+
+	done := make(chan struct{})
+	go func() {
+		rs.runRemergeQueue(nil)
+		close(done)
+	}()
+
+	rs.SetOffline("shutdown")
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("runRemergeQueue goroutine leaked: did not exit after SetOffline")
+	}
+}
+
+// TestSetOfflineIsIdempotent verifies the CAS guard makes a second SetOffline
+// call a no-op, so it can't double-close remergeStop (which would panic) or
+// re-run shutdown side effects.
+func TestSetOfflineIsIdempotent(t *testing.T) {
+	rs := &RemoteSlave{
+		commandNotify:    make(chan struct{}, 1),
+		remergeQueue:     make(chan *protocol.AsyncResponseRemerge, 1),
+		remergeDrained:   make(chan struct{}, 1),
+		remergeStop:      make(chan struct{}),
+		heartbeatTimeout: time.Second,
+	}
+	rs.online.Store(true)
+
+	rs.SetOffline("first")
+	if rs.IsOnline() {
+		t.Fatalf("expected slave offline after first SetOffline call")
+	}
+
+	rs.SetOffline("second")
 }
