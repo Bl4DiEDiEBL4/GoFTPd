@@ -70,9 +70,48 @@ type vfsSnapshot struct {
 	DirMeta map[string]*VFSDirMeta
 }
 
+// copyVFSDirMeta returns an independent deep copy of meta, safe to hand to a
+// caller outside vfs.mu (used by GetSFVData and SaveToDisk). raceCache/
+// zipRaceCache are intentionally omitted: they are internal cache state, never
+// part of the public GetSFVData contract, and always nil right after any
+// mutator that would make this copy visible (each invalidates the cache).
+func copyVFSDirMeta(meta *VFSDirMeta) *VFSDirMeta {
+	if meta == nil {
+		return nil
+	}
+	cp := &VFSDirMeta{
+		SFVName:             meta.SFVName,
+		SFVChecksum:         meta.SFVChecksum,
+		SFVAllowWithoutFile: meta.SFVAllowWithoutFile,
+		ZipExpectedParts:    meta.ZipExpectedParts,
+		ZipDIZChecksum:      meta.ZipDIZChecksum,
+	}
+	if len(meta.SFVEntries) > 0 {
+		cp.SFVEntries = make(map[string]uint32, len(meta.SFVEntries))
+		for name, crc := range meta.SFVEntries {
+			cp.SFVEntries[name] = crc
+		}
+	}
+	if len(meta.RequestEntries) > 0 {
+		cp.RequestEntries = append([]plugin.RequestRecord(nil), meta.RequestEntries...)
+	}
+	if len(meta.RequestFillEntries) > 0 {
+		cp.RequestFillEntries = append([]plugin.RequestFillRecord(nil), meta.RequestFillEntries...)
+	}
+	return cp
+}
+
 // VirtualFileSystem maintains the master's view of files across all slaves.
 //
 //	/ VirtualFileSystemDirectory.
+//
+// Invariant: once a *VFSFile is stored in files, its fields must never be
+// mutated again - every update builds a new VFSFile and replaces the map
+// entry (see AddFile). GetFile/ListDirectory/GetAllFiles rely on this to hand
+// out live pointers without copying: a published pointer is a frozen
+// snapshot, never touched again, only superseded by a new pointer under the
+// same key. Breaking this invariant reintroduces a data race between readers
+// holding an old pointer and writers mutating it in place.
 type VirtualFileSystem struct {
 	files          map[string]*VFSFile
 	children       map[string]map[string]struct{}
@@ -226,7 +265,9 @@ func (vfs *VirtualFileSystem) UpdateFileVerification(path string, checksum uint3
 	if file == nil || file.IsDir {
 		return false
 	}
-	file.Checksum = checksum
+	cp := *file
+	cp.Checksum = checksum
+	vfs.files[path] = &cp
 	vfs.invalidateRaceCachesForPathLocked(path)
 	vfs.markPersistDirtyLocked()
 	return true
@@ -255,7 +296,9 @@ func (vfs *VirtualFileSystem) UpdateFileTransferSize(path string, sizeBytes int6
 	if sizeBytes <= file.Size {
 		return false
 	}
-	file.Size = sizeBytes
+	cp := *file
+	cp.Size = sizeBytes
+	vfs.files[path] = &cp
 	vfs.invalidateRaceCachesForPathLocked(path)
 	vfs.markPersistDirtyLocked()
 	return true
@@ -281,19 +324,21 @@ func (vfs *VirtualFileSystem) ScrubReleaseRaceMetadata(rootPath, owner, group st
 			continue
 		}
 		fileChanged := false
-		if owner != "" && file.Owner != owner {
-			file.Owner = owner
+		cp := *file
+		if owner != "" && cp.Owner != owner {
+			cp.Owner = owner
 			fileChanged = true
 		}
-		if group != "" && file.Group != group {
-			file.Group = group
+		if group != "" && cp.Group != group {
+			cp.Group = group
 			fileChanged = true
 		}
-		if !file.IsDir && file.XferTime != 0 {
-			file.XferTime = 0
+		if !cp.IsDir && cp.XferTime != 0 {
+			cp.XferTime = 0
 			fileChanged = true
 		}
 		if fileChanged {
+			vfs.files[filePath] = &cp
 			changed = true
 			affectedDirs[cleanVFSPath(filepath.Dir(filePath))] = struct{}{}
 		}
@@ -350,8 +395,10 @@ func (vfs *VirtualFileSystem) AddSymlink(linkPath, targetPath string) {
 		isDir = target.IsDir
 	}
 	if existing := vfs.files[linkPath]; existing != nil && existing.IsSymlink && existing.LinkTarget == targetPath {
-		existing.IsDir = isDir
-		existing.Seen = true
+		cp := *existing
+		cp.IsDir = isDir
+		cp.Seen = true
+		vfs.files[linkPath] = &cp
 		return
 	}
 	vfs.files[linkPath] = &VFSFile{
@@ -379,8 +426,10 @@ func (vfs *VirtualFileSystem) Chmod(path string, mode uint32) {
 
 	path = cleanVFSPath(path)
 	if f := vfs.files[path]; f != nil {
-		f.Mode = mode
-		f.LastModified = time.Now().Unix()
+		cp := *f
+		cp.Mode = mode
+		cp.LastModified = time.Now().Unix()
+		vfs.files[path] = &cp
 		vfs.markPersistDirtyLocked()
 	}
 }
@@ -397,12 +446,16 @@ func (vfs *VirtualFileSystem) MarkAllUnseen(slaveName string) {
 		}
 		if vfs.protectedDirs[path] {
 			vfs.reindexSlavePathLocked(path, file.SlaveName, "")
-			file.Seen = true
-			file.SlaveName = ""
+			cp := *file
+			cp.Seen = true
+			cp.SlaveName = ""
+			vfs.files[path] = &cp
 			continue
 		}
 		if file.SlaveName == slaveName {
-			file.Seen = false
+			cp := *file
+			cp.Seen = false
+			vfs.files[path] = &cp
 		}
 	}
 }
@@ -421,7 +474,9 @@ func (vfs *VirtualFileSystem) MarkSubtreeUnseen(slaveName, rootPath string) {
 			continue
 		}
 		if file := vfs.files[path]; file != nil && file.SlaveName == slaveName {
-			file.Seen = false
+			cp := *file
+			cp.Seen = false
+			vfs.files[path] = &cp
 		}
 	}
 }
@@ -456,8 +511,10 @@ func (vfs *VirtualFileSystem) resetProtectedDirsLocked() {
 		}
 		if file := vfs.files[path]; file != nil {
 			vfs.reindexSlavePathLocked(path, file.SlaveName, "")
-			file.Seen = true
-			file.SlaveName = ""
+			cp := *file
+			cp.Seen = true
+			cp.SlaveName = ""
+			vfs.files[path] = &cp
 		}
 	}
 }
@@ -599,10 +656,12 @@ func (vfs *VirtualFileSystem) SetProtectedDirs(paths []string) {
 		f := vfs.files[p]
 		if f != nil {
 			vfs.reindexSlavePathLocked(p, f.SlaveName, "")
-			f.Path = p
-			f.IsDir = true
-			f.Seen = true
-			f.SlaveName = ""
+			cp := *f
+			cp.Path = p
+			cp.IsDir = true
+			cp.Seen = true
+			cp.SlaveName = ""
+			vfs.files[p] = &cp
 		}
 	}
 	for p, f := range vfs.files {
@@ -928,30 +987,32 @@ func (vfs *VirtualFileSystem) HydrateRaceFile(path, owner, group string, sizeByt
 	if file == nil || file.IsDir {
 		return false
 	}
+	cp := *file
 	changed := false
-	currentOwner := strings.TrimSpace(file.Owner)
-	currentGroup := strings.TrimSpace(file.Group)
+	currentOwner := strings.TrimSpace(cp.Owner)
+	currentGroup := strings.TrimSpace(cp.Group)
 	if isWeakMetadataValue(currentOwner) && !isWeakMetadataValue(owner) {
-		file.Owner = owner
+		cp.Owner = owner
 		changed = true
 	}
 	if isWeakMetadataValue(currentGroup) && !isWeakMetadataValue(group) {
-		file.Group = group
+		cp.Group = group
 		changed = true
 	}
-	if sizeBytes > 0 && sizeBytes > file.Size && (file.Size <= 0 || (file.XferTime <= 0 && file.Checksum == 0)) {
-		file.Size = sizeBytes
+	if sizeBytes > 0 && sizeBytes > cp.Size && (cp.Size <= 0 || (cp.XferTime <= 0 && cp.Checksum == 0)) {
+		cp.Size = sizeBytes
 		changed = true
 	}
-	if file.XferTime <= 0 && xferTime > 0 {
-		file.XferTime = xferTime
+	if cp.XferTime <= 0 && xferTime > 0 {
+		cp.XferTime = xferTime
 		changed = true
 	}
-	if file.Checksum == 0 && checksum != 0 {
-		file.Checksum = checksum
+	if cp.Checksum == 0 && checksum != 0 {
+		cp.Checksum = checksum
 		changed = true
 	}
 	if changed {
+		vfs.files[path] = &cp
 		vfs.markPersistDirtyLocked()
 	}
 	return changed
@@ -1266,25 +1327,7 @@ func (vfs *VirtualFileSystem) SaveToDisk(filePath string) error {
 		if meta == nil {
 			continue
 		}
-		copyMeta := &VFSDirMeta{}
-		if len(meta.SFVEntries) > 0 {
-			copyMeta.SFVEntries = make(map[string]uint32, len(meta.SFVEntries))
-			for name, crc := range meta.SFVEntries {
-				copyMeta.SFVEntries[name] = crc
-			}
-		}
-		copyMeta.SFVName = meta.SFVName
-		copyMeta.SFVChecksum = meta.SFVChecksum
-		copyMeta.SFVAllowWithoutFile = meta.SFVAllowWithoutFile
-		copyMeta.ZipExpectedParts = meta.ZipExpectedParts
-		copyMeta.ZipDIZChecksum = meta.ZipDIZChecksum
-		if len(meta.RequestEntries) > 0 {
-			copyMeta.RequestEntries = append([]plugin.RequestRecord(nil), meta.RequestEntries...)
-		}
-		if len(meta.RequestFillEntries) > 0 {
-			copyMeta.RequestFillEntries = append([]plugin.RequestFillRecord(nil), meta.RequestFillEntries...)
-		}
-		snapshot.DirMeta[dirPath] = copyMeta
+		snapshot.DirMeta[dirPath] = copyVFSDirMeta(meta)
 	}
 	vfs.mu.RUnlock()
 
@@ -1507,7 +1550,7 @@ func (vfs *VirtualFileSystem) GetSFVData(dirPath string) *VFSDirMeta {
 	if !vfs.sfvMetaValidLocked(dirPath, meta) {
 		return nil
 	}
-	return meta
+	return copyVFSDirMeta(meta)
 }
 
 func (vfs *VirtualFileSystem) CacheZipExpectedParts(dirPath string, expected int, dizChecksum uint32) {
@@ -1910,9 +1953,11 @@ func (vfs *VirtualFileSystem) ensureParentDirsLocked(path string, slaveName stri
 			}
 			vfs.addSlavePathLocked(slaveName, dir)
 		} else {
-			existing.Path = dir
-			existing.IsDir = true
-			existing.Seen = true
+			cp := *existing
+			cp.Path = dir
+			cp.IsDir = true
+			cp.Seen = true
+			vfs.files[dir] = &cp
 		}
 		vfs.ensureChildrenBucketLocked(dir)
 		if dir == "/" {
@@ -1975,13 +2020,14 @@ func (vfs *VirtualFileSystem) moveSubtreeLocked(from, to, newSlaveName string) b
 	}
 	vfs.ensureParentDirsLocked(to, slaveForParents)
 	for _, mv := range moves {
-		mv.file.Path = mv.newPath
+		cp := *mv.file
+		cp.Path = mv.newPath
 		if strings.TrimSpace(newSlaveName) != "" {
-			mv.file.SlaveName = newSlaveName
+			cp.SlaveName = newSlaveName
 		}
-		vfs.files[mv.newPath] = mv.file
-		vfs.addSlavePathLocked(mv.file.SlaveName, mv.newPath)
-		if mv.file.IsDir {
+		vfs.files[mv.newPath] = &cp
+		vfs.addSlavePathLocked(cp.SlaveName, mv.newPath)
+		if cp.IsDir {
 			vfs.ensureChildrenBucketLocked(mv.newPath)
 		}
 		vfs.linkChildLocked(cleanVFSPath(filepath.Dir(mv.newPath)), mv.newPath)
@@ -2000,10 +2046,10 @@ func (vfs *VirtualFileSystem) touchAncestorsLocked(path string, ts int64) {
 	}
 	current := cleanVFSPath(path)
 	for current != "." && current != "" {
-		if f := vfs.files[current]; f != nil && f.IsDir {
-			if ts > f.LastModified {
-				f.LastModified = ts
-			}
+		if f := vfs.files[current]; f != nil && f.IsDir && ts > f.LastModified {
+			cp := *f
+			cp.LastModified = ts
+			vfs.files[current] = &cp
 		}
 		if current == "/" {
 			break
