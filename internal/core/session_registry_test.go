@@ -98,3 +98,34 @@ func TestReserveUploadPathBlocksDuplicateUntilRelease(t *testing.T) {
 	}
 	releaseUploadPath(filePath)
 }
+
+func TestActiveDownloadForPathDetectsInFlightDownload(t *testing.T) {
+	filePath := "/UPLOAD/release/file.r00"
+
+	if activeDownloadForPath(filePath) {
+		t.Fatalf("no session active yet, expected no in-flight download")
+	}
+
+	server, client := net.Pipe()
+	defer client.Close()
+
+	s := &Session{
+		Conn:     server,
+		IsLogged: true,
+	}
+	s.beginTransfer("download", filePath)
+	s.ID = registerSession(s)
+	defer unregisterSession(s.ID)
+
+	if !activeDownloadForPath(filePath) {
+		t.Fatalf("expected in-flight download to be detected")
+	}
+	if activeDownloadForPath("/UPLOAD/release/other-file.r00") {
+		t.Fatalf("expected unrelated path to report no in-flight download")
+	}
+
+	s.endTransfer()
+	if activeDownloadForPath(filePath) {
+		t.Fatalf("expected download path to clear once transfer ends")
+	}
+}
