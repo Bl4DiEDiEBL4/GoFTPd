@@ -257,23 +257,21 @@ func releaseStatusForDir(bridge MasterBridge, dirPath string) (ReleaseStatus, bo
 }
 
 func releaseStatusComplete(status ReleaseStatus) bool {
-	return raceCountsComplete(status.Present, status.Total, false)
+	return raceCountsComplete(status.Present, status.Total)
 }
 
 // raceCountsComplete reports whether present has reached the expected total.
-// When total is unknown (<= 0), allowUnknownTotal decides what "nothing to
-// compare against" means: zip races with no file_id.diz manifest treat it as
-// complete so a COMPLETE can still fire once parts land, while SFV-tracked
-// and plain release-status completeness require a known total before
-// calling anything complete. This is the single source of truth for the
-// "is this release/file done" boolean that used to be reimplemented ad hoc
-// at each call site (see the vfs.go checksum-verification consolidation for
-// the same pattern applied to CRC comparisons).
-func raceCountsComplete(present, total int, allowUnknownTotal bool) bool {
-	if total <= 0 {
-		return allowUnknownTotal
-	}
-	return present >= total
+// An unknown total (<= 0) is never complete: for zip races this means the
+// file_id.diz-derived part count hasn't been read yet (it lives inside
+// whichever payload .zip carries it, which may not be the first one to
+// land), not that there's no count to track, so a low presentCount must not
+// be reported complete just because the total isn't known yet. This is the
+// single source of truth for the "is this release/file done" boolean that
+// used to be reimplemented ad hoc at each call site, with the zip path
+// briefly disagreeing with the rest (see vfs.go's checksum-verification
+// consolidation for the same pattern applied to CRC comparisons).
+func raceCountsComplete(present, total int) bool {
+	return total > 0 && present >= total
 }
 
 func incompleteMarkerName(pattern, relname string) string {
@@ -703,7 +701,7 @@ func populateUploadRaceData(bridge MasterBridge, cfg *Config, dirPath, fileName 
 				data["leader_pct"] = fmt.Sprintf("%d", leader.Percent)
 				data["leader_speed"] = fmt.Sprintf("%.2fMB/s", leader.Speed/1024.0/1024.0)
 			}
-			return users, groups, totalBytes, totalFiles, raceDurationMs, raceCountsComplete(presentCount, expected, true)
+			return users, groups, totalBytes, totalFiles, raceDurationMs, raceCountsComplete(presentCount, expected)
 		}
 		return nil, nil, 0, 0, 0, false
 	}
@@ -746,7 +744,7 @@ func populateUploadRaceData(bridge MasterBridge, cfg *Config, dirPath, fileName 
 				data["leader_pct"] = fmt.Sprintf("%d", leader.Percent)
 				data["leader_speed"] = fmt.Sprintf("%.2fMB/s", leader.Speed/1024.0/1024.0)
 			}
-			return users, groups, totalBytes, total, raceDurationMs, raceCountsComplete(present, total, false)
+			return users, groups, totalBytes, total, raceDurationMs, raceCountsComplete(present, total)
 		}
 	}
 	return nil, nil, 0, 0, 0, false
@@ -867,7 +865,7 @@ func dirRaceStatusName(bridge MasterBridge, cfg *Config, dirPath, siteName strin
 	extra := listStatusAudioExtra(bridge, cfg, dirPath)
 	if total > 0 {
 		totalMB := float64(totalBytes) / (1024 * 1024)
-		if raceCountsComplete(present, total, false) {
+		if raceCountsComplete(present, total) {
 			if extra != "" {
 				statusEntries = append(statusEntries, fmt.Sprintf("[%s] - ( %.0fM %dF - COMPLETE - %s ) - [%s]", siteName, totalMB, total, extra, siteName))
 				extra = ""

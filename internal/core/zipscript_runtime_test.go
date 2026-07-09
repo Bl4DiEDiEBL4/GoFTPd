@@ -4,23 +4,25 @@ import "testing"
 
 func TestRaceCountsComplete(t *testing.T) {
 	cases := []struct {
-		name              string
-		present, total    int
-		allowUnknownTotal bool
-		want              bool
+		name           string
+		present, total int
+		want           bool
 	}{
-		{"unknown total, unknown not allowed", 0, 0, false, false},
-		{"unknown total, unknown allowed", 0, 0, true, true},
-		{"present with unknown total, unknown allowed", 3, 0, true, true},
-		{"known total, present short", 1, 2, false, false},
-		{"known total, present short, unknown allowed has no effect", 1, 2, true, false},
-		{"known total, present reached", 2, 2, false, true},
-		{"known total, present exceeds", 3, 2, false, true},
+		{"unknown total, no files present", 0, 0, false},
+		// A zip race's DIZ-derived total can be unknown mid-race (the DIZ
+		// lives inside whichever payload .zip happens to carry it, which
+		// isn't necessarily the first one to land) even with other volumes
+		// already present -- that must stay incomplete, not flip true just
+		// because the total hasn't been read yet.
+		{"unknown total, files already present", 3, 0, false},
+		{"known total, present short", 1, 2, false},
+		{"known total, present reached", 2, 2, true},
+		{"known total, present exceeds", 3, 2, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := raceCountsComplete(c.present, c.total, c.allowUnknownTotal); got != c.want {
-				t.Fatalf("raceCountsComplete(%d, %d, %v) = %v, want %v", c.present, c.total, c.allowUnknownTotal, got, c.want)
+			if got := raceCountsComplete(c.present, c.total); got != c.want {
+				t.Fatalf("raceCountsComplete(%d, %d) = %v, want %v", c.present, c.total, got, c.want)
 			}
 		})
 	}
