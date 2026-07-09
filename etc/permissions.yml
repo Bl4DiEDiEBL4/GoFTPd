@@ -302,6 +302,12 @@ rules:
     - path: /*
       required: $anyone
 
+  # SITE CHMOD path gate. The sitecmd rule controls command visibility; this
+  # rule controls which paths the command can touch.
+  chmod:
+    - path: /*
+      required: $siteop
+
 
   # ---------------------------------------------------------------------------
   # Nuke and unnuke

@@ -1,0 +1,71 @@
+# WeaveFTPd daemon + optional slave + optional sitebot.
+#
+# Host networking is strongly recommended for FTP. PASV replies advertise real
+# host IPs, wide passive ranges do not need per-port mappings, and FXP peer
+# checks see the true remote address. Set public_ip / bind_ip in the configs to
+# the host's external IP.
+
+services:
+  master:
+    build:
+      context: .
+      target: daemon
+    image: ${WEAVEFTPD_IMAGE:-weaveftpd:latest}
+    container_name: weaveftpd-master
+    network_mode: host
+    restart: unless-stopped
+    user: "${WEAVEFTPD_UID:-0}:${WEAVEFTPD_GID:-0}"
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    volumes:
+      - ./etc:/app/etc
+      - ./userdata:/app/userdata
+      - ./logs:/app/logs
+      - ./site:/app/site
+      - ./plugins:/app/plugins
+      - ./sitebot:/app/sitebot:ro
+    command: ["--config", "/app/etc/config.yml"]
+
+  # Start explicitly on a slave box:
+  #   docker compose --profile slave up -d slave
+  slave:
+    build:
+      context: .
+      target: daemon
+    image: ${WEAVEFTPD_IMAGE:-weaveftpd:latest}
+    container_name: weaveftpd-slave
+    network_mode: host
+    restart: unless-stopped
+    profiles: ["slave"]
+    user: "${WEAVEFTPD_UID:-0}:${WEAVEFTPD_GID:-0}"
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    volumes:
+      - ./etc:/app/etc
+      - ./logs-slave:/app/logs
+      - ./site:/app/site
+      - ./plugins:/app/plugins:ro
+    command: ["--config", "/app/etc/config-slave.yml"]
+
+  # Start with the master when you want IRC announces:
+  #   docker compose --profile sitebot up -d master sitebot
+  sitebot:
+    build:
+      context: .
+      target: sitebot
+    image: ${WEAVEFTPD_SITEBOT_IMAGE:-weaveftpd-sitebot:latest}
+    container_name: weaveftpd-sitebot
+    network_mode: host
+    restart: unless-stopped
+    profiles: ["sitebot"]
+    user: "${WEAVEFTPD_UID:-0}:${WEAVEFTPD_GID:-0}"
+    depends_on:
+      - master
+    volumes:
+      - ./sitebot:/app/sitebot
+      - ./etc:/app/etc
+    command: ["--config", "/app/sitebot/etc/config.yml"]

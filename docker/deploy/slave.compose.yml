@@ -1,0 +1,21 @@
+# Remote slave machine compose file.
+#
+# This machine does not run the sitebot. It only connects to the master control
+# port configured in runtime/slave/etc/config.yml.
+
+services:
+  slave:
+    image: ${WEAVEFTPD_IMAGE:-weaveftpd:latest}
+    container_name: weaveftpd-slave
+    network_mode: host
+    restart: unless-stopped
+    user: "${WEAVEFTPD_UID:-0}:${WEAVEFTPD_GID:-0}"
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    volumes:
+      - ${WEAVEFTPD_SLAVE_RUNTIME:-./runtime/slave}/etc:/app/etc
+      - ${WEAVEFTPD_SLAVE_RUNTIME:-./runtime/slave}/logs:/app/logs
+      - ${WEAVEFTPD_SLAVE_SITE_PATH:-./runtime/slave/site}:/app/site
+    command: ["--config", "/app/etc/config.yml"]

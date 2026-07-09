@@ -802,14 +802,18 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		}
 		fromPath := path.Join(s.CurrentDir, s.RenameFrom)
 		toPath := path.Join(s.CurrentDir, args[0])
+		toDir := path.Dir(toPath)
+		toName := path.Base(toPath)
+		if toName == "" || toName == "." || toName == "/" || toName == ".." {
+			fmt.Fprintf(s.Conn, "501 Invalid destination name.\r\n")
+			return false
+		}
 		if !s.canRenamePath(fromPath, toPath) {
 			fmt.Fprintf(s.Conn, "550 Access Denied: Insufficient flags.\r\n")
 			return false
 		}
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
-				toDir := s.CurrentDir
-				toName := args[0]
 				fromRelease := path.Clean(path.Dir(fromPath))
 				previousMedia := cloneStringMap(bridge.GetDirMediaInfo(fromRelease))
 				if err := bridge.RenameFile(fromPath, toDir, toName); err != nil {
@@ -851,7 +855,11 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					pretTarget = path.Clean(preparedArg)
 				}
 				pretTarget = bridge.ResolvePath(pretTarget)
-				if bridge.FileExists(pretTarget) || uploadPathReserved(pretTarget) {
+				if uploadPathReserved(pretTarget) || pendingUploadForReply(bridge, pretTarget) {
+					writeTemporaryUploadBusyResponse(s.Conn, path.Base(pretTarget))
+					return false
+				}
+				if bridge.FileExists(pretTarget) {
 					names := duplicateResponseFileNames(existingFileNamesForXDupe(bridge.ListDir(path.Dir(pretTarget))), path.Base(pretTarget))
 					for _, line := range xdupeResponseLines(s.XDupeMode, names) {
 						fmt.Fprintf(s.Conn, "553-%s\r\n", line)
@@ -1489,7 +1497,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		restOffset := s.RestOffset
 		s.RestOffset = 0
 		var existingNames []string
-		var duplicateResponseNames []string
 		var masterUploadEntries []MasterFileEntry
 		masterUploadEntriesLoaded := false
 		uploadDir := s.CurrentDir
@@ -1526,10 +1533,13 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					fmt.Fprintf(s.Conn, "550 Upload prepare failed: %v\r\n", err)
 					return false
 				}
+				if pendingUploadForReply(bridge, uploadPath) {
+					writeTemporaryUploadBusyResponse(s.Conn, fileName)
+					return false
+				}
 				fileExists = bridge.FileExists(uploadPath)
 				if s.Config.XdupeEnabled {
 					xdupeNames = existingFileNamesForXDupe(getMasterUploadEntries(bridge))
-					duplicateResponseNames = xdupeNames
 				}
 			}
 			if fileExists && restOffset == 0 {
@@ -1557,7 +1567,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			}
 		}
 		if !reserveUploadPath(uploadPath) {
-			writeDuplicateFileResponse(s, fileName, duplicateResponseNames)
+			writeTemporaryUploadBusyResponse(s.Conn, fileName)
 			return false
 		}
 		defer releaseUploadPath(uploadPath)
@@ -1658,6 +1668,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						return false
 					}
 				}
+				if handleMasterUploadZipIntegrityAndCleanup(s, bridge, uploadDir, filePath, fileName) {
+					return false
+				}
 				if handleMasterUploadSFVStatusAndCleanup(s, bridge, uploadDir, filePath, fileName, checksum, fileSize) {
 					return false
 				}
@@ -1757,6 +1770,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						fmt.Fprintf(s.Conn, "226 Transfer complete.\r\n")
 						return false
 					}
+				}
+				if handleMasterUploadZipIntegrityAndCleanup(s, bridge, uploadDir, filePath, fileName) {
+					return false
 				}
 				if handleMasterUploadSFVStatusAndCleanup(s, bridge, uploadDir, filePath, fileName, checksum, fileSize) {
 					return false
@@ -1894,15 +1910,14 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		if badZip, err := zipscript.LocalCheckUploadedZipIntegrity(s.Config.Zipscript, uploadDir, localPath, fileName); err != nil && s.Config.Debug {
 			log.Printf("[LOCAL-ZS] zip integrity check skipped for %s: %v", uploadPath, err)
 		} else if badZip {
-			fmt.Fprintf(s.Conn, "226 Zip integrity check failed, deleting file\r\n")
+			writeZipIntegrityFailureDeleteResponse(s.Conn)
 			return false
 		}
 		if checksum > 0 && zipscript.ShouldDeleteBadCRCForDir(s.Config.Zipscript, uploadDir) && !strings.HasSuffix(strings.ToLower(fileName), ".sfv") {
 			if expectedCRC, ok := zipscript.LocalExpectedCRCForFile(localPath); ok && expectedCRC != checksum {
 				_ = os.Remove(localPath)
 				zipscript.CreateLocalSFVMissingMarker(s.Config.Zipscript, filepath.Dir(localPath), fileName)
-				fmt.Fprintf(s.Conn, "226- checksum mismatch: SLAVE: %08X SFV: %08X\r\n", checksum, expectedCRC)
-				fmt.Fprintf(s.Conn, "226 Checksum mismatch, deleting file\r\n")
+				writeChecksumMismatchDeleteResponse(s.Conn, checksum, expectedCRC)
 				return false
 			}
 		}

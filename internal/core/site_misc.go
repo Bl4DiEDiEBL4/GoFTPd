@@ -3,10 +3,15 @@ package core
 import (
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 )
+
+type chmodBridge interface {
+	Chmod(path string, mode uint32) error
+}
 
 func (s *Session) HandleSiteChmod(args []string) bool {
 	if len(args) < 2 {
@@ -18,9 +23,23 @@ func (s *Session) HandleSiteChmod(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Invalid mode (use octal, e.g. 755).\r\n")
 		return false
 	}
-	fullPath := filepath.Join(s.Config.StoragePath, s.CurrentDir, args[1])
-	// Note: in master/slave mode the file lives on a slave, so a chmod on the
-	// master path will fail and correctly report 550 rather than a false success.
+	vpath := path.Join(s.CurrentDir, args[1])
+	aclPath := path.Join(s.Config.ACLBasePath, vpath)
+	if s.ACLEngine == nil || !s.ACLEngine.CanPerform(s.User, "CHMOD", aclPath) {
+		fmt.Fprintf(s.Conn, "550 Access Denied: Insufficient flags.\r\n")
+		return false
+	}
+	if s.Config.Mode == "master" && s.MasterManager != nil {
+		if bridge, ok := s.MasterManager.(chmodBridge); ok {
+			if err := bridge.Chmod(vpath, uint32(mode)); err != nil {
+				fmt.Fprintf(s.Conn, "550 CHMOD failed: %v\r\n", err)
+				return false
+			}
+			fmt.Fprintf(s.Conn, "200 SITE CHMOD successful.\r\n")
+			return false
+		}
+	}
+	fullPath := filepath.Join(s.Config.StoragePath, filepath.FromSlash(strings.TrimPrefix(vpath, "/")))
 	if err := os.Chmod(fullPath, os.FileMode(mode)); err != nil {
 		fmt.Fprintf(s.Conn, "550 CHMOD failed: %v\r\n", err)
 		return false

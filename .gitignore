@@ -54,6 +54,9 @@ etc/config.yml
 !etc/config-master.yml
 !etc/config-slave.yml
 sitebot/etc/config.yml
+docker/deploy/master.env
+docker/deploy/slave.env
+docker/deploy/runtime/
 
 # IDE / Editor
 .vscode/
