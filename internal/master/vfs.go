@@ -764,6 +764,27 @@ func isDirectVFSChildPath(parent, child string) bool {
 	return rest != "" && !strings.Contains(rest, "/")
 }
 
+// checksumKnownMismatch reports whether expected and actual are both known
+// (non-zero) checksums that disagree. A zero on either side means the
+// checksum hasn't been computed/verified yet and must never be treated as a
+// mismatch: a same-day revert (9f14bae, reverted by a6d8f4c) briefly dropped
+// the != 0 guards here and made every not-yet-verified present file register
+// as permanently missing.
+func checksumKnownMismatch(expected, actual uint32) bool {
+	return expected != 0 && actual != 0 && expected != actual
+}
+
+// isChecksumVerified reports whether actual is a confirmed match for
+// expected, or expected itself is unknown (nothing to verify against, so
+// presence alone counts). Note an unknown actual checksum against a known
+// expected is NOT verified, even though that pairing isn't a
+// checksumKnownMismatch either -- the two functions answer different
+// questions (proven-different vs. proven-same-or-unverifiable) and callers
+// need to pick the one matching what they're deciding.
+func isChecksumVerified(expected, actual uint32) bool {
+	return expected == 0 || (actual != 0 && actual == expected)
+}
+
 func (vfs *VirtualFileSystem) GetReleaseStatus(dirPath string) (core.ReleaseStatus, bool) {
 	vfs.mu.RLock()
 	defer vfs.mu.RUnlock()
@@ -824,7 +845,7 @@ func (vfs *VirtualFileSystem) GetReleaseStatus(dirPath string) (core.ReleaseStat
 				missingFiles = append(missingFiles, sfvFile)
 				continue
 			}
-			if expectedCRC != 0 && f.Checksum != 0 && f.Checksum != expectedCRC {
+			if checksumKnownMismatch(expectedCRC, f.Checksum) {
 				missingFiles = append(missingFiles, sfvFile)
 				continue
 			}
@@ -903,11 +924,13 @@ func (vfs *VirtualFileSystem) getVerifiedSFVPresentFilesLocked(dirPath string, e
 		if f == nil {
 			continue
 		}
-		if expectedCRC != 0 && f.Checksum == expectedCRC {
-			verified[key] = true
+		if !isChecksumVerified(expectedCRC, f.Checksum) {
 			continue
 		}
-		if excludeKeys[key] || (expectedCRC != 0 && f.Checksum != expectedCRC) {
+		// A confirmed match counts even if a lagging live-stat still lists
+		// this file as uploading; only the expected-unknown case defers to
+		// excludeKeys, since there's nothing else to verify against there.
+		if expectedCRC == 0 && excludeKeys[key] {
 			continue
 		}
 		verified[key] = true
@@ -1595,7 +1618,7 @@ func (vfs *VirtualFileSystem) getZipExpectedPartsLocked(dirPath string) (int, bo
 	if dizFile == nil || dizFile.IsDir || dizFile.IsSymlink {
 		return 0, false
 	}
-	if meta.ZipDIZChecksum != 0 && dizFile.Checksum != 0 && meta.ZipDIZChecksum != dizFile.Checksum {
+	if checksumKnownMismatch(meta.ZipDIZChecksum, dizFile.Checksum) {
 		return 0, false
 	}
 	if !vfs.hasZipArchiveLocked(dirPath) {
@@ -2117,8 +2140,7 @@ func (vfs *VirtualFileSystem) computeRaceStateFilteredLocked(dirPath string, exc
 		if f == nil {
 			continue
 		}
-		checksumVerified := expectedCRC == 0 || (f.Checksum != 0 && f.Checksum == expectedCRC)
-		if !checksumVerified {
+		if !isChecksumVerified(expectedCRC, f.Checksum) {
 			// Not yet CRC-verified: skip an in-progress / unverifiable file, whether
 			// or not a live-stat lists it as uploading.
 			continue
@@ -2383,7 +2405,7 @@ func (vfs *VirtualFileSystem) sfvMetaValidLocked(dirPath string, meta *VFSDirMet
 	if sfvFile == nil || sfvFile.IsDir || sfvFile.IsSymlink {
 		return meta.SFVAllowWithoutFile
 	}
-	if meta.SFVChecksum != 0 && sfvFile.Checksum != 0 && meta.SFVChecksum != sfvFile.Checksum {
+	if checksumKnownMismatch(meta.SFVChecksum, sfvFile.Checksum) {
 		return false
 	}
 	return true

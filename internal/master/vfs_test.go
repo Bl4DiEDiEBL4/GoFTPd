@@ -1309,6 +1309,75 @@ func TestVFSGetReleaseStatusForSFVTreatsChecksumMismatchAsMissing(t *testing.T) 
 	}
 }
 
+// TestVFSGetReleaseStatusForSFVUnverifiedChecksumStaysPresent guards against
+// the regression in 9f14bae (reverted by a6d8f4c the next day): tightening
+// the checksum comparison to strict equality made a present file whose
+// checksum simply hasn't been computed/reported yet (Checksum: 0) register
+// as permanently missing, because 0 != expectedCRC is always true. Checksum
+// 0 must mean "not yet known", not "known and mismatched".
+func TestVFSGetReleaseStatusForSFVUnverifiedChecksumStaysPresent(t *testing.T) {
+	vfs := NewVirtualFileSystem()
+	vfs.AddFile("/MP3/release", VFSFile{IsDir: true, Seen: true})
+	vfs.AddFile("/MP3/release/release.sfv", VFSFile{Seen: true, Size: 10, Checksum: 123})
+	vfs.SetSFVDataWithChecksum("/MP3/release", "release.sfv", 123, map[string]uint32{
+		"01-track.mp3": 1,
+	})
+	vfs.AddFile("/MP3/release/01-track.mp3", VFSFile{Seen: true, Size: 100, Checksum: 0})
+
+	status, ok := vfs.GetReleaseStatus("/MP3/release")
+	if !ok {
+		t.Fatalf("expected release status to be available")
+	}
+	if status.Present != 1 || status.Total != 1 {
+		t.Fatalf("expected unverified-checksum file to still count as present, got present=%d total=%d", status.Present, status.Total)
+	}
+	if len(status.MissingFiles) != 0 {
+		t.Fatalf("expected no missing files, got %#v", status.MissingFiles)
+	}
+}
+
+func TestChecksumKnownMismatch(t *testing.T) {
+	cases := []struct {
+		name             string
+		expected, actual uint32
+		want             bool
+	}{
+		{"both unknown", 0, 0, false},
+		{"expected unknown", 0, 42, false},
+		{"actual unknown", 42, 0, false},
+		{"equal", 42, 42, false},
+		{"known mismatch", 42, 43, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := checksumKnownMismatch(c.expected, c.actual); got != c.want {
+				t.Fatalf("checksumKnownMismatch(%d, %d) = %v, want %v", c.expected, c.actual, got, c.want)
+			}
+		})
+	}
+}
+
+func TestIsChecksumVerified(t *testing.T) {
+	cases := []struct {
+		name             string
+		expected, actual uint32
+		want             bool
+	}{
+		{"expected unknown, actual unknown", 0, 0, true},
+		{"expected unknown, actual known", 0, 42, true},
+		{"expected known, actual unknown", 42, 0, false},
+		{"expected known, actual equal", 42, 42, true},
+		{"expected known, actual mismatch", 42, 43, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := isChecksumVerified(c.expected, c.actual); got != c.want {
+				t.Fatalf("isChecksumVerified(%d, %d) = %v, want %v", c.expected, c.actual, got, c.want)
+			}
+		})
+	}
+}
+
 func TestVFSGetReleaseStatusForZipUsesCachedExpectedParts(t *testing.T) {
 	vfs := NewVirtualFileSystem()
 	vfs.AddFile("/0DAY/release", VFSFile{IsDir: true, Seen: true})
