@@ -4,6 +4,8 @@ log_delete_after_days: 1
 log_keep_days: 1
 log_console:   true
 
+# Unix uses a FIFO. Native Windows uses a regular append-only event file that
+# the sitebot tails from the current end, so old announces are not replayed.
 event_fifo: "/WeaveFTPd/etc/weaveftpd.sitebot.fifo"
 
 # Channel sets are YAML anchors. The sitebot ignores this top-level block, but

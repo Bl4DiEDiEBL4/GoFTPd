@@ -76,6 +76,7 @@ vendor/
 *.a
 .gocache/
 .gomodcache/
+.tools/
 .tmp_*.test
 .tmp_drftpd/
 .tmp_pzsng_source/

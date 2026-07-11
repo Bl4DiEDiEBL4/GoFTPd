@@ -683,7 +683,8 @@ plugins:
 
 # =============================================================================
 #  Sitebot integration
-#    - event_fifo:     Named pipe the daemon writes events to, sitebot reads from
+#    - event_fifo:     Unix FIFO path, or a regular append-only event file on Windows.
+#                      The daemon writes events here; the sitebot reads/tails it.
 #    - sitebot_config: Path to the sitebot's config.yml. SITE INVITE reads
 #                      irc.channels + invite_channels from there (flag rules
 #                      restricting which channels which users can be invited to).
