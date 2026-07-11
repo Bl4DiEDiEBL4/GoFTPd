@@ -8,7 +8,6 @@ import (
 	"path"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	pluginpkg "weaveftpd/internal/plugin"
@@ -196,15 +195,8 @@ func (s *JSONLineFileSink) ensureOpen() error {
 	if s.file != nil {
 		return nil
 	}
-	// O_WRONLY|O_NONBLOCK: returns ENXIO immediately if no reader, instead of blocking.
-	// Once opened we switch back to blocking mode so writes don't return EAGAIN.
-	f, err := os.OpenFile(s.path, os.O_WRONLY|os.O_APPEND|syscall.O_NONBLOCK, 0644)
+	f, err := openEventSinkFile(s.path)
 	if err != nil {
-		return err
-	}
-	// Switch the fd to blocking mode so Write() waits for pipe space rather than EAGAIN.
-	if err := syscall.SetNonblock(int(f.Fd()), false); err != nil {
-		_ = f.Close()
 		return err
 	}
 	s.file = f

@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 )
 
 func (s *Session) HandleSiteNuke(args []string) bool {
@@ -82,12 +81,10 @@ func (s *Session) HandleSiteNuke(args []string) bool {
 			continue
 		}
 
-		// Get file owner
-		stat, ok := info.Sys().(*syscall.Stat_t)
+		username, ok := fileOwnerUsername(info, s.Config)
 		if !ok {
 			continue
 		}
-		username := GetUsernameByUID(int(stat.Uid), s.Config)
 		uploaderBytes[username] += info.Size()
 	}
 
@@ -191,11 +188,10 @@ func (s *Session) HandleSiteUnnuke(args []string) bool {
 			continue
 		}
 
-		stat, ok := info.Sys().(*syscall.Stat_t)
+		username, ok := fileOwnerUsername(info, s.Config)
 		if !ok {
 			continue
 		}
-		username := GetUsernameByUID(int(stat.Uid), s.Config)
 		uploaderBytes[username] += info.Size()
 	}
 

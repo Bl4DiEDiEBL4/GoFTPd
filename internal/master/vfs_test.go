@@ -37,6 +37,32 @@ func TestVFSListDirectoryUsesDirectChildren(t *testing.T) {
 	}
 }
 
+func TestVFSNormalizesBackslashVirtualPaths(t *testing.T) {
+	vfs := NewVirtualFileSystem()
+	vfs.AddFile(`\site\MP3\release`, VFSFile{IsDir: true, Seen: true})
+	vfs.AddFile(`\site\MP3\release\file1.rar`, VFSFile{Size: 123, Seen: true})
+
+	if got := vfs.GetFile("/site/MP3/release/file1.rar"); got == nil {
+		t.Fatalf("expected forward-slash lookup to find backslash-added file")
+	}
+	if !vfs.FileExists(`\site\MP3\release\file1.rar`) {
+		t.Fatalf("expected backslash lookup to normalize")
+	}
+
+	children := vfs.ListDirectory("/site/MP3/release")
+	if len(children) != 1 {
+		t.Fatalf("expected 1 child, got %d", len(children))
+	}
+	if children[0].Path != "/site/MP3/release/file1.rar" {
+		t.Fatalf("expected forward-slash child path, got %q", children[0].Path)
+	}
+
+	vfs.RenameFile(`\site\MP3\release`, `\site\MP3\renamed`)
+	if got := vfs.GetFile("/site/MP3/renamed/file1.rar"); got == nil {
+		t.Fatalf("expected forward-slash lookup to find renamed child")
+	}
+}
+
 func TestVFSRenameAndDeleteKeepChildrenIndexInSync(t *testing.T) {
 	vfs := NewVirtualFileSystem()
 	vfs.AddFile("/site/GAMES/release", VFSFile{IsDir: true, Seen: true})

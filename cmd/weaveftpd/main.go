@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -518,9 +517,9 @@ func main() {
 
 	// Signal handling: SIGINT/SIGTERM shut down; SIGHUP rehashes config.
 	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	signal.Notify(sig, signalTargets()...)
 	for s := range sig {
-		if s == syscall.SIGHUP {
+		if isRehashSignal(s) {
 			if path, err := cfg.Rehash(); err != nil {
 				log.Printf("[REHASH] SIGHUP reload failed: %v", err)
 			} else {

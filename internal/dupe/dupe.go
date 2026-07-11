@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	"weaveftpd/internal/sqlitedriver"
 )
 
 // DupeChecker tracks duplicate releases
@@ -20,7 +20,7 @@ type DupeChecker struct {
 
 // NewDupeChecker creates a new dupe checker with SQLite database
 func NewDupeChecker(dbPath string, debug bool) (*DupeChecker, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open(sqlitedriver.Name, dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open dupe db: %v", err)
 	}

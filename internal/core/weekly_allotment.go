@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	"weaveftpd/internal/sqlitedriver"
 	"weaveftpd/internal/user"
 )
 
@@ -27,7 +27,7 @@ func getWeeklyAllotmentDB() (*sql.DB, error) {
 	if err := os.MkdirAll("userdata", 0o755); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite3", weeklyAllotmentDBPath())
+	db, err := sql.Open(sqlitedriver.Name, weeklyAllotmentDBPath())
 	if err != nil {
 		return nil, err
 	}

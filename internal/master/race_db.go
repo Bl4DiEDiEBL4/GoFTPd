@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 
-	_ "github.com/mattn/go-sqlite3"
 	"weaveftpd/internal/core"
+	"weaveftpd/internal/sqlitedriver"
 )
 
 type RaceDB struct {
@@ -34,7 +34,7 @@ func NewRaceDB(dbPath string) (*RaceDB, error) {
 		return nil, fmt.Errorf("create race db dir: %w", err)
 	}
 
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open(sqlitedriver.Name, dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open race db: %w", err)
 	}
@@ -119,7 +119,7 @@ func (r *RaceDB) Close() error {
 }
 
 func (r *RaceDB) getOrCreateReleaseID(dirPath string) (int64, error) {
-	dirPath = filepath.Clean(dirPath)
+	dirPath = cleanRaceDBPath(dirPath)
 	if cached, ok := r.cachedReleaseID(dirPath); ok {
 		return cached, nil
 	}
@@ -154,7 +154,7 @@ func (r *RaceDB) cachedReleaseID(dirPath string) (int64, bool) {
 	if r == nil {
 		return 0, false
 	}
-	if value, ok := r.releaseIDCache.Load(filepath.Clean(dirPath)); ok {
+	if value, ok := r.releaseIDCache.Load(cleanRaceDBPath(dirPath)); ok {
 		if releaseID, ok := value.(int64); ok && releaseID > 0 {
 			return releaseID, true
 		}
@@ -166,22 +166,22 @@ func (r *RaceDB) cacheReleaseID(dirPath string, releaseID int64) {
 	if r == nil || releaseID <= 0 {
 		return
 	}
-	r.releaseIDCache.Store(filepath.Clean(dirPath), releaseID)
+	r.releaseIDCache.Store(cleanRaceDBPath(dirPath), releaseID)
 }
 
 func (r *RaceDB) invalidateReleaseID(dirPath string) {
 	if r == nil {
 		return
 	}
-	r.releaseIDCache.Delete(filepath.Clean(dirPath))
+	r.releaseIDCache.Delete(cleanRaceDBPath(dirPath))
 }
 
 func (r *RaceDB) invalidateReleaseIDPrefix(dirPath string) {
 	if r == nil {
 		return
 	}
-	dirPath = filepath.Clean(dirPath)
-	prefix := dirPath + string(filepath.Separator)
+	dirPath = cleanRaceDBPath(dirPath)
+	prefix := dirPath + "/"
 	r.releaseIDCache.Range(func(key, _ interface{}) bool {
 		cachedPath, ok := key.(string)
 		if ok && (cachedPath == dirPath || strings.HasPrefix(cachedPath, prefix)) {
@@ -266,8 +266,9 @@ func (r *RaceDB) SaveMediaInfo(dirPath string, fields map[string]string) error {
 }
 
 func (r *RaceDB) RecordUpload(filePath, owner, group string, size int64, durationMs int64, checksum uint32) error {
-	dirPath := filepath.Dir(filePath)
-	fileName := raceDBFileKey(filepath.Base(filePath))
+	filePath = cleanRaceDBPath(filePath)
+	dirPath := pathpkg.Dir(filePath)
+	fileName := raceDBFileKey(pathpkg.Base(filePath))
 	if fileName == "" {
 		return nil
 	}
@@ -301,7 +302,7 @@ func (r *RaceDB) ReplaceReleaseFiles(dirPath, sfvName string, entries map[string
 	if r == nil || r.db == nil {
 		return nil
 	}
-	dirPath = filepath.Clean(dirPath)
+	dirPath = cleanRaceDBPath(dirPath)
 	if len(entries) == 0 {
 		return nil
 	}
@@ -415,7 +416,7 @@ func (r *RaceDB) VerifiedPresentFiles(dirPath string) (map[string]ReleaseFileRec
 	if r == nil || r.db == nil {
 		return nil, nil
 	}
-	dirPath = filepath.Clean(dirPath)
+	dirPath = cleanRaceDBPath(dirPath)
 	rows, err := r.db.Query(`
         SELECT p.filename, p.uploader, p.grp, p.size_bytes, p.duration_ms, p.checksum
         FROM releases r
@@ -482,8 +483,9 @@ func (r *RaceDB) DeletePath(path string, isDir bool) error {
 		return err
 	}
 
-	dirPath := filepath.Dir(path)
-	fileName := raceDBFileKey(filepath.Base(path))
+	path = cleanRaceDBPath(path)
+	dirPath := pathpkg.Dir(path)
+	fileName := raceDBFileKey(pathpkg.Base(path))
 	_, err := r.db.Exec(`
         UPDATE release_files
         SET is_present = 0,
@@ -534,8 +536,10 @@ func (r *RaceDB) RenamePath(from, to string, isDir bool) error {
 		return nil
 	}
 
-	oldDir, oldName := filepath.Dir(from), filepath.Base(from)
-	newDir, newName := filepath.Dir(to), filepath.Base(to)
+	from = cleanRaceDBPath(from)
+	to = cleanRaceDBPath(to)
+	oldDir, oldName := pathpkg.Dir(from), pathpkg.Base(from)
+	newDir, newName := pathpkg.Dir(to), pathpkg.Base(to)
 	oldName = raceDBFileKey(oldName)
 	newName = raceDBFileKey(newName)
 
@@ -560,7 +564,7 @@ func (r *RaceDB) ScrubReleaseRaceMetadata(dirPath, owner, group string) error {
 	if r == nil || r.db == nil {
 		return nil
 	}
-	dirPath = filepath.Clean(dirPath)
+	dirPath = cleanRaceDBPath(dirPath)
 	owner = strings.TrimSpace(owner)
 	group = strings.TrimSpace(group)
 	_, err := r.db.Exec(`
@@ -857,7 +861,7 @@ func (r *RaceDB) HydrateVFS(vfs *VirtualFileSystem) (int, error) {
 		if err := rows.Scan(&dirPath, &fileName, &owner, &group, &sizeBytes, &durationMs, &checksum); err != nil {
 			return hydrated, err
 		}
-		filePath := filepath.ToSlash(path.Join(dirPath, fileName))
+		filePath := cleanRaceDBPath(pathpkg.Join(dirPath, fileName))
 		if vfs.HydrateRaceFile(filePath, owner, group, sizeBytes, durationMs, uint32(checksum)) {
 			hydrated++
 		}
@@ -872,13 +876,25 @@ func (r *RaceDB) HasRelease(dirPath string) bool {
 	if r == nil || r.db == nil {
 		return false
 	}
+	dirPath = cleanRaceDBPath(dirPath)
 	var one int
 	err := r.db.QueryRow(`SELECT 1 FROM releases WHERE path = ? LIMIT 1`, dirPath).Scan(&one)
 	return err == nil && one == 1
 }
 
+func cleanRaceDBPath(p string) string {
+	p = strings.TrimSpace(strings.ReplaceAll(p, "\\", "/"))
+	if p == "" {
+		return "/"
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return pathpkg.Clean(p)
+}
+
 func raceDBFileKey(name string) string {
-	name = strings.TrimSpace(filepath.ToSlash(name))
+	name = strings.TrimSpace(strings.ReplaceAll(name, "\\", "/"))
 	name = strings.TrimPrefix(name, "./")
 	return strings.ToLower(name)
 }

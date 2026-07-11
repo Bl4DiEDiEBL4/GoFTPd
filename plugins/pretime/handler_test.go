@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/sqlitedriver"
 )
 
 func TestLookupSQLiteCustomFields(t *testing.T) {
@@ -23,7 +24,7 @@ func TestLookupSQLiteCustomFields(t *testing.T) {
 		t.Fatalf("insert row: %v", err)
 	}
 
-	ts, err := lookupSQL("sqlite3", dbPath, "pretimes", "rls", "unixts", "Test.Release-GRP")
+	ts, err := lookupSQL(sqlitedriver.Name, dbPath, "pretimes", "rls", "unixts", "Test.Release-GRP")
 	if err != nil {
 		t.Fatalf("lookupSQL: %v", err)
 	}
@@ -213,7 +214,7 @@ func TestIsReleaseDirSupportsDatedLayout(t *testing.T) {
 
 func openSQLiteForTest(t *testing.T, dbPath string) *sql.DB {
 	t.Helper()
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open(sqlitedriver.Name, dbPath)
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}

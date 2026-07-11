@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -206,7 +207,7 @@ func (vfs *VirtualFileSystem) AddFile(path string, file VFSFile) {
 	vfs.files[path] = &file
 	vfs.reindexSlavePathLocked(path, oldSlave, file.SlaveName)
 	vfs.ensureParentDirsLocked(path, file.SlaveName)
-	vfs.linkChildLocked(cleanVFSPath(filepath.Dir(path)), path)
+	vfs.linkChildLocked(cleanVFSPath(pathpkg.Dir(path)), path)
 	if file.IsDir {
 		vfs.ensureChildrenBucketLocked(path)
 	}
@@ -295,7 +296,7 @@ func (vfs *VirtualFileSystem) ScrubReleaseRaceMetadata(rootPath, owner, group st
 		}
 		if fileChanged {
 			changed = true
-			affectedDirs[cleanVFSPath(filepath.Dir(filePath))] = struct{}{}
+			affectedDirs[cleanVFSPath(pathpkg.Dir(filePath))] = struct{}{}
 		}
 	}
 	if changed {
@@ -364,7 +365,7 @@ func (vfs *VirtualFileSystem) AddSymlink(linkPath, targetPath string) {
 		Seen:         true,
 	}
 	vfs.ensureParentDirsLocked(linkPath, "")
-	vfs.linkChildLocked(cleanVFSPath(filepath.Dir(linkPath)), linkPath)
+	vfs.linkChildLocked(cleanVFSPath(pathpkg.Dir(linkPath)), linkPath)
 	if isDir {
 		vfs.ensureChildrenBucketLocked(linkPath)
 	}
@@ -613,7 +614,7 @@ func (vfs *VirtualFileSystem) SetProtectedDirs(paths []string) {
 		if f == nil || !f.IsDir {
 			continue
 		}
-		if cleanVFSPath(filepath.Dir(p)) != "/" {
+		if cleanVFSPath(pathpkg.Dir(p)) != "/" {
 			continue
 		}
 		if strings.TrimSpace(f.SlaveName) != "" {
@@ -653,7 +654,7 @@ func (vfs *VirtualFileSystem) ResolvePath(p string) string {
 		if strings.TrimSpace(part) == "" {
 			continue
 		}
-		next := cleanVFSPath(filepath.ToSlash(filepath.Join(current, part)))
+		next := cleanVFSPath(pathpkg.Join(current, part))
 		if f := vfs.files[next]; f != nil && f.IsSymlink && strings.TrimSpace(f.LinkTarget) != "" {
 			current = cleanVFSPath(f.LinkTarget)
 			continue
@@ -674,19 +675,19 @@ func (vfs *VirtualFileSystem) DeleteFile(path string) {
 	if !vfs.deletePathLocked(path) {
 		return
 	}
-	parent := cleanVFSPath(filepath.Dir(path))
+	parent := cleanVFSPath(pathpkg.Dir(path))
 	vfs.touchAncestorsLocked(parent, time.Now().Unix())
 	vfs.markPersistDirtyLocked()
 }
 
 func (vfs *VirtualFileSystem) deletePathLocked(path string) bool {
 	path = cleanVFSPath(path)
-	parent := cleanVFSPath(filepath.Dir(path))
-	baseLower := strings.ToLower(filepath.Base(path))
+	parent := cleanVFSPath(pathpkg.Dir(path))
+	baseLower := strings.ToLower(pathpkg.Base(path))
 	if vfs.files[path] == nil {
 		return false
 	}
-	if strings.HasSuffix(strings.ToLower(filepath.Base(path)), ".sfv") {
+	if strings.HasSuffix(strings.ToLower(pathpkg.Base(path)), ".sfv") {
 		if meta := vfs.dirMeta[parent]; meta != nil {
 			meta.SFVName = ""
 			meta.SFVEntries = nil
@@ -712,7 +713,7 @@ func (vfs *VirtualFileSystem) deletePathLocked(path string) bool {
 		if removedPath == path {
 			continue
 		}
-		if children := vfs.children[cleanVFSPath(filepath.Dir(removedPath))]; children != nil {
+		if children := vfs.children[cleanVFSPath(pathpkg.Dir(removedPath))]; children != nil {
 			delete(children, removedPath)
 		}
 	}
@@ -786,7 +787,7 @@ func (vfs *VirtualFileSystem) GetReleaseStatus(dirPath string) (core.ReleaseStat
 		if child == nil {
 			continue
 		}
-		name := strings.TrimSpace(filepath.Base(child.Path))
+		name := strings.TrimSpace(pathpkg.Base(child.Path))
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
@@ -814,7 +815,7 @@ func (vfs *VirtualFileSystem) GetReleaseStatus(dirPath string) (core.ReleaseStat
 			if f == nil || f.IsDir {
 				continue
 			}
-			presentFiles[raceFileKey(filepath.Base(childPath))] = f
+			presentFiles[raceFileKey(pathpkg.Base(childPath))] = f
 		}
 		for sfvFile, expectedCRC := range meta.SFVEntries {
 			key := raceFileKey(sfvFile)
@@ -850,7 +851,7 @@ func (vfs *VirtualFileSystem) GetReleaseStatus(dirPath string) (core.ReleaseStat
 			if child == nil || child.IsDir || child.IsSymlink {
 				continue
 			}
-			name := strings.TrimSpace(filepath.Base(child.Path))
+			name := strings.TrimSpace(pathpkg.Base(child.Path))
 			if strings.HasPrefix(name, ".") || !zipscript.IsZipPayloadName(name) {
 				continue
 			}
@@ -893,7 +894,7 @@ func (vfs *VirtualFileSystem) getVerifiedSFVPresentFilesLocked(dirPath string, e
 		if f == nil || f.IsDir {
 			continue
 		}
-		presentFiles[raceFileKey(filepath.Base(childPath))] = f
+		presentFiles[raceFileKey(pathpkg.Base(childPath))] = f
 	}
 
 	verified := make(map[string]bool, len(meta.SFVEntries))
@@ -966,7 +967,7 @@ func isWeakMetadataValue(value string) bool {
 		return true
 	case len(value) == 4 && strings.EqualFold(value, "root"):
 		return true
-	case len(value) == 6 && strings.EqualFold(value, "weaveftpd"):
+	case strings.EqualFold(value, "weaveftpd"):
 		return true
 	default:
 		return false
@@ -977,7 +978,7 @@ func isWeakMetadataValue(value string) bool {
 func (vfs *VirtualFileSystem) FileExists(path string) bool {
 	vfs.mu.RLock()
 	defer vfs.mu.RUnlock()
-	_, exists := vfs.files[filepath.Clean(path)]
+	_, exists := vfs.files[cleanVFSPath(path)]
 	return exists
 }
 
@@ -986,7 +987,7 @@ func (vfs *VirtualFileSystem) GetSlavesForPath(path string) []string {
 	vfs.mu.RLock()
 	defer vfs.mu.RUnlock()
 
-	file := vfs.files[filepath.Clean(path)]
+	file := vfs.files[cleanVFSPath(path)]
 	if file == nil {
 		return nil
 	}
@@ -1000,10 +1001,10 @@ func (vfs *VirtualFileSystem) RenameFile(from, to string) {
 
 	from = cleanVFSPath(from)
 	to = cleanVFSPath(to)
-	fromParent := cleanVFSPath(filepath.Dir(from))
-	toParent := cleanVFSPath(filepath.Dir(to))
-	fromBase := strings.ToLower(strings.TrimSpace(filepath.Base(from)))
-	toBase := strings.ToLower(strings.TrimSpace(filepath.Base(to)))
+	fromParent := cleanVFSPath(pathpkg.Dir(from))
+	toParent := cleanVFSPath(pathpkg.Dir(to))
+	fromBase := strings.ToLower(strings.TrimSpace(pathpkg.Base(from)))
+	toBase := strings.ToLower(strings.TrimSpace(pathpkg.Base(to)))
 
 	file := vfs.files[from]
 	if file == nil {
@@ -1036,8 +1037,8 @@ func (vfs *VirtualFileSystem) RelocateFile(from, to, newSlaveName string) {
 
 	from = cleanVFSPath(from)
 	to = cleanVFSPath(to)
-	fromParent := cleanVFSPath(filepath.Dir(from))
-	toParent := cleanVFSPath(filepath.Dir(to))
+	fromParent := cleanVFSPath(pathpkg.Dir(from))
+	toParent := cleanVFSPath(pathpkg.Dir(to))
 
 	file := vfs.files[from]
 	if file == nil {
@@ -1070,7 +1071,7 @@ func (vfs *VirtualFileSystem) ClearSlave(slaveName string) {
 		}
 		vfs.deleteFileEntryOnlyLocked(path)
 		delete(vfs.dirMeta, path)
-		if children := vfs.children[cleanVFSPath(filepath.Dir(path))]; children != nil {
+		if children := vfs.children[cleanVFSPath(pathpkg.Dir(path))]; children != nil {
 			delete(children, path)
 		}
 		vfs.invalidateRaceCachesForPathLocked(path)
@@ -1128,8 +1129,8 @@ func (vfs *VirtualFileSystem) SearchDirs(query string, limit int) []VFSSearchRes
 		if f == nil || !f.IsDir || f.Path == "/" {
 			continue
 		}
-		cleanPath := filepath.ToSlash(filepath.Clean(f.Path))
-		base := filepath.Base(cleanPath)
+		cleanPath := cleanVFSPath(f.Path)
+		base := pathpkg.Base(cleanPath)
 		pathLower := strings.ToLower(cleanPath)
 		baseLower := strings.ToLower(base)
 		matched := true
@@ -1145,7 +1146,7 @@ func (vfs *VirtualFileSystem) SearchDirs(query string, limit int) []VFSSearchRes
 	}
 
 	sort.Slice(dirs, func(i, j int) bool {
-		return strings.ToLower(filepath.ToSlash(dirs[i].Path)) < strings.ToLower(filepath.ToSlash(dirs[j].Path))
+		return strings.ToLower(cleanVFSPath(dirs[i].Path)) < strings.ToLower(cleanVFSPath(dirs[j].Path))
 	})
 
 	now := time.Now().Unix()
@@ -1154,7 +1155,7 @@ func (vfs *VirtualFileSystem) SearchDirs(query string, limit int) []VFSSearchRes
 		if len(results) >= limit {
 			break
 		}
-		dirPath := filepath.ToSlash(filepath.Clean(dir.Path))
+		dirPath := cleanVFSPath(dir.Path)
 		res := VFSSearchResult{
 			Path:    dirPath,
 			ModTime: dir.LastModified,
@@ -1218,7 +1219,7 @@ func (vfs *VirtualFileSystem) FindChildFoldMatch(parentPath string, candidates [
 	vfs.mu.RLock()
 	defer vfs.mu.RUnlock()
 	for childPath := range vfs.children[parentPath] {
-		base := filepath.Base(childPath)
+		base := pathpkg.Base(childPath)
 		for i, cand := range candidates {
 			if strings.EqualFold(base, cand) {
 				return base, i, true
@@ -1452,14 +1453,17 @@ func (vfs *VirtualFileSystem) pruneHiddenPathsLocked() {
 }
 
 func cleanVFSPath(p string) string {
-	p = filepath.ToSlash(filepath.Clean(strings.TrimSpace(p)))
-	if p == "." || p == "" {
+	// Root BEFORE cleaning so relative ".." input collapses against "/"
+	// (path.Clean("/foo/../../bar") == "/bar") instead of surviving as an
+	// alias key like "/../bar" that no lookup will ever match.
+	p = strings.ReplaceAll(strings.TrimSpace(p), "\\", "/")
+	if p == "" || p == "." {
 		return "/"
 	}
 	if !strings.HasPrefix(p, "/") {
 		p = "/" + p
 	}
-	return p
+	return pathpkg.Clean(p)
 }
 
 // SetSFVData caches parsed SFV entries on a directory.
@@ -1491,7 +1495,7 @@ func (vfs *VirtualFileSystem) setSFVData(dirPath string, sfvName string, sfvChec
 		vfs.dirMeta[dirPath] = meta
 	}
 	meta.SFVEntries = normalized
-	meta.SFVName = strings.TrimSpace(filepath.Base(sfvName))
+	meta.SFVName = strings.TrimSpace(pathpkg.Base(sfvName))
 	meta.SFVChecksum = sfvChecksum
 	meta.SFVAllowWithoutFile = allowWithoutFile
 	vfs.invalidateRaceCacheLocked(dirPath)
@@ -1590,7 +1594,7 @@ func (vfs *VirtualFileSystem) getZipExpectedPartsLocked(dirPath string) (int, bo
 	if meta == nil || meta.ZipExpectedParts <= 0 {
 		return 0, false
 	}
-	dizPath := cleanVFSPath(filepath.Join(dirPath, "file_id.diz"))
+	dizPath := cleanVFSPath(pathpkg.Join(dirPath, "file_id.diz"))
 	dizFile := vfs.files[dizPath]
 	if dizFile == nil || dizFile.IsDir || dizFile.IsSymlink {
 		return 0, false
@@ -1747,7 +1751,7 @@ func (vfs *VirtualFileSystem) GetZipRaceStatsFiltered(dirPath string, excludeKey
 }
 
 func raceFileKey(name string) string {
-	name = strings.TrimSpace(filepath.ToSlash(strings.ReplaceAll(name, "\\", "/")))
+	name = strings.TrimSpace(strings.ReplaceAll(name, "\\", "/"))
 	name = strings.TrimPrefix(name, "\ufeff")
 	for strings.HasPrefix(name, "./") {
 		name = strings.TrimPrefix(name, "./")
@@ -1899,7 +1903,7 @@ func (vfs *VirtualFileSystem) ensureParentDirsLocked(path string, slaveName stri
 	}
 	vfs.ensureChildrenBucketLocked("/")
 
-	dir := cleanVFSPath(filepath.Dir(path))
+	dir := cleanVFSPath(pathpkg.Dir(path))
 	for dir != "." && dir != "" {
 		if existing, exists := vfs.files[dir]; !exists {
 			vfs.files[dir] = &VFSFile{
@@ -1918,7 +1922,7 @@ func (vfs *VirtualFileSystem) ensureParentDirsLocked(path string, slaveName stri
 		if dir == "/" {
 			break
 		}
-		parent := cleanVFSPath(filepath.Dir(dir))
+		parent := cleanVFSPath(pathpkg.Dir(dir))
 		vfs.linkChildLocked(parent, dir)
 		dir = parent
 	}
@@ -1957,7 +1961,7 @@ func (vfs *VirtualFileSystem) moveSubtreeLocked(from, to, newSlaveName string) b
 		return false
 	}
 
-	fromParent := cleanVFSPath(filepath.Dir(from))
+	fromParent := cleanVFSPath(pathpkg.Dir(from))
 	if children := vfs.children[fromParent]; children != nil {
 		delete(children, from)
 	}
@@ -1984,7 +1988,7 @@ func (vfs *VirtualFileSystem) moveSubtreeLocked(from, to, newSlaveName string) b
 		if mv.file.IsDir {
 			vfs.ensureChildrenBucketLocked(mv.newPath)
 		}
-		vfs.linkChildLocked(cleanVFSPath(filepath.Dir(mv.newPath)), mv.newPath)
+		vfs.linkChildLocked(cleanVFSPath(pathpkg.Dir(mv.newPath)), mv.newPath)
 		if mv.meta != nil {
 			vfs.dirMeta[mv.newPath] = mv.meta
 		}
@@ -2008,7 +2012,7 @@ func (vfs *VirtualFileSystem) touchAncestorsLocked(path string, ts int64) {
 		if current == "/" {
 			break
 		}
-		current = cleanVFSPath(filepath.Dir(current))
+		current = cleanVFSPath(pathpkg.Dir(current))
 	}
 }
 
@@ -2071,7 +2075,7 @@ func (vfs *VirtualFileSystem) rebuildChildrenLocked() {
 		if path == "/" {
 			continue
 		}
-		parent := cleanVFSPath(filepath.Dir(path))
+		parent := cleanVFSPath(pathpkg.Dir(path))
 		if _, ok := children[parent]; !ok {
 			children[parent] = make(map[string]struct{})
 		}
@@ -2105,7 +2109,7 @@ func (vfs *VirtualFileSystem) computeRaceStateFilteredLocked(dirPath string, exc
 		if f == nil || f.IsDir {
 			continue
 		}
-		presentFiles[raceFileKey(filepath.Base(childPath))] = f
+		presentFiles[raceFileKey(pathpkg.Base(childPath))] = f
 	}
 
 	cache := &VFSRaceCache{
@@ -2251,7 +2255,7 @@ func (vfs *VirtualFileSystem) computeZipRaceStateFilteredLocked(dirPath string, 
 		if f == nil || f.IsDir || f.IsSymlink {
 			continue
 		}
-		name := strings.TrimSpace(filepath.Base(childPath))
+		name := strings.TrimSpace(pathpkg.Base(childPath))
 		if strings.HasPrefix(name, ".") || !zipscript.IsZipPayloadName(name) {
 			continue
 		}
@@ -2378,7 +2382,7 @@ func (vfs *VirtualFileSystem) sfvMetaValidLocked(dirPath string, meta *VFSDirMet
 	if sfvName == "" {
 		return false
 	}
-	sfvPath := cleanVFSPath(filepath.ToSlash(filepath.Join(dirPath, filepath.Base(sfvName))))
+	sfvPath := cleanVFSPath(pathpkg.Join(dirPath, pathpkg.Base(sfvName)))
 	sfvFile := vfs.files[sfvPath]
 	if sfvFile == nil || sfvFile.IsDir || sfvFile.IsSymlink {
 		return meta.SFVAllowWithoutFile
@@ -2397,7 +2401,7 @@ func (vfs *VirtualFileSystem) zipPayloadCountLocked(dirPath string) int {
 		if f == nil || f.IsDir || f.IsSymlink {
 			continue
 		}
-		name := strings.TrimSpace(filepath.Base(childPath))
+		name := strings.TrimSpace(pathpkg.Base(childPath))
 		if strings.HasPrefix(name, ".") || !zipscript.IsZipPayloadName(name) {
 			continue
 		}
@@ -2413,7 +2417,7 @@ func (vfs *VirtualFileSystem) hasZipArchiveLocked(dirPath string) bool {
 		if f == nil || f.IsDir || f.IsSymlink || f.Size <= 0 {
 			continue
 		}
-		if strings.HasSuffix(strings.ToLower(strings.TrimSpace(filepath.Base(childPath))), ".zip") {
+		if strings.HasSuffix(strings.ToLower(strings.TrimSpace(pathpkg.Base(childPath))), ".zip") {
 			return true
 		}
 	}
@@ -2426,7 +2430,7 @@ func (vfs *VirtualFileSystem) markPersistDirtyLocked() {
 
 func (vfs *VirtualFileSystem) invalidateRaceCachesForPathLocked(path string) {
 	path = cleanVFSPath(path)
-	vfs.invalidateRaceCacheLocked(cleanVFSPath(filepath.Dir(path)))
+	vfs.invalidateRaceCacheLocked(cleanVFSPath(pathpkg.Dir(path)))
 	vfs.invalidateRaceCacheLocked(path)
 }
 

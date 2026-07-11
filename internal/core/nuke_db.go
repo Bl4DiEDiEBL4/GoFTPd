@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	"weaveftpd/internal/sqlitedriver"
 )
 
 const nukeDBPath = "userdata/nukes.db"
@@ -62,7 +62,7 @@ func newNukeHistoryDB(dbPath string, debug bool) (*NukeHistoryDB, error) {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
 		return nil, fmt.Errorf("create nuke db dir: %w", err)
 	}
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open(sqlitedriver.Name, dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open nuke db: %w", err)
 	}

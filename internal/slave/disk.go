@@ -1,8 +1,8 @@
+//go:build !windows
+
 package slave
 
-import (
-	"golang.org/x/sys/unix"
-)
+import "golang.org/x/sys/unix"
 
 const (
 	defaultFileOwner = "WeaveFTPd"

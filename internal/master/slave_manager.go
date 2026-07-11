@@ -444,7 +444,7 @@ func normalizeRemergeJobPath(p string) string {
 	if p == "" {
 		return "/"
 	}
-	return path.Clean("/" + p)
+	return cleanSlaveManagerVFSPath(p)
 }
 
 func remergeResponseWaitDuration(rootMode string, configured time.Duration) time.Duration {
@@ -472,7 +472,7 @@ func normalizeVFSPathList(paths []string) []string {
 			}
 			continue
 		}
-		p = path.Clean("/" + p)
+		p = cleanSlaveManagerVFSPath(p)
 		if p == "." || p == "" {
 			p = "/"
 		}
@@ -483,6 +483,17 @@ func normalizeVFSPathList(paths []string) []string {
 		out = append(out, p)
 	}
 	return out
+}
+
+func cleanSlaveManagerVFSPath(p string) string {
+	p = strings.TrimSpace(strings.ReplaceAll(p, "\\", "/"))
+	if p == "" {
+		return "/"
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return path.Clean(p)
 }
 
 func maxInt(v, min int) int {
@@ -1195,7 +1206,7 @@ func (sm *SlaveManager) SetReleaseMediaInfo(dirPath string, fields map[string]st
 	if sm == nil {
 		return
 	}
-	cleanDirPath := filepath.Clean(dirPath)
+	cleanDirPath := cleanSlaveManagerVFSPath(dirPath)
 	sm.releaseStateMu.Lock()
 	defer sm.releaseStateMu.Unlock()
 	if len(fields) == 0 {
@@ -1209,7 +1220,7 @@ func (sm *SlaveManager) ResetReleaseRaceWindow(dirPath string) {
 	if sm == nil {
 		return
 	}
-	cleanDirPath := filepath.Clean(dirPath)
+	cleanDirPath := cleanSlaveManagerVFSPath(dirPath)
 	sm.releaseStateMu.Lock()
 	defer sm.releaseStateMu.Unlock()
 	delete(sm.releaseRaceWindows, cleanDirPath)
@@ -1222,7 +1233,7 @@ func (sm *SlaveManager) StartReleaseRaceWindowAt(dirPath string, startMs int64) 
 	if startMs <= 0 {
 		startMs = time.Now().UnixMilli()
 	}
-	cleanDirPath := filepath.Clean(dirPath)
+	cleanDirPath := cleanSlaveManagerVFSPath(dirPath)
 	sm.releaseStateMu.Lock()
 	defer sm.releaseStateMu.Unlock()
 	window := sm.releaseRaceWindows[cleanDirPath]
@@ -1249,7 +1260,7 @@ func (sm *SlaveManager) NoteRacePayloadTransferAt(dirPath string, durationMs int
 	if sm == nil || durationMs <= 0 {
 		return
 	}
-	cleanDirPath := filepath.Clean(dirPath)
+	cleanDirPath := cleanSlaveManagerVFSPath(dirPath)
 	if endMs <= 0 {
 		endMs = time.Now().UnixMilli()
 	}
@@ -1290,7 +1301,7 @@ func (sm *SlaveManager) GetReleaseRaceWindowMilliseconds(dirPath string) int64 {
 	if sm == nil {
 		return 0
 	}
-	cleanDirPath := filepath.Clean(dirPath)
+	cleanDirPath := cleanSlaveManagerVFSPath(dirPath)
 	sm.releaseStateMu.RLock()
 	window := sm.releaseRaceWindows[cleanDirPath]
 	sm.releaseStateMu.RUnlock()
@@ -1307,7 +1318,7 @@ func (sm *SlaveManager) GetReleaseMediaInfo(dirPath string) map[string]string {
 	if sm == nil {
 		return nil
 	}
-	cleanDirPath := filepath.Clean(dirPath)
+	cleanDirPath := cleanSlaveManagerVFSPath(dirPath)
 	sm.releaseStateMu.RLock()
 	defer sm.releaseStateMu.RUnlock()
 	return cloneSlaveStringMap(sm.releaseMedia[cleanDirPath])
@@ -1317,7 +1328,7 @@ func (sm *SlaveManager) ClaimReleaseAnnouncement(dirPath, key string) bool {
 	if sm == nil {
 		return false
 	}
-	cleanDirPath := filepath.Clean(dirPath)
+	cleanDirPath := cleanSlaveManagerVFSPath(dirPath)
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return false
@@ -1338,26 +1349,26 @@ func (sm *SlaveManager) InvalidateReleaseStateForPath(filePath string, isDir boo
 	if sm == nil {
 		return
 	}
-	cleanPath := filepath.Clean(filePath)
+	cleanPath := cleanSlaveManagerVFSPath(filePath)
 	sm.releaseStateMu.Lock()
 	defer sm.releaseStateMu.Unlock()
 	delete(sm.releaseMedia, cleanPath)
 	delete(sm.releaseAnnouncements, cleanPath)
 	delete(sm.releaseRaceWindows, cleanPath)
 	if isDir {
-		prefix := strings.TrimRight(filepath.ToSlash(cleanPath), "/") + "/"
+		prefix := strings.TrimRight(cleanPath, "/") + "/"
 		for key := range sm.releaseMedia {
-			if key == cleanPath || strings.HasPrefix(filepath.ToSlash(key), prefix) {
+			if key == cleanPath || strings.HasPrefix(cleanSlaveManagerVFSPath(key), prefix) {
 				delete(sm.releaseMedia, key)
 			}
 		}
 		for key := range sm.releaseAnnouncements {
-			if key == cleanPath || strings.HasPrefix(filepath.ToSlash(key), prefix) {
+			if key == cleanPath || strings.HasPrefix(cleanSlaveManagerVFSPath(key), prefix) {
 				delete(sm.releaseAnnouncements, key)
 			}
 		}
 		for key := range sm.releaseRaceWindows {
-			if key == cleanPath || strings.HasPrefix(filepath.ToSlash(key), prefix) {
+			if key == cleanPath || strings.HasPrefix(cleanSlaveManagerVFSPath(key), prefix) {
 				delete(sm.releaseRaceWindows, key)
 			}
 		}
@@ -1368,8 +1379,8 @@ func (sm *SlaveManager) RenameReleaseState(from, to string, isDir bool) {
 	if sm == nil {
 		return
 	}
-	from = filepath.Clean(from)
-	to = filepath.Clean(to)
+	from = cleanSlaveManagerVFSPath(from)
+	to = cleanSlaveManagerVFSPath(to)
 	sm.releaseStateMu.Lock()
 	defer sm.releaseStateMu.Unlock()
 	if media, ok := sm.releaseMedia[from]; ok {
@@ -1392,16 +1403,18 @@ func (sm *SlaveManager) RenameReleaseState(from, to string, isDir bool) {
 	if !isDir {
 		return
 	}
-	fromPrefix := strings.TrimRight(filepath.ToSlash(from), "/") + "/"
+	fromPrefix := strings.TrimRight(from, "/") + "/"
 	for key, media := range sm.releaseMedia {
-		if strings.HasPrefix(filepath.ToSlash(key), fromPrefix) {
+		cleanKey := cleanSlaveManagerVFSPath(key)
+		if strings.HasPrefix(cleanKey, fromPrefix) {
 			newKey := to + key[len(from):]
 			sm.releaseMedia[newKey] = cloneSlaveStringMap(media)
 			delete(sm.releaseMedia, key)
 		}
 	}
 	for key, announced := range sm.releaseAnnouncements {
-		if strings.HasPrefix(filepath.ToSlash(key), fromPrefix) {
+		cleanKey := cleanSlaveManagerVFSPath(key)
+		if strings.HasPrefix(cleanKey, fromPrefix) {
 			newKey := to + key[len(from):]
 			copied := make(map[string]bool, len(announced))
 			for k, v := range announced {
@@ -1412,7 +1425,8 @@ func (sm *SlaveManager) RenameReleaseState(from, to string, isDir bool) {
 		}
 	}
 	for key, window := range sm.releaseRaceWindows {
-		if strings.HasPrefix(filepath.ToSlash(key), fromPrefix) {
+		cleanKey := cleanSlaveManagerVFSPath(key)
+		if strings.HasPrefix(cleanKey, fromPrefix) {
 			newKey := to + key[len(from):]
 			copyWindow := *window
 			sm.releaseRaceWindows[newKey] = &copyWindow
@@ -1700,7 +1714,7 @@ func (sm *SlaveManager) scheduleRemergeSFVParse(rs *RemoteSlave, sfvPath string)
 	if rs == nil || !rs.IsOnline() {
 		return
 	}
-	jobKey := rs.Name() + "|" + filepath.Clean(sfvPath)
+	jobKey := rs.Name() + "|" + cleanSlaveManagerVFSPath(sfvPath)
 	if _, loaded := sm.remergeSFVJobs.LoadOrStore(jobKey, struct{}{}); loaded {
 		return
 	}
@@ -1738,11 +1752,11 @@ func (sm *SlaveManager) scheduleRemergeReleaseChecksumRefresh(rs *RemoteSlave, d
 	if sm == nil || rs == nil || !rs.IsOnline() || !sm.enableRemergeChecksums.Load() || len(sfvMap) == 0 {
 		return
 	}
-	dirPath = path.Clean("/" + strings.TrimSpace(dirPath))
+	dirPath = cleanSlaveManagerVFSPath(dirPath)
 	if dirPath == "." || dirPath == "" {
 		return
 	}
-	jobKey := rs.Name() + "|" + filepath.Clean(dirPath)
+	jobKey := rs.Name() + "|" + dirPath
 	if _, loaded := sm.remergeCRCJobs.LoadOrStore(jobKey, struct{}{}); loaded {
 		return
 	}

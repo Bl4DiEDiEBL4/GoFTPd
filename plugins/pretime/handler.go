@@ -17,10 +17,10 @@ import (
 	"time"
 
 	"weaveftpd/internal/plugin"
+	"weaveftpd/internal/sqlitedriver"
 
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
@@ -386,7 +386,7 @@ func (h *Handler) lookupRelease(release string) (int64, string, error) {
 			if !h.sqlite.Enabled {
 				continue
 			}
-			ts, err := lookupSQL("sqlite3", h.sqlite.Path, h.sqlite.Table, h.sqlite.ReleaseField, h.sqlite.UnixTimeField, release)
+			ts, err := lookupSQL(sqlitedriver.Name, h.sqlite.Path, h.sqlite.Table, h.sqlite.ReleaseField, h.sqlite.UnixTimeField, release)
 			if err == nil && ts > 0 {
 				return ts, "sqlite", nil
 			}
