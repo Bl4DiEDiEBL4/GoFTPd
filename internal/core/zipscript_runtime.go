@@ -443,9 +443,9 @@ func ensureSFVDataAvailable(cfg *Config, bridge MasterBridge, dirPath string) ma
 }
 
 // maybeGenerateReleaseM3U creates an .m3u playlist from the SFV for a completed
-// MP3 release (pzs-ng create_m3u behaviour). weaveftpd does not otherwise produce
+// MP3/FLAC release (pzs-ng create_m3u behaviour). weaveftpd does not otherwise produce
 // an m3u, so without this an outbound race / link script can complete before a
-// racer uploads one. No-op when disabled, the section is not MP3, there is no
+// racer uploads one. No-op when disabled, the section is not MP3/FLAC, there is no
 // SFV, or the release already has an .m3u.
 func maybeGenerateReleaseM3U(s *Session, bridge MasterBridge, dirPath string) {
 	if s == nil || s.Config == nil || bridge == nil {
@@ -1317,7 +1317,7 @@ func emitReleaseUploadEventAndRace(s *Session, bridge MasterBridge, in releaseUp
 		if err := bridge.SyncReleaseRaceStats(in.UploadDir); err != nil && s.Config.Debug {
 			log.Printf("[MASTER-ZS] release race sync failed for %s: %v", in.UploadDir, err)
 		}
-		// Generate the MP3 .m3u from the SFV before the complete announce/hook fires,
+		// Generate the audio .m3u from the SFV before the complete announce/hook fires,
 		// so outbound races and link scripts always find it (like glftpd/pzs-ng).
 		maybeGenerateReleaseM3U(s, bridge, in.UploadDir)
 		if state.AudioFields == nil {

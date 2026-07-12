@@ -574,7 +574,7 @@ zipscript:
     enabled: true               # enforce audio policy on MP3 / FLAC uploads
     sections: ["MP3", "FLAC"]   # sections where built-in audio probing/checks apply
     extensions: ["flac", "mp3", "m4a", "wav"] # audio payload extensions handled by the built-in probe
-    create_m3u: true            # generate <release>.m3u from the SFV when an MP3 release completes (like glftpd/pzs-ng). default: true
+    create_m3u: true            # generate <release>.m3u from the SFV when an MP3/FLAC release completes (like glftpd/pzs-ng). default: true
     cwd_mp3_info: true          # show MP3 info on CWD
     stor_mp3_info: true         # show MP3 info after STOR
     cwd_flac_info: true         # show FLAC info on CWD
