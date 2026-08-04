@@ -858,13 +858,12 @@ func CanTriggerRaceEnd(cfg Config, sfvEntries map[string]uint32, fileName string
 	return CanTriggerRaceEndForDir(cfg, "", sfvEntries, fileName)
 }
 
-// RaceEndDirEligible reports whether dirPath is a race directory that may emit a
-// COMPLETE (the dir-level guards from CanTriggerRaceEndForDir, without requiring
-// the triggering file to be SFV-listed). Used so a verified-complete release can
-// announce on any trailing file (cover/.m3u/.nfo) instead of only on the SFV file
-// that happened to flip completeness -- otherwise a flap on that one file loses
-// the COMPLETE permanently. Duplicate emits are still prevented by markRaceCompleteOnce.
-func RaceEndDirEligible(cfg Config, dirPath string) bool {
+// raceEndDirGuardsPass reports whether dirPath (or, for the "" legacy
+// no-dir callers, cfg as a whole) is allowed to emit a race COMPLETE at all.
+// Shared by RaceEndDirEligible and CanTriggerRaceEndForDir so the two guard
+// sets can't drift apart the way the completeness-check duplicates in
+// vfs.go/zipscript_runtime.go did.
+func raceEndDirGuardsPass(cfg Config, dirPath string) bool {
 	if dirPath != "" && IsIgnoredReleaseSubdir(cfg, dirPath) {
 		return false
 	}
@@ -877,14 +876,18 @@ func RaceEndDirEligible(cfg Config, dirPath string) bool {
 	return true
 }
 
+// RaceEndDirEligible reports whether dirPath is a race directory that may emit a
+// COMPLETE (the dir-level guards from CanTriggerRaceEndForDir, without requiring
+// the triggering file to be SFV-listed). Used so a verified-complete release can
+// announce on any trailing file (cover/.m3u/.nfo) instead of only on the SFV file
+// that happened to flip completeness -- otherwise a flap on that one file loses
+// the COMPLETE permanently. Duplicate emits are still prevented by markRaceCompleteOnce.
+func RaceEndDirEligible(cfg Config, dirPath string) bool {
+	return raceEndDirGuardsPass(cfg, dirPath)
+}
+
 func CanTriggerRaceEndForDir(cfg Config, dirPath string, sfvEntries map[string]uint32, fileName string) bool {
-	if dirPath != "" && IsIgnoredReleaseSubdir(cfg, dirPath) {
-		return false
-	}
-	if dirPath != "" && !RaceEnabled(cfg, dirPath) {
-		return false
-	}
-	if dirPath == "" && (!cfg.Enabled || !cfg.Race.Enabled) {
+	if !raceEndDirGuardsPass(cfg, dirPath) {
 		return false
 	}
 	name := raceEntryKey(fileName)
