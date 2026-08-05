@@ -62,6 +62,15 @@ master:
   slave_denylist_file: "etc/slave_denylist.txt" # Persistent exact IP / CIDR denylist for the slave control port.
                                 # Managed manually or via SITE SLAVEBAN / SLAVEUNBAN / SLAVEBANS.
                                 # SITE SLAVECLEARBAN clears only active temp bans.
+  slave_ca_cert: ""             # Path to a CA cert (e.g. ./etc/certs/ca.crt) used to verify slave
+                                # client certificates - enables mTLS on the master-slave link and
+                                # requires every slave to present a cert whose CN matches its
+                                # registered slave name. Requires tls_enabled: true below.
+                                # Leave empty to fall back to the mandatory IP mask allowlist
+                                # (see slave_masks_file / SITE SLAVE <name> ADDMASK).
+  slave_masks_file: "etc/slave_masks.txt" # Per-slave IP/CIDR/wildcard allowlist, only enforced when
+                                # slave_ca_cert is empty. A slave name with zero registered masks
+                                # is refused. Managed via SITE SLAVE <name> ADDMASK/DELMASK/MASKS.
   heartbeat_timeout: 60         # Seconds before the master marks a silent slave offline.
                                 # The master will try a ping at about half this interval.
   slave_auth_fail_limit: 2      # Built-in guard for bad slave-port handshakes.
@@ -93,6 +102,12 @@ slave:
   name:          ""             # Unique slave identifier — MUST match an entry in `slaves:` below
   master_host:   ""             # IP or hostname of the master
   master_port:   1099           # Must match master's control_port
+  master_ca_cert: ""            # Path to the master CA (e.g. ./etc/certs/master-ca.crt) used to verify the
+                                # master's presented server certificate. Leave empty only if you
+                                # accept an unverified master-slave link (InsecureSkipVerify).
+  client_cert:   ""             # This slave's own mTLS client certificate. Its CN MUST equal
+                                # `name` above - the master checks this. e.g. ./etc/certs/slave-SLAVE1.crt
+  client_key:    ""             # Private key for client_cert. e.g. ./etc/certs/slave-SLAVE1.key
   roots:         []             # REQUIRED in slave mode. Normal roots mounted at "/".
                                 # Example:
                                 #   - "/weaveftpd/site"
@@ -190,6 +205,10 @@ slave:
 #     sections: ["TV-1080P", "TV-720P"]
 #     paths: ["/TV-*/*"]
 #     weight: 2
+#     # Only used when master.slave_ca_cert is empty (no mTLS). Seeds
+#     # master.slave_masks_file the first time this slave name has no masks
+#     # registered yet; SITE SLAVE ADDMASK/DELMASK is authoritative after that.
+#     masks: ["203.0.113.10/32"]
 #   - name: "SLAVE2"
 #     sections: ["MP3", "FLAC"]
 #     weight: 1
@@ -301,9 +320,14 @@ msg_path:       "etc/msgs"      # Directory with welcome/rules/goodbye message t
 
 
 # =============================================================================
-#  TLS — used on both master and slaves (same cert pair on all boxes).
-#  tls_enabled makes TLS available. The require_* flags below actually force
-#  secure logins and encrypted data transfers for normal FTP users.
+#  TLS — the tls_cert/tls_key pair below is used for the FTP control+data
+#  channels (client-facing) and, when master.slave_ca_cert is unset, the
+#  plain server side of the master-slave link too. tls_enabled makes TLS
+#  available; the require_* flags force secure logins/transfers for FTP
+#  clients. For real mTLS on the master-slave link (recommended - see
+#  master.slave_ca_cert and slave.master_ca_cert/client_cert/client_key
+#  above), run `./setup.sh certs`, then `./setup.sh slavecert <name>` once
+#  for each slave.
 # =============================================================================
 tls_enabled: true
 tls_cert:    ./etc/certs/server.crt

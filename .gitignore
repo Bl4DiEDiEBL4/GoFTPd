@@ -9,7 +9,8 @@ copy.sh
 sitebot/sitebot
 etc/weaveftpd.sitebot.fifo
 
-# TLS certificates (generate your own with generate_certs.sh)
+# TLS certificates (generate your own with setup.sh)
+etc/certs/
 etc/server.crt
 etc/server.key
 *.pem
@@ -31,6 +32,8 @@ etc/group-
 etc/permissions.yml-
 etc/affils.yml-
 etc/slave_denylist.txt-
+etc/slave_masks.txt
+etc/slave_masks.txt-
 etc/users-/
 etc/groups-/
 
@@ -63,6 +66,7 @@ docker/deploy/runtime/
 .idea/
 *.swp
 *.swo
+*.rej
 *~
 *.iml
 

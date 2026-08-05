@@ -72,6 +72,55 @@ master:
 	}
 }
 
+func TestLoadConfigRejectsMasterSlaveCAWithoutTLS(t *testing.T) {
+	path := writeConfigFixture(t, `
+sitename_long: "WeaveFTPd"
+sitename_short: "WeaveFTPd"
+version: "1.0.6b"
+timezone: "Europe/Amsterdam"
+mode: "master"
+listen_port: 21
+storage_path: "./site"
+acl_base_path: "/"
+tls_enabled: false
+master:
+  listen_host: "0.0.0.0"
+  control_port: 1099
+  slave_ca_cert: "./etc/certs/ca.crt"
+`)
+
+	_, err := LoadConfig(path)
+	if err == nil || !strings.Contains(err.Error(), "master.slave_ca_cert needs tls_enabled: true") {
+		t.Fatalf("LoadConfig() error = %v, want master slave CA validation error", err)
+	}
+}
+
+func TestLoadConfigRejectsPartialSlaveClientCertificate(t *testing.T) {
+	path := writeConfigFixture(t, `
+sitename_long: "WeaveFTPd"
+sitename_short: "WeaveFTPd"
+version: "1.0.6b"
+timezone: "Europe/Amsterdam"
+mode: "slave"
+storage_path: "./site"
+acl_base_path: "/"
+tls_enabled: true
+tls_cert: "server.crt"
+tls_key: "server.key"
+slave:
+  name: "SLAVE1"
+  master_host: "127.0.0.1"
+  master_port: 1099
+  roots: ["./site"]
+  client_cert: "slave.crt"
+`)
+
+	_, err := LoadConfig(path)
+	if err == nil || !strings.Contains(err.Error(), "slave.client_cert and slave.client_key must be configured together") {
+		t.Fatalf("LoadConfig() error = %v, want partial client certificate validation error", err)
+	}
+}
+
 func TestLoadConfigSlaveIgnoresMissingPluginConfigFiles(t *testing.T) {
 	path := writeConfigFixture(t, `
 sitename_long: "WeaveFTPd"

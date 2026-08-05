@@ -2,9 +2,11 @@ package irc
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,9 +17,15 @@ import (
 const maxIRCLineBytes = 510
 
 type Bot struct {
-	Host         string
-	Port         int
-	SSL          bool
+	Host string
+	Port int
+	SSL  bool
+	// TLSVerify controls server-certificate verification when SSL is true:
+	// "strict" (default/empty) verifies against the system trust store,
+	// "custom" verifies against TLSCACert, "insecure" explicitly disables
+	// verification. Any other value is rejected during connection setup.
+	TLSVerify    string
+	TLSCACert    string
 	Nick         string
 	User         string
 	RealName     string
@@ -61,7 +69,12 @@ func (b *Bot) Connect() error {
 	var conn net.Conn
 	var err error
 	if b.SSL {
-		conn, err = tls.Dial("tcp", addr, &tls.Config{InsecureSkipVerify: true})
+		var tlsCfg *tls.Config
+		tlsCfg, err = b.buildTLSConfig()
+		if err != nil {
+			return err
+		}
+		conn, err = tls.Dial("tcp", addr, tlsCfg)
 	} else {
 		conn, err = net.Dial("tcp", addr)
 	}
@@ -79,6 +92,46 @@ func (b *Bot) Connect() error {
 		log.Printf("[IRC] Connected to %s:%d", b.Host, b.Port)
 	}
 	return nil
+}
+
+// buildTLSConfig builds the TLS client config for the IRC connection based on
+// b.TLSVerify. Verification defaults to "strict" (system trust store) -
+// InsecureSkipVerify is now an explicit opt-in ("insecure"), not the default.
+func (b *Bot) buildTLSConfig() (*tls.Config, error) {
+	cfg := &tls.Config{ServerName: b.Host}
+	switch strings.ToLower(strings.TrimSpace(b.TLSVerify)) {
+	case "", "strict":
+		// default: verify against the system trust store
+	case "custom":
+		pool, err := loadCACertPool(b.TLSCACert)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load irc tls_ca_cert: %w", err)
+		}
+		cfg.RootCAs = pool
+	case "insecure":
+		cfg.InsecureSkipVerify = true
+	default:
+		return nil, fmt.Errorf("invalid irc tls_verify %q (expected strict, custom, or insecure)", b.TLSVerify)
+	}
+	return cfg, nil
+}
+
+// loadCACertPool reads a PEM-encoded CA certificate (or bundle) from path.
+// Kept local to this package rather than shared with the main weaveftpd
+// module: sitebot is a separate Go module with no dependency on it.
+func loadCACertPool(path string) (*x509.CertPool, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, fmt.Errorf("tls_ca_cert path is required when tls_verify is \"custom\"")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read CA cert %q: %w", path, err)
+	}
+	pool := x509.NewCertPool()
+	if !pool.AppendCertsFromPEM(data) {
+		return nil, fmt.Errorf("no valid certificates found in %q", path)
+	}
+	return pool, nil
 }
 
 func (b *Bot) SendRaw(cmd string) error {

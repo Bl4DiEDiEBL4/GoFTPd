@@ -69,7 +69,7 @@ func authStateBackupOnce(cfg *Config) error {
 	var errs []string
 	copied := 0
 
-	regularFiles := []string{passwdPath, "etc/group", "etc/permissions.yml", "etc/affils.yml", "etc/slave_denylist.txt"}
+	regularFiles := []string{passwdPath, "etc/group", "etc/permissions.yml", "etc/affils.yml", "etc/slave_denylist.txt", "etc/slave_masks.txt"}
 	passwdFileMu.RLock()
 	for _, src := range regularFiles {
 		n, err := backupCopyFileInto(src, tmpDir)

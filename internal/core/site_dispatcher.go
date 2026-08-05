@@ -149,6 +149,8 @@ func (s *Session) DispatchSiteCommand(args []string) bool {
 		return s.HandleSiteSlaveUnban(remainingArgs)
 	case "SLAVECLEARBAN":
 		return s.HandleSiteSlaveClearBan(remainingArgs)
+	case "SLAVE":
+		return s.HandleSiteSlaveMask(remainingArgs)
 
 	// Miscellaneous (site_misc.go / site_race.go)
 	case "RACE":
@@ -238,6 +240,7 @@ func requiredSiteCommandFlags(command string) string {
 		"SLAVEBAN",
 		"SLAVEUNBAN",
 		"SLAVECLEARBAN",
+		"SLAVE",
 		"ADDAFFIL",
 		"DELAFFIL":
 		return "1"

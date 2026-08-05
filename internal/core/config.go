@@ -183,6 +183,7 @@ type SlavePolicyConfig struct {
 	Weight   int                `yaml:"weight"`   // default 1, higher = more uploads routed here
 	ReadOnly bool               `yaml:"readonly"` // true = scan/download only; never route uploads here
 	Remerge  SlaveRemergeConfig `yaml:"remerge"`  // master-side background remerge policy for this slave
+	Masks    []string           `yaml:"masks"`    // Masks apply when mTLS is not used between master and slave
 }
 
 type SlaveRemergeConfig struct {
@@ -322,12 +323,18 @@ func (c *Config) Validate() error {
 		if port, err := mapIntValue(c.Master, "control_port", 1099); err != nil || port < 1 || port > 65535 {
 			errs = append(errs, "master.control_port must be between 1 and 65535")
 		}
+		if caCert, ok := mapStringValue(c.Master, "slave_ca_cert"); ok && strings.TrimSpace(caCert) != "" && !c.TLSEnabled {
+			errs = append(errs, "master.slave_ca_cert needs tls_enabled: true")
+		}
 		seen := map[string]struct{}{}
 		for _, sp := range c.Slaves {
 			name := strings.TrimSpace(sp.Name)
 			if name == "" {
 				errs = append(errs, "slaves[].name must not be empty")
 				continue
+			}
+			if strings.ContainsAny(name, " \t\r\n") {
+				errs = append(errs, fmt.Sprintf("slaves[].name %q must not contain whitespace", name))
 			}
 			lower := strings.ToLower(name)
 			if _, exists := seen[lower]; exists {
@@ -338,6 +345,8 @@ func (c *Config) Validate() error {
 	case "slave":
 		if name, ok := mapStringValue(c.Slave, "name"); !ok || strings.TrimSpace(name) == "" {
 			errs = append(errs, "slave.name is required in slave mode")
+		} else if strings.ContainsAny(strings.TrimSpace(name), " \t\r\n") {
+			errs = append(errs, "slave.name must not contain whitespace")
 		}
 		if host, ok := mapStringValue(c.Slave, "master_host"); !ok || strings.TrimSpace(host) == "" {
 			errs = append(errs, "slave.master_host is required in slave mode")
@@ -347,6 +356,18 @@ func (c *Config) Validate() error {
 		}
 		if roots, ok := mapStringSliceValue(c.Slave, "roots"); !ok || len(roots) == 0 {
 			errs = append(errs, "slave.roots must contain at least one path in slave mode")
+		}
+		masterCA, _ := mapStringValue(c.Slave, "master_ca_cert")
+		clientCert, _ := mapStringValue(c.Slave, "client_cert")
+		clientKey, _ := mapStringValue(c.Slave, "client_key")
+		masterCA = strings.TrimSpace(masterCA)
+		clientCert = strings.TrimSpace(clientCert)
+		clientKey = strings.TrimSpace(clientKey)
+		if (clientCert == "") != (clientKey == "") {
+			errs = append(errs, "slave.client_cert and slave.client_key must be configured together")
+		}
+		if (masterCA != "" || clientCert != "" || clientKey != "") && !c.TLSEnabled {
+			errs = append(errs, "slave master/client certificate settings need tls_enabled: true")
 		}
 	}
 
