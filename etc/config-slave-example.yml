@@ -38,8 +38,8 @@ slave:
   # Master-slave mTLS (recommended). master_ca_cert verifies the master's
   # presented server cert (real verification instead of InsecureSkipVerify);
   # client_cert/client_key is this slave's own identity - its CN MUST equal
-  # `name` above, since the master checks the two match. Generate all of
-  # Generate the CA/server cert with `./setup.sh certs` on the master, then
+  # `name` above, since the master checks the two match. Generate the
+  # CA/server cert with `./setup.sh certs` on the master, then
   # run `./setup.sh slavecert LOCAL` and copy the three required files here.
   # Leave all three empty only if you accept an unverified link and have
   # registered an IP mask for this slave name on the master instead
