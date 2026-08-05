@@ -32,9 +32,11 @@ type sessionSnapshot struct {
 }
 
 var (
-	nextSessionID            atomic.Uint64
-	activeSessions           sync.Map
-	activeUploadReservations sync.Map
+	nextSessionID              atomic.Uint64
+	activeSessions             sync.Map
+	transferPathReservationsMu sync.Mutex
+	activeUploadReservations   = map[string]struct{}{}
+	activeDownloadPaths        = map[string]int{}
 )
 
 func registerSession(s *Session) uint64 {
@@ -52,8 +54,13 @@ func reserveUploadPath(filePath string) bool {
 	if cleanPath == "." || cleanPath == "/" {
 		return false
 	}
-	_, loaded := activeUploadReservations.LoadOrStore(cleanPath, struct{}{})
-	return !loaded
+	transferPathReservationsMu.Lock()
+	defer transferPathReservationsMu.Unlock()
+	if _, exists := activeUploadReservations[cleanPath]; exists || activeDownloadPaths[cleanPath] > 0 {
+		return false
+	}
+	activeUploadReservations[cleanPath] = struct{}{}
+	return true
 }
 
 func releaseUploadPath(filePath string) {
@@ -61,7 +68,9 @@ func releaseUploadPath(filePath string) {
 	if cleanPath == "." || cleanPath == "/" {
 		return
 	}
-	activeUploadReservations.Delete(cleanPath)
+	transferPathReservationsMu.Lock()
+	delete(activeUploadReservations, cleanPath)
+	transferPathReservationsMu.Unlock()
 }
 
 func uploadPathReserved(filePath string) bool {
@@ -69,8 +78,49 @@ func uploadPathReserved(filePath string) bool {
 	if cleanPath == "." || cleanPath == "/" {
 		return false
 	}
-	_, ok := activeUploadReservations.Load(cleanPath)
+	transferPathReservationsMu.Lock()
+	_, ok := activeUploadReservations[cleanPath]
+	transferPathReservationsMu.Unlock()
 	return ok
+}
+
+func reserveDownloadPath(filePath string) bool {
+	cleanPath := path.Clean(filePath)
+	if cleanPath == "." || cleanPath == "/" {
+		return false
+	}
+	transferPathReservationsMu.Lock()
+	defer transferPathReservationsMu.Unlock()
+	if _, uploading := activeUploadReservations[cleanPath]; uploading {
+		return false
+	}
+	activeDownloadPaths[cleanPath]++
+	return true
+}
+
+func releaseDownloadPath(filePath string) {
+	cleanPath := path.Clean(filePath)
+	if cleanPath == "." || cleanPath == "/" {
+		return
+	}
+	transferPathReservationsMu.Lock()
+	if count := activeDownloadPaths[cleanPath]; count <= 1 {
+		delete(activeDownloadPaths, cleanPath)
+	} else {
+		activeDownloadPaths[cleanPath] = count - 1
+	}
+	transferPathReservationsMu.Unlock()
+}
+
+func downloadPathReserved(filePath string) bool {
+	cleanPath := path.Clean(filePath)
+	if cleanPath == "." || cleanPath == "/" {
+		return false
+	}
+	transferPathReservationsMu.Lock()
+	reserved := activeDownloadPaths[cleanPath] > 0
+	transferPathReservationsMu.Unlock()
+	return reserved
 }
 
 func listActiveSessions() []sessionSnapshot {

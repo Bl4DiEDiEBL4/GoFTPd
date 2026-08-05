@@ -723,7 +723,7 @@ func rescanZipPostProcess(cfg *Config, bridge MasterBridge, dirPath string, opts
 		}
 		if strings.HasSuffix(strings.ToLower(strings.TrimSpace(entry.Name)), ".zip") {
 			archivePath := path.Join(dirPath, entry.Name)
-			if activeUploadForPathWithBridge(bridge, archivePath) {
+			if activeUploadForPath(archivePath) {
 				continue
 			}
 			zipArchives = append(zipArchives, entry.Name)
@@ -798,7 +798,7 @@ func findAudioRescanCandidate(bridge MasterBridge, dirPath string) (string, bool
 			continue
 		}
 		candidatePath := path.Join(dirPath, entry.Name)
-		if activeUploadForPathWithBridge(bridge, candidatePath) {
+		if activeUploadForPath(candidatePath) {
 			continue
 		}
 		audioFiles = append(audioFiles, entry.Name)
@@ -835,7 +835,7 @@ func findFirstUsableAudioInfo(bridge MasterBridge, cfg *Config, dirPath string) 
 			continue
 		}
 		candidatePath := path.Join(dirPath, entry.Name)
-		if activeUploadForPathWithBridge(bridge, candidatePath) {
+		if activeUploadForPath(candidatePath) {
 			continue
 		}
 		audioFiles = append(audioFiles, entry.Name)
