@@ -7,9 +7,9 @@ import (
 )
 
 // CreateM3UEnabled reports whether weaveftpd should auto-generate an .m3u playlist
-// from the SFV for a completed MP3 release in dirPath. It is on by default
+// from the SFV for a completed MP3/FLAC release in dirPath. It is on by default
 // (matching glftpd/pzs-ng's create_m3u) and turns off only when
-// audio.create_m3u is explicitly false or the section is not MP3.
+// audio.create_m3u is explicitly false or the section is not MP3/FLAC.
 func CreateM3UEnabled(cfg Config, dirPath string) bool {
 	if !cfg.Enabled {
 		return false
@@ -19,27 +19,21 @@ func CreateM3UEnabled(cfg Config, dirPath string) bool {
 	}
 	section, _ := SectionInfoFromPath(dirPath)
 	if len(cfg.Audio.Sections) > 0 {
-		for _, pattern := range cfg.Audio.Sections {
-			if strings.Contains(strings.ToUpper(strings.TrimSpace(pattern)), "MP3") &&
-				matchesAnySectionName(section, []string{pattern}) {
-				return true
-			}
-		}
-		return false
+		return matchesAnySectionName(section, cfg.Audio.Sections)
 	}
 	switch strings.ToUpper(strings.TrimSpace(section)) {
-	case "MP3":
+	case "MP3", "FLAC":
 		return true
 	default:
 		return false
 	}
 }
 
-// BuildReleaseM3U generates the .m3u playlist for a completed MP3 release,
-// mirroring pzs-ng's create_m3u-from-sfv. It lists .mp3 files that are both
+// BuildReleaseM3U generates the .m3u playlist for a completed MP3/FLAC release,
+// mirroring pzs-ng's create_m3u-from-sfv. It lists audio files that are both
 // present in the directory and listed in the SFV, in case-correct, name-sorted
 // order. The playlist takes the SFV's basename with a .m3u extension. ok is
-// false when there is no SFV data, no MP3 entries, or the release already
+// false when there is no SFV data, no audio entries, or the release already
 // contains an .m3u (left untouched).
 func BuildReleaseM3U(_ Config, sfvName string, dirFileNames []string, sfvEntries map[string]uint32) (m3uName string, body []byte, ok bool) {
 	sfvName = strings.TrimSpace(path.Base(sfvName))
@@ -84,5 +78,10 @@ func BuildReleaseM3U(_ Config, sfvName string, dirFileNames []string, sfvEntries
 }
 
 func m3uTrackAllowed(fileName string) bool {
-	return strings.EqualFold(normalizedExt(fileName), "mp3")
+	switch strings.ToLower(normalizedExt(fileName)) {
+	case "mp3", "flac":
+		return true
+	default:
+		return false
+	}
 }

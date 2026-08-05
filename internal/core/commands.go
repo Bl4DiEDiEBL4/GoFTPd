@@ -642,6 +642,18 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			return false
 		}
 
+		if s.Config.Mode == "master" && s.MasterManager != nil {
+			if bridge, ok := s.MasterManager.(MasterBridge); ok {
+				if activeUploadForPathWithBridge(bridge, targetPath) {
+					fmt.Fprintf(s.Conn, "550 %s: file is currently being uploaded.\r\n", path.Base(targetPath))
+					return false
+				}
+			}
+		} else if activeUploadForPath(targetPath) {
+			fmt.Fprintf(s.Conn, "550 %s: file is currently being uploaded.\r\n", path.Base(targetPath))
+			return false
+		}
+
 		dirName := path.Base(targetPath)
 
 		// Decide whether the new dir participates in dupe-checking. Skip:
@@ -772,6 +784,10 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		}
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
+				if activeUploadForPathWithBridge(bridge, filePath) {
+					fmt.Fprintf(s.Conn, "550 Cannot delete: file is currently being uploaded.\r\n")
+					return false
+				}
 				releasePath := path.Clean(path.Dir(filePath))
 				previousMedia := cloneStringMap(bridge.GetDirMediaInfo(releasePath))
 				if err := bridge.DeleteFile(filePath); err != nil {
@@ -1571,6 +1587,17 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			return false
 		}
 		defer releaseUploadPath(uploadPath)
+		if s.Config.Mode == "master" && s.MasterManager != nil {
+			if bridge, ok := s.MasterManager.(MasterBridge); ok {
+				if activeDownloadForPathWithBridge(bridge, uploadPath) {
+					writeTemporaryUploadBusyResponse(s.Conn, fileName)
+					return false
+				}
+			}
+		} else if activeDownloadForPath(uploadPath) {
+			writeTemporaryUploadBusyResponse(s.Conn, fileName)
+			return false
+		}
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
 				entries := getMasterUploadEntries(bridge)
@@ -2831,6 +2858,51 @@ func activeUploadForPathWithBridge(bridge MasterBridge, filePath string) bool {
 func liveTransferStatsContainUpload(stats []LiveTransferStat, cleanPath string) bool {
 	for _, stat := range stats {
 		if stat.Direction != "upload" {
+			continue
+		}
+		if path.Clean(stat.Path) == cleanPath {
+			return true
+		}
+	}
+	return false
+}
+
+func activeDownloadForPath(filePath string) bool {
+	cleanPath := path.Clean(filePath)
+	for _, snap := range listActiveSessions() {
+		if snap.TransferDirection != "download" {
+			continue
+		}
+		if path.Clean(snap.TransferPath) == cleanPath {
+			return true
+		}
+	}
+	return false
+}
+
+func activeDownloadForPathWithBridge(bridge MasterBridge, filePath string) bool {
+	if activeDownloadForPath(filePath) {
+		return true
+	}
+	if bridge == nil {
+		return false
+	}
+	type freshLiveTransferStatsBridge interface {
+		GetLiveTransferStatsFresh() []LiveTransferStat
+	}
+	cleanPath := path.Clean(filePath)
+	if !liveTransferStatsContainDownload(bridge.GetLiveTransferStats(), cleanPath) {
+		return false
+	}
+	if freshBridge, ok := bridge.(freshLiveTransferStatsBridge); ok {
+		return liveTransferStatsContainDownload(freshBridge.GetLiveTransferStatsFresh(), cleanPath)
+	}
+	return true
+}
+
+func liveTransferStatsContainDownload(stats []LiveTransferStat, cleanPath string) bool {
+	for _, stat := range stats {
+		if stat.Direction != "download" {
 			continue
 		}
 		if path.Clean(stat.Path) == cleanPath {

@@ -73,6 +73,13 @@ If you only want to generate fresh TLS certificates, use:
 ./setup.sh certs "My FTPd"
 ```
 
+For a master/slave deployment, generate a separate client identity for each
+slave as well:
+
+```bash
+./setup.sh slavecert SLAVE1
+```
+
 It asks for master/slave mode, ports, PASV/proxy style, certificate name,
 channel names, a Blowfish key per channel, sitebot IRC settings, sitebot FTP
 plugin settings, an optional `!rules` file path, and per-plugin enable flags
@@ -141,10 +148,19 @@ vim etc/config-slave.yml
 ./weaveftpd --config etc/config-slave.yml
 ```
 
+Slave control connections are fail-closed. Use mTLS (recommended) or register
+a per-slave IP/CIDR mask before starting the slave. Existing deployments must
+configure one of these methods before upgrading or their slaves will be
+refused. See [Master-Slave Authentication](docs/Master-Slave-TLS.md).
+
 Edit `sitebot/etc/config.yml` before starting the sitebot. The daemon and
 sitebot must use the same `event_fifo` path.
 External scripts can also write JSON-line `CUSTOM` events to that FIFO for
 direct IRC announces; see `sitebot/plugins/README.md` for examples.
+
+Sitebot verifies IRC TLS certificates by default. Use `irc.tls_verify: custom`
+with `irc.tls_ca_cert` for a private IRC CA, or explicitly set `insecure` only
+when certificate verification is intentionally disabled.
 
 The example user is `weaveftpd` / `weaveftpd`. Change that before exposing the
 daemon.
@@ -172,6 +188,10 @@ cd docker/deploy
 MASTER_HOST="203.0.113.10" SLAVE_NAME="SLAVE1" ./init.sh slave
 docker compose --env-file slave.env -f slave.compose.yml up -d slave
 ```
+
+Before starting a mask-authenticated remote slave, register its source address
+on the master with `SITE SLAVE SLAVE1 ADDMASK <ip-or-cidr>`. The local-slave
+Docker profile is initialized with a `LOCAL 127.0.0.1` mask automatically.
 
 The sitebot should run on the master machine. It reads a local FIFO, so putting
 it in a separate container is fine only when both master and sitebot mount the
@@ -493,7 +513,11 @@ On a slave host, the role-specific settings you normally care about are:
 Master-only site layout, ACL storage, plugin routing, and sitebot settings are
 ignored in slave mode.
 
-The master control socket can also be hardened with:
+Every master control connection is authenticated with mTLS or a per-slave IP
+mask. Full setup and upgrade instructions are in
+[Master-Slave Authentication](docs/Master-Slave-TLS.md).
+
+Additional control-socket filters are available through:
 
 - `master.slave_allowlist` - optional exact IP / CIDR allowlist for slave connections
 - `master.slave_denylist_file` - persistent exact IP / CIDR denylist for the slave control socket
@@ -501,7 +525,8 @@ The master control socket can also be hardened with:
 - `master.slave_auth_fail_window_seconds`
 - `master.slave_auth_ban_seconds`
 
-Those guard only the slave control port, not normal FTP client sessions.
+Those guard only the slave control port, not normal FTP client sessions, and
+do not replace mTLS or a per-slave mask.
 
 Siteops can manage the persistent denylist from FTP with:
 
@@ -509,6 +534,13 @@ Siteops can manage the persistent denylist from FTP with:
 - `SITE SLAVEBAN <ip|cidr>`
 - `SITE SLAVEUNBAN <ip|cidr>`
 - `SITE SLAVECLEARBAN <ip|cidr>` clears only active temp bans
+
+When mTLS is disabled, siteops manage per-slave masks with:
+
+- `SITE SLAVE MASKS`
+- `SITE SLAVE <name> MASKS`
+- `SITE SLAVE <name> ADDMASK <ip|cidr|wildcard>`
+- `SITE SLAVE <name> DELMASK <ip|cidr|wildcard>`
 
 ## Restart And Remerge
 

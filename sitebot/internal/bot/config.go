@@ -37,9 +37,13 @@ type HelpConfig struct {
 }
 
 type IRCConfig struct {
-	Host          string         `yaml:"host"`
-	Port          int            `yaml:"port"`
-	SSL           bool           `yaml:"ssl"`
+	Host string `yaml:"host"`
+	Port int    `yaml:"port"`
+	SSL  bool   `yaml:"ssl"`
+	// TLSVerify: "strict" (default) verifies against the system trust store,
+	// "custom" verifies against TLSCACert, "insecure" disables verification.
+	TLSVerify     string         `yaml:"tls_verify"`
+	TLSCACert     string         `yaml:"tls_ca_cert"`
 	Nick          string         `yaml:"nick"`
 	User          string         `yaml:"user"`
 	RealName      string         `yaml:"realname"`

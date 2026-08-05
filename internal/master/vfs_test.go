@@ -3,6 +3,7 @@ package master
 import (
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1385,4 +1386,76 @@ func TestVFSListDirectoryIgnoresMislinkedDeepChildren(t *testing.T) {
 			t.Fatalf("expected root listing to ignore mislinked deep child")
 		}
 	}
+}
+
+// TestVFSConcurrentReadWriteNoRace guards the copy-on-write invariant: readers
+// holding a *VFSFile from GetFile/ListDirectory must never observe a torn
+// write, because mutators must replace the map entry rather than editing the
+// struct a reader may already hold. Run with -race; it also passes without
+// -race but that proves nothing about the underlying data race.
+func TestVFSConcurrentReadWriteNoRace(t *testing.T) {
+	vfs := NewVirtualFileSystem()
+	vfs.AddFile("/race", VFSFile{IsDir: true, Seen: true})
+	paths := make([]string, 0, 8)
+	for i := 0; i < 8; i++ {
+		p := filepath.Join("/race", strings.Repeat("f", i+1)+".rar")
+		vfs.AddFile(p, VFSFile{Size: 100, Seen: true, SlaveName: "LOCAL"})
+		paths = append(paths, p)
+	}
+
+	done := make(chan struct{})
+	var readersWG, writersWG sync.WaitGroup
+
+	readers := 8
+	readersWG.Add(readers)
+	for i := 0; i < readers; i++ {
+		go func() {
+			defer readersWG.Done()
+			for {
+				select {
+				case <-done:
+					return
+				default:
+				}
+				if f := vfs.GetFile(paths[0]); f != nil {
+					_ = f.Path
+					_ = f.Size
+					_ = f.Checksum
+					_ = f.SlaveName
+				}
+				for _, f := range vfs.ListDirectory("/race") {
+					_ = f.Path
+					_ = f.LastModified
+				}
+				_ = vfs.GetAllFiles()
+			}
+		}()
+	}
+
+	writers := 4
+	writersWG.Add(writers)
+	for i := 0; i < writers; i++ {
+		go func() {
+			defer writersWG.Done()
+			for iter := 0; iter < 200; iter++ {
+				path := paths[iter%len(paths)]
+				switch iter % 5 {
+				case 0:
+					vfs.Chmod(path, 0644)
+				case 1:
+					vfs.UpdateFileVerification(path, uint32(iter))
+				case 2:
+					vfs.HydrateRaceFile(path, "owner", "group", int64(iter+1), int64(iter+1), uint32(iter+1))
+				case 3:
+					vfs.RenameFile(path, path)
+				case 4:
+					vfs.MarkSubtreeUnseen("LOCAL", "/race")
+				}
+			}
+		}()
+	}
+
+	writersWG.Wait()
+	close(done)
+	readersWG.Wait()
 }

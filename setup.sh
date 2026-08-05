@@ -134,13 +134,31 @@ run_cleanup_mode() {
     exit 0
 }
 
+build_san_extension() {
+    local input="$1"
+    local entries=() tokens=() token trimmed
+    IFS=',' read -ra tokens <<< "${input}"
+    for token in "${tokens[@]}"; do
+        trimmed="$(printf '%s' "${token}" | tr -d '[:space:]')"
+        [ -z "${trimmed}" ] && continue
+        if [[ "${trimmed}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "${trimmed}" == *:* ]]; then
+            entries+=("IP:${trimmed}")
+        else
+            entries+=("DNS:${trimmed}")
+        fi
+    done
+    if [ "${#entries[@]}" -eq 0 ]; then
+        entries=("IP:127.0.0.1")
+    fi
+    printf 'subjectAltName=%s' "$(join_by ',' "${entries[@]}")"
+}
+
 generate_tls_certs() {
-    local site_name out_dir ca_cn server_cn client_cn org
+    local site_name out_dir ca_cn server_cn org server_sans sanline
     site_name="${1:-${WEAVEFTPD_CERT_NAME:-WeaveFTPd}}"
     out_dir="${ROOT_DIR}/etc/certs"
     ca_cn="${site_name} Root CA"
     server_cn="${site_name} FTP"
-    client_cn="${site_name} Slave"
     org="${site_name}"
 
     show_banner
@@ -148,44 +166,50 @@ generate_tls_certs() {
     say "Site name: ${site_name}"
     say ""
 
+    server_sans="$(prompt_default 'Master/FTP hostname or IP address(es), comma-separated' "${SETUP_MASTER_TLS_SANS:-${SETUP_PUBLIC_IP:-127.0.0.1}}")"
+    SETUP_MASTER_TLS_SANS="${server_sans}"
+    sanline="$(build_san_extension "${server_sans}")"
+
     mkdir -p "${out_dir}"
     (
         cd "${out_dir}"
 
         openssl ecparam -genkey -name secp384r1 -out ca.key
         openssl req -new -x509 -sha384 -days 3650 -key ca.key -out ca.crt \
-            -subj "/CN=${ca_cn}/O=${org}"
+            -subj "/CN=${ca_cn}/O=${org}" \
+            -addext "basicConstraints=critical,CA:TRUE" \
+            -addext "keyUsage=critical,keyCertSign,cRLSign"
 
+        cat > server.ext <<EOF
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+${sanline}
+EOF
         openssl ecparam -genkey -name secp384r1 -out server.key
         openssl req -new -sha384 -key server.key -out server.csr \
             -subj "/CN=${server_cn}/O=${org}"
         openssl x509 -req -sha384 -days 3650 -in server.csr \
-            -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt
+            -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt \
+            -extfile server.ext
 
-        openssl ecparam -genkey -name secp384r1 -out client.key
-        openssl req -new -sha384 -key client.key -out client.csr \
-            -subj "/CN=${client_cn}/O=${org}"
-        openssl x509 -req -sha384 -days 3650 -in client.csr \
-            -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt
-
-        rm -f *.csr *.srl
+        chmod 600 ca.key server.key
+        chmod 644 ca.crt server.crt
+        rm -f *.csr *.ext *.srl
     )
 
     say ""
     say "Certificates generated in ${out_dir}/"
     say ""
     say "  Site name:   ${site_name}"
-    say "  Issued by:   ${ca_cn}"
-    say "  Server cert: ${server_cn}"
-    say "  Slave cert:  ${client_cn}"
+    say "  Issued by:   ${ca_cn} (10-year root)"
+    say "  Server cert: ${server_cn} (SAN: ${server_sans})"
     say ""
     say "  ECDSA P-384 keys -> TLSv1.3 TLS_AES_256_GCM_SHA384"
     say ""
-    say "  ca.crt      - CA certificate"
+    say "  ca.crt      - CA certificate (trust this on every slave)"
     say "  server.crt  - Master/FTP certificate"
     say "  server.key  - Master/FTP private key"
-    say "  client.crt  - Slave certificate"
-    say "  client.key  - Slave private key"
     say ""
     say "Update etc/config.yml:"
     say "  tls_cert: ./etc/certs/server.crt"
@@ -195,6 +219,53 @@ generate_tls_certs() {
     say ""
     say "Note: tls_enabled only makes TLS available."
     say "      require_tls_control/data actually force secure FTP logins/transfers."
+    say ""
+    say "For mTLS on the master-slave link, generate one certificate per slave:"
+    say "  ./setup.sh slavecert <slave name>"
+}
+
+generate_slave_cert() {
+    local slave_name="$1"
+    local site_name="${2:-${SETUP_CERT_NAME:-${WEAVEFTPD_CERT_NAME:-WeaveFTPd}}}"
+    local out_dir="${ROOT_DIR}/etc/certs"
+
+    if [[ -z "${slave_name}" || ! "${slave_name}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        say "Usage: ./setup.sh slavecert <slave name>"
+        say "Slave names used for certificates may contain letters, numbers, dot, underscore, and hyphen."
+        return 1
+    fi
+    if [ ! -f "${out_dir}/ca.crt" ] || [ ! -f "${out_dir}/ca.key" ]; then
+        say_color "${C_YELLOW}" "No CA found in ${out_dir}; generate it first with ./setup.sh certs."
+        return 1
+    fi
+
+    say ""
+    say "Generating slave client certificate for '${slave_name}'"
+    mkdir -p "${out_dir}"
+    (
+        cd "${out_dir}"
+        openssl ecparam -genkey -name secp384r1 -out "slave-${slave_name}.key"
+        openssl req -new -sha384 -key "slave-${slave_name}.key" -out "slave-${slave_name}.csr" \
+            -subj "/CN=${slave_name}/O=${site_name}"
+        cat > "slave-${slave_name}.ext" <<EOF
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature
+extendedKeyUsage=clientAuth
+EOF
+        openssl x509 -req -sha384 -days 3650 -in "slave-${slave_name}.csr" \
+            -CA ca.crt -CAkey ca.key -CAcreateserial -out "slave-${slave_name}.crt" \
+            -extfile "slave-${slave_name}.ext"
+        chmod 600 "slave-${slave_name}.key"
+        chmod 644 "slave-${slave_name}.crt"
+        rm -f "slave-${slave_name}.csr" "slave-${slave_name}.ext" *.srl
+    )
+
+    say ""
+    say "Generated ${out_dir}/slave-${slave_name}.crt and slave-${slave_name}.key."
+    say "Copy those files plus ca.crt to the slave (as master-ca.crt), then configure:"
+    say "  master_ca_cert: ./etc/certs/master-ca.crt"
+    say "  client_cert:    ./etc/certs/slave-${slave_name}.crt"
+    say "  client_key:     ./etc/certs/slave-${slave_name}.key"
 }
 
 bool_to_prompt_default() {
@@ -1077,6 +1148,77 @@ configure_sitebot_plugin_connections() {
     fi
 }
 
+configure_master_slave_mtls() {
+    local cert_name="$1"
+    local daemon_config="etc/config.yml"
+
+    say ""
+    if prompt_yes_no "Configure mTLS for the master-slave link? (recommended)" "$(bool_to_prompt_default "${SETUP_SLAVE_MTLS:-true}")"; then
+        SETUP_SLAVE_MTLS="true"
+        if [ ! -f "etc/certs/ca.crt" ] || [ ! -f "etc/certs/server.crt" ] || [ ! -f "etc/certs/server.key" ]; then
+            generate_tls_certs "${cert_name}"
+        fi
+        replace_matching_line "${daemon_config}" '^  slave_ca_cert:' '  slave_ca_cert: "./etc/certs/ca.crt"'
+
+        say ""
+        say "Each slave needs its own client certificate."
+        local mtls_slave_name
+        while prompt_yes_no "Generate a slave certificate now?" "N"; do
+            mtls_slave_name="$(prompt_default 'Slave name (must match slave.name exactly)' 'SLAVE1')"
+            generate_slave_cert "${mtls_slave_name}" "${cert_name}"
+        done
+    else
+        SETUP_SLAVE_MTLS="false"
+        say ""
+        say "Without mTLS, each slave name needs an IP/CIDR mask or it will be refused."
+        local mask_slave_name mask_value masks_file
+        masks_file="etc/slave_masks.txt"
+        mask_slave_name="$(prompt_default 'Slave name to register now (blank to skip)' '')"
+        while [ -n "${mask_slave_name}" ]; do
+            mask_value="$(prompt_default "Allowed IP/CIDR/wildcard for ${mask_slave_name}" '127.0.0.1/32')"
+            mkdir -p "$(dirname "${masks_file}")"
+            if ! grep -Fqx "${mask_slave_name} ${mask_value}" "${masks_file}" 2>/dev/null; then
+                printf '%s %s\n' "${mask_slave_name}" "${mask_value}" >> "${masks_file}"
+            fi
+            say "Registered ${mask_slave_name} ${mask_value} in ${masks_file}."
+            mask_slave_name="$(prompt_default 'Another slave name (blank to finish)' '')"
+        done
+    fi
+}
+
+configure_slave_mtls() {
+    local slave_name="$1"
+    local daemon_config="etc/config.yml"
+    local ca_path client_cert_path client_key_path
+
+    say ""
+    if prompt_yes_no "Configure mTLS for the master-slave link? (recommended)" "$(bool_to_prompt_default "${SETUP_SLAVE_MTLS:-true}")"; then
+        SETUP_SLAVE_MTLS="true"
+        ca_path="$(prompt_default 'Path to the CA certificate copied from the master' "${SETUP_SLAVE_MASTER_CA:-./etc/certs/master-ca.crt}")"
+        client_cert_path="$(prompt_default 'Path to this slave client certificate' "${SETUP_SLAVE_CLIENT_CERT:-./etc/certs/slave-${slave_name}.crt}")"
+        client_key_path="$(prompt_default 'Path to this slave client private key' "${SETUP_SLAVE_CLIENT_KEY:-./etc/certs/slave-${slave_name}.key}")"
+        SETUP_SLAVE_MASTER_CA="${ca_path}"
+        SETUP_SLAVE_CLIENT_CERT="${client_cert_path}"
+        SETUP_SLAVE_CLIENT_KEY="${client_key_path}"
+
+        replace_matching_line "${daemon_config}" '^  master_ca_cert:' "  master_ca_cert: \"${ca_path}\""
+        replace_matching_line "${daemon_config}" '^  client_cert:' "  client_cert:   \"${client_cert_path}\""
+        replace_matching_line "${daemon_config}" '^  client_key:' "  client_key:    \"${client_key_path}\""
+
+        if [ ! -f "${ca_path}" ] || [ ! -f "${client_cert_path}" ] || [ ! -f "${client_key_path}" ]; then
+            say_color "${C_YELLOW}" "The mTLS files are not all present yet."
+            say "Run ./setup.sh slavecert ${slave_name} on the master and securely copy the generated files here."
+        fi
+    else
+        SETUP_SLAVE_MTLS="false"
+        replace_matching_line "${daemon_config}" '^  master_ca_cert:' '  master_ca_cert: ""'
+        replace_matching_line "${daemon_config}" '^  client_cert:' '  client_cert:   ""'
+        replace_matching_line "${daemon_config}" '^  client_key:' '  client_key:    ""'
+        say "The master must allow this slave before it can connect:"
+        say "  SITE SLAVE ${slave_name} ADDMASK <this slave IP/CIDR>"
+    fi
+}
+
 configure_daemon() {
     local daemon_config="etc/config.yml"
     local daemon_config_exists="false"
@@ -1238,6 +1380,12 @@ daemon_plugins=(autonuke dateddirs tvmaze imdb speedtest request releaseguard pr
         say "TLS certificates already exist in etc/certs; skipping generation."
     fi
 
+    if [ "${daemon_config_exists}" = "false" ] && [ "${daemon_mode}" = "master" ]; then
+        configure_master_slave_mtls "${cert_name}"
+    elif [ "${daemon_config_exists}" = "false" ] && [ "${daemon_mode}" = "slave" ]; then
+        configure_slave_mtls "${slave_name}"
+    fi
+
     print_plugin_summary \
         "Daemon plugin summary" \
         "$(join_by ', ' "${daemon_plugins[@]}")" \
@@ -1276,7 +1424,7 @@ configure_sitebot() {
     say "Configuring sitebot..."
     copy_if_missing "sitebot/etc/config.yml.example" "${sitebot_config}"
 
-    local irc_host irc_port irc_nick irc_user irc_realname irc_password irc_ssl sitebot_version
+    local irc_host irc_port irc_nick irc_user irc_realname irc_password irc_ssl irc_tls_verify irc_tls_ca_cert sitebot_version
     local ftp_host ftp_port ftp_user ftp_password ftp_tls ftp_insecure bnc_target_host bnc_target_port bnc_target_name rules_file
     local main_channel chat_channel spam_channel staff_channel foreign_channel archive_channel nuke_channel enabled_bool
     local main_key chat_key spam_key staff_key foreign_key archive_key nuke_key private_key
@@ -1293,6 +1441,15 @@ configure_sitebot() {
             irc_ssl="true"
         else
             irc_ssl="false"
+        fi
+        irc_tls_ca_cert=""
+        if [ "${irc_ssl}" = "true" ]; then
+            irc_tls_verify="$(prompt_default 'IRC TLS verification (strict/custom/insecure)' "${SETUP_IRC_TLS_VERIFY:-strict}")"
+            if [ "$(printf '%s' "${irc_tls_verify}" | tr '[:upper:]' '[:lower:]')" = "custom" ]; then
+                irc_tls_ca_cert="$(prompt_default 'Path to IRC server CA certificate' "${SETUP_IRC_TLS_CA_CERT:-./etc/certs/irc-ca.crt}")"
+            fi
+        else
+            irc_tls_verify="${SETUP_IRC_TLS_VERIFY:-strict}"
         fi
         ftp_host="$(prompt_default 'Sitebot FTP host for plugins' "${SETUP_PLUGIN_FTP_HOST:-127.0.0.1}")"
         ftp_port="$(prompt_default 'Sitebot FTP port for plugins' "${SETUP_PLUGIN_FTP_PORT:-21212}")"
@@ -1338,6 +1495,8 @@ configure_sitebot() {
         irc_realname="${SETUP_IRC_REALNAME:-GoSitebot v${sitebot_version}}"
         irc_password="${SETUP_IRC_PASSWORD:-changeme}"
         irc_ssl="${SETUP_IRC_SSL:-true}"
+        irc_tls_verify="${SETUP_IRC_TLS_VERIFY:-strict}"
+        irc_tls_ca_cert="${SETUP_IRC_TLS_CA_CERT:-}"
         ftp_host="${SETUP_PLUGIN_FTP_HOST:-127.0.0.1}"
         ftp_port="${SETUP_PLUGIN_FTP_PORT:-21212}"
         ftp_user="${SETUP_PLUGIN_FTP_USER:-weaveftpd}"
@@ -1373,6 +1532,8 @@ configure_sitebot() {
     SETUP_IRC_REALNAME="${irc_realname}"
     SETUP_IRC_PASSWORD="${irc_password}"
     SETUP_IRC_SSL="${irc_ssl}"
+    SETUP_IRC_TLS_VERIFY="${irc_tls_verify}"
+    SETUP_IRC_TLS_CA_CERT="${irc_tls_ca_cert}"
     SETUP_PLUGIN_FTP_HOST="${ftp_host}"
     SETUP_PLUGIN_FTP_PORT="${ftp_port}"
     SETUP_PLUGIN_FTP_USER="${ftp_user}"
@@ -1410,6 +1571,8 @@ configure_sitebot() {
         set_sitebot_scalar "${sitebot_config}" "realname" "\"${irc_realname}\""
         set_sitebot_scalar "${sitebot_config}" "password" "\"${irc_password}\""
         set_sitebot_scalar "${sitebot_config}" "ssl" "${irc_ssl}"
+        set_sitebot_scalar "${sitebot_config}" "tls_verify" "\"${irc_tls_verify}\""
+        set_sitebot_scalar "${sitebot_config}" "tls_ca_cert" "\"${irc_tls_ca_cert}\""
         replace_matching_line "${sitebot_config}" '^version:' "version:       \"${sitebot_version}\""
         replace_matching_line "${sitebot_config}" '^event_fifo:' "event_fifo: \"${fifo_path}\""
 
@@ -1766,6 +1929,8 @@ save_state_file() {
     write_state_var SETUP_TIMEZONE "${SETUP_TIMEZONE:-Europe/Amsterdam}"
     write_state_var SETUP_CERT_NAME "${SETUP_CERT_NAME:-WeaveFTPd}"
     write_state_var SETUP_GENERATE_CERTS "${SETUP_GENERATE_CERTS:-true}"
+    write_state_var SETUP_MASTER_TLS_SANS "${SETUP_MASTER_TLS_SANS:-${SETUP_PUBLIC_IP:-127.0.0.1}}"
+    write_state_var SETUP_SLAVE_MTLS "${SETUP_SLAVE_MTLS:-true}"
     write_state_var SETUP_FIFO_PATH "${SETUP_FIFO_PATH:-${FIFO_PATH_DEFAULT}}"
     write_state_var SETUP_SITEBOT_CONFIG_PATH "${SETUP_SITEBOT_CONFIG_PATH:-${SITEBOT_CONFIG_DEFAULT}}"
     write_state_var SETUP_DAEMON_MODE "${SETUP_DAEMON_MODE:-master}"
@@ -1781,6 +1946,9 @@ save_state_file() {
     write_state_var SETUP_SLAVE_MASTER_PORT "${SETUP_SLAVE_MASTER_PORT:-1099}"
     write_state_var SETUP_SLAVE_ROOTS "${SETUP_SLAVE_ROOTS:-./site}"
     write_state_var SETUP_SLAVE_BIND_IP "${SETUP_SLAVE_BIND_IP:-}"
+    write_state_var SETUP_SLAVE_MASTER_CA "${SETUP_SLAVE_MASTER_CA:-./etc/certs/master-ca.crt}"
+    write_state_var SETUP_SLAVE_CLIENT_CERT "${SETUP_SLAVE_CLIENT_CERT:-}"
+    write_state_var SETUP_SLAVE_CLIENT_KEY "${SETUP_SLAVE_CLIENT_KEY:-}"
     write_state_var SETUP_IRC_HOST "${SETUP_IRC_HOST:-irc.example.net}"
     write_state_var SETUP_IRC_PORT "${SETUP_IRC_PORT:-6697}"
     write_state_var SETUP_IRC_NICK "${SETUP_IRC_NICK:-GoSitebot}"
@@ -1789,6 +1957,8 @@ save_state_file() {
     write_state_var SETUP_IRC_REALNAME "${SETUP_IRC_REALNAME:-GoSitebot v${SETUP_SITEBOT_VERSION:-${SETUP_SITE_VERSION:-1.0.6b}}}"
     write_state_var SETUP_IRC_PASSWORD "${SETUP_IRC_PASSWORD:-changeme}"
     write_state_var SETUP_IRC_SSL "${SETUP_IRC_SSL:-true}"
+    write_state_var SETUP_IRC_TLS_VERIFY "${SETUP_IRC_TLS_VERIFY:-strict}"
+    write_state_var SETUP_IRC_TLS_CA_CERT "${SETUP_IRC_TLS_CA_CERT:-}"
     write_state_var SETUP_PLUGIN_FTP_HOST "${SETUP_PLUGIN_FTP_HOST:-127.0.0.1}"
     write_state_var SETUP_PLUGIN_FTP_PORT "${SETUP_PLUGIN_FTP_PORT:-21212}"
     write_state_var SETUP_PLUGIN_FTP_USER "${SETUP_PLUGIN_FTP_USER:-weaveftpd}"
@@ -2573,7 +2743,8 @@ show_usage() {
     say "  ./setup.sh install   Run guided install/config setup"
     say "  ./setup.sh build     Build daemon and sitebot only"
     say "  ./setup.sh update    Pull the latest Git changes with git pull --ff-only"
-    say "  ./setup.sh certs     Generate fresh TLS certificates"
+    say "  ./setup.sh certs     Generate a CA and master/FTP server certificate"
+    say "  ./setup.sh slavecert <name>  Generate one mTLS client certificate"
     say "  ./setup.sh import-glftpd [root]  Import users/groups from a glFTPD tree"
     say "  ./setup.sh import-drftpd3 [root] Import users/groups from a DrFTPD v3 tree"
     say "  ./setup.sh import-drftpd4 [root] Import users/groups from a DrFTPD v4 tree"
@@ -2586,7 +2757,8 @@ show_usage() {
     say "  - 'install' loads ${STATE_FILE} as defaults when you allow it."
     say "  - 'build' just runs the daemon and sitebot build scripts."
     say "  - 'update' runs git pull --ff-only from the repository root."
-    say "  - 'certs' writes CA, server, and slave certs into ./etc/certs."
+    say "  - 'certs' writes a CA and SAN-enabled server certificate into ./etc/certs."
+    say "  - 'slavecert' writes a CA-signed client certificate whose CN is the slave name."
     say "  - 'import-glftpd' stages a copy of /glftpd-style account files, backs up current WeaveFTPd account data, then converts passwd/group/user/group files."
     say "  - 'import-drftpd3' stages userdata/users/javabeans, derives groups, merges into WeaveFTPd, and requires siteop password resets afterward."
     say "  - 'import-drftpd4' stages DrFTPD v4 users/groups JSON, preserves supported password formats when possible, and merges into WeaveFTPd."
@@ -2619,6 +2791,11 @@ case "${1:-help}" in
     certs|--certs)
         ensure_script_permissions
         generate_tls_certs "${2:-${WEAVEFTPD_CERT_NAME:-WeaveFTPd}}"
+        exit 0
+        ;;
+    slavecert|--slavecert)
+        ensure_script_permissions
+        generate_slave_cert "${2:-}" "${3:-${WEAVEFTPD_CERT_NAME:-WeaveFTPd}}"
         exit 0
         ;;
     build|--build)

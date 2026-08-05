@@ -55,6 +55,8 @@ runtime/master/etc/config-slave-local.yml
 ```
 
 It connects to `127.0.0.1:1099` because all containers use host networking.
+`init.sh master` also creates an explicit `LOCAL 127.0.0.1` slave mask, so the
+local slave can authenticate without additional steps.
 
 ## Remote Slave Machine
 
@@ -71,6 +73,18 @@ Edit:
 runtime/slave/etc/config.yml
 slave.env
 ```
+
+Before starting, register the remote slave's source address on the master:
+
+```text
+SITE SLAVE SLAVE1 ADDMASK 203.0.113.20/32
+```
+
+For mTLS instead of IP masks, follow
+[Master-Slave Authentication](../../docs/Master-Slave-TLS.md), copy the CA and
+that slave's certificate/key into `runtime/slave/etc/certs`, and set the three
+certificate paths in the slave config. Once `master.slave_ca_cert` is enabled,
+every slave connecting to that master must present a valid client certificate.
 
 Start the slave:
 

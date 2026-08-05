@@ -21,20 +21,20 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repo_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
 
 copy_file_if_missing() {
-  src="$1"
-  dst="$2"
-  if [ ! -e "$dst" ]; then
-    mkdir -p "$(dirname "$dst")"
-    cp "$src" "$dst"
+  copy_src="$1"
+  copy_dst="$2"
+  if [ ! -e "$copy_dst" ]; then
+    mkdir -p "$(dirname "$copy_dst")"
+    cp "$copy_src" "$copy_dst"
   fi
 }
 
 copy_dir_if_missing() {
-  src="$1"
-  dst="$2"
-  if [ ! -e "$dst" ]; then
-    mkdir -p "$(dirname "$dst")"
-    cp -a "$src" "$dst"
+  copy_src="$1"
+  copy_dst="$2"
+  if [ ! -e "$copy_dst" ]; then
+    mkdir -p "$(dirname "$copy_dst")"
+    cp -a "$copy_src" "$copy_dst"
   fi
 }
 
@@ -85,10 +85,26 @@ patch_slave_config() {
     -e 's#^log_file:.*#log_file: "/app/logs/weaveftpd-slave.log"#' \
     -e "s#  name: .*#  name: \"$slave_name\"#" \
     -e "s#  master_host: .*#  master_host: \"$master_host\"#" \
+    -e 's#  master_ca_cert: .*#  master_ca_cert: ""#' \
+    -e 's#  client_cert: .*#  client_cert: ""#' \
+    -e 's#  client_key: .*#  client_key: ""#' \
     -e "s#  bind_ip: .*#  bind_ip: \"$bind_ip\"#" \
     -e 's#    - "\./site"#    - "/app/site"#' \
     -e 's#    - ./site#    - "/app/site"#' \
     "$cfg"
+}
+
+seed_slave_mask() {
+  file="$1"
+  name="$2"
+  mask="$3"
+  mkdir -p "$(dirname "$file")"
+  if [ ! -f "$file" ]; then
+    printf '%s\n' '# Per-slave IP mask allowlist: <slave name> <ip|cidr|wildcard>' > "$file"
+  fi
+  if ! grep -Fqx "$name $mask" "$file"; then
+    printf '%s %s\n' "$name" "$mask" >> "$file"
+  fi
 }
 
 patch_sitebot_config() {
@@ -140,6 +156,7 @@ init_master() {
 
   patch_master_config "$dst/etc/config.yml"
   MASTER_HOST=127.0.0.1 SLAVE_NAME=LOCAL patch_slave_config "$dst/etc/config-slave-local.yml"
+  seed_slave_mask "$dst/etc/slave_masks.txt" LOCAL 127.0.0.1
   patch_sitebot_config "$dst/sitebot/etc/config.yml"
   make_cert_if_missing "$dst/etc/certs"
 
@@ -160,6 +177,8 @@ init_slave() {
   copy_file_if_missing "$script_dir/slave.env.example" "$script_dir/slave.env"
   echo "Slave runtime created at: $dst"
   echo "Edit $dst/etc/config.yml and set slave.master_host to the master address."
+  echo "Before starting it, allow this slave on the master:"
+  echo "  SITE SLAVE ${SLAVE_NAME:-LOCAL} ADDMASK <this slave's public IP/CIDR>"
 }
 
 case "$role" in
