@@ -1,6 +1,50 @@
 WeaveFTPd Changelog
 ================
 
+1.3.0
+-----
+
+Compatibility
+- Slave control connections now fail closed. Before upgrading a master/slave
+  deployment, configure per-slave mTLS (recommended) or register an IP/CIDR/
+  wildcard mask for every slave name. A slave with neither a valid client
+  certificate nor a matching mask is refused.
+- Sitebot IRC TLS now verifies the server certificate by default. Public IRC
+  networks should use `irc.tls_verify: strict`; private CAs should use `custom`
+  plus `irc.tls_ca_cert`; `insecure` is available only as an explicit legacy
+  fallback.
+
+Security
+- Added CA-backed master/slave mTLS. The master requires each client
+  certificate Common Name to match the claimed slave name, while slaves can
+  verify the master's certificate and hostname through `master_ca_cert`.
+- Added persistent per-slave source masks and the `SITE SLAVE MASKS`, `ADDMASK`,
+  and `DELMASK` commands for deployments that cannot use mTLS. Global slave
+  allow/deny lists remain additional filters rather than authentication.
+- Extended auth-state backups to include the persistent slave mask file.
+
+Reliability and race integrity
+- Prevented zip races from reporting COMPLETE while the expected part count is
+  still unknown. Completion now always requires a known positive total.
+- Consolidated SFV checksum-state decisions so an unknown checksum is not
+  mistaken for either a verified match or a known mismatch.
+- Made published VFS file and directory metadata snapshots immutable, removing
+  concurrent reader/writer races during verification, remerge, rename, save,
+  and race-stat operations.
+- Hardened slave disconnect handling so concurrent response delivery and
+  remerge queue shutdown cannot panic, block, or leave stale queue depth.
+
+Audio
+- Extended automatic SFV-based `<release>.m3u` generation to FLAC sections.
+  `zipscript.audio.create_m3u` now covers both MP3 and FLAC releases and still
+  leaves an existing playlist untouched.
+
+Setup and documentation
+- Added `./setup.sh slavecert <name>` for issuing a separate client identity per
+  slave and documented the mTLS and IP-mask upgrade paths.
+- Updated the Docker deploy pack to initialize local-slave masks and expose the
+  new certificate settings for remote slaves.
+
 1.2.0
 -----
 
