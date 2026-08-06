@@ -1,4 +1,4 @@
-01 All Genres and ALL Years [INFO]
-02 All Sources [ALLOWED]
-03 No HOMEMADE Stuff [NUKE 10X]
-04 No limitation [INFO]
+01. All Genres and ALL Years [INFO]
+02. All Sources [ALLOWED]
+03. No HOMEMADE Stuff [NUKE 10X]
+04. No limitation [INFO]

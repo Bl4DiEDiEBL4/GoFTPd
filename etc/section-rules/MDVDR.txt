@@ -1,4 +1,4 @@
-01 Spoken language: English [NUKE 10X]
-02 MULTi allowed [ALLOWED]
-03 iNTERNALs [ALLOWED]
-04 All sources [ALLOWED]
+01. Spoken language: English [NUKE 10X]
+02. MULTi allowed [ALLOWED]
+03. iNTERNALs [ALLOWED]
+04. All sources [ALLOWED]
