@@ -554,7 +554,7 @@ func (t *Transfer) connectActive() error {
 
 	timeout := t.setupTimeout()
 	dialer := &net.Dialer{Timeout: timeout}
-	if bindIP := strings.TrimSpace(t.slave.bindIP); bindIP != "" {
+	if bindIP := strings.TrimSpace(t.slave.localBindIP); bindIP != "" {
 		if ip := net.ParseIP(bindIP); ip != nil {
 			dialer.LocalAddr = &net.TCPAddr{IP: ip}
 		}

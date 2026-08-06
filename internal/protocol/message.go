@@ -113,6 +113,7 @@ type DiskStatus struct {
 	SpaceAvailable int64
 	SpaceCapacity  int64
 	Roots          []RootDiskStatus
+	PASVAddress    string
 }
 
 type RootDiskStatus struct {

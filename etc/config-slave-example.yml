@@ -73,6 +73,11 @@ slave:
   # auto-detect from the master connection is correct.
   bind_ip: ""
 
+  # Optional local interface used for passive listeners and outbound FXP
+  # connections. Behind NAT this is the machine's LAN IP, not bind_ip.
+  # Leave empty to listen on all interfaces and let Windows choose outbound.
+  local_bind_ip: ""
+
   timeout: 60
 
   transfer_buffer_size: 4194304

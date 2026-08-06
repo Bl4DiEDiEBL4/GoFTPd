@@ -1,10 +1,43 @@
 package slave
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
+
+func TestConnectActiveDoesNotBindAdvertisedPASVAddress(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer listener.Close()
+
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if acceptErr == nil {
+			accepted <- conn
+		}
+	}()
+
+	s := &Slave{bindIP: "203.0.113.10", timeout: time.Second}
+	transfer := NewTransfer(nil, nil, 1, s, false, false)
+	transfer.SetActiveAddress(listener.Addr().String())
+	if err := transfer.connectActive(); err != nil {
+		t.Fatalf("connectActive bound the advertised NAT address: %v", err)
+	}
+	defer transfer.currentConn().Close()
+
+	select {
+	case conn := <-accepted:
+		conn.Close()
+	case <-time.After(time.Second):
+		t.Fatal("listener did not receive active connection")
+	}
+}
 
 func TestCleanupFailedReceiveRemovesFreshUpload(t *testing.T) {
 	dir := t.TempDir()

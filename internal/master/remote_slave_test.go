@@ -32,6 +32,21 @@ func TestFetchResponseReturnsBufferedEarlyResponse(t *testing.T) {
 	}
 }
 
+func TestUpdateDiskStatusPublishesSlavePASVAddress(t *testing.T) {
+	rs := &RemoteSlave{properties: make(map[string]string)}
+	rs.updateDiskStatus(protocol.DiskStatus{
+		SpaceAvailable: 100,
+		PASVAddress:    "203.0.113.10",
+	})
+
+	if got := rs.GetPASVIP(); got != "203.0.113.10" {
+		t.Fatalf("expected advertised PASV address, got %q", got)
+	}
+	if got := rs.GetDiskStatus().SpaceAvailable; got != 100 {
+		t.Fatalf("expected disk status to be retained, got %d", got)
+	}
+}
+
 func TestTimedOutRemergeLateResponseClearsState(t *testing.T) {
 	rs := &RemoteSlave{
 		commandNotify:    make(chan struct{}, 1),

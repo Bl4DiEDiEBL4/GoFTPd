@@ -929,9 +929,7 @@ func (sm *SlaveManager) handleSlaveConnection(conn net.Conn) {
 		return
 	}
 	if ds, ok := dsObj.(*protocol.AsyncResponseDiskStatus); ok {
-		rs.diskMu.Lock()
-		rs.diskStatus = ds.Status
-		rs.diskMu.Unlock()
+		rs.updateDiskStatus(ds.Status)
 		log.Printf("[SlaveManager] Slave %s disk: %dMB free / %dMB total",
 			slaveName, ds.Status.SpaceAvailable/1024/1024, ds.Status.SpaceCapacity/1024/1024)
 		sm.publishDiskStatus(rs)
