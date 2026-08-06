@@ -379,7 +379,7 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 #                read-only old date dirs, and NEWDAY events
 #    tvmaze  — looks up TV shows on TVMaze when a release dir is created,
 #              writes .tvmaze into the dir (shown via show_diz above)
-#    imdb    — same for movies via imdbapi.dev, writes .imdb
+#    imdb    — same for movies via api.tiffara.com, writes .imdb
 #    pretime - looks up release pre times from SQLite, MySQL, or HTTP APIs
 #              and emits NEWPRETIME / OLDPRETIME append announces
 #    pre     - handles SITE PRE for affil staging dirs and PREBW announces

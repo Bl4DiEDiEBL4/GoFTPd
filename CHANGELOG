@@ -39,6 +39,10 @@ Audio
   `zipscript.audio.create_m3u` now covers both MP3 and FLAC releases and still
   leaves an existing playlist untouched.
 
+Integrations
+- Migrated daemon and sitebot IMDb lookups from the retired imdbapi.dev host
+  to the schema-compatible api.tiffara.com endpoint.
+
 Setup and documentation
 - Added `./setup.sh slavecert <name>` for issuing a separate client identity per
   slave and documented the mTLS and IP-mask upgrade paths.

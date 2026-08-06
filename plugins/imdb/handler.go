@@ -1,5 +1,5 @@
 // Package imdb is a weaveftpd plugin that looks up movie metadata on
-// imdbapi.dev when a release directory is created, and writes a .imdb
+// api.tiffara.com when a release directory is created, and writes a .imdb
 // file into the release dir for display via show_diz.
 //
 // Config (in the main weaveftpd config.yml under plugins.imdb):
@@ -26,6 +26,8 @@ import (
 
 	"weaveftpd/internal/plugin"
 )
+
+const imdbAPIBaseURL = "https://api.tiffara.com"
 
 // Handler is the imdb plugin. One instance per weaveftpd process.
 type Handler struct {
@@ -152,7 +154,7 @@ func (h *Handler) worker() {
 }
 
 // =============================================================================
-// imdbapi.dev API
+// Tiffara IMDb API
 // =============================================================================
 
 type imdbSearchResp struct {
@@ -195,7 +197,7 @@ func (h *Handler) doLookup(j job) {
 		return
 	}
 
-	searchURL := "https://api.imdbapi.dev/search/titles?query=" + url.QueryEscape(title)
+	searchURL := imdbAPIBaseURL + "/search/titles?query=" + url.QueryEscape(title)
 	resp, err := h.client.Get(searchURL)
 	if err != nil {
 		if h.debug {
@@ -296,7 +298,7 @@ func (h *Handler) fetchDetails(id string) *imdbTitle {
 	if id == "" {
 		return nil
 	}
-	u := "https://api.imdbapi.dev/titles/" + url.PathEscape(id)
+	u := imdbAPIBaseURL + "/titles/" + url.PathEscape(id)
 	resp, err := h.client.Get(u)
 	if err != nil {
 		return nil

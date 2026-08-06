@@ -19,6 +19,8 @@ import (
 	tmpl "weaveftpd/sitebot/internal/template"
 )
 
+const imdbAPIBaseURL = "https://api.tiffara.com"
+
 func normalizePlotText(plot string, maxRunes int) string {
 	plot = html.UnescapeString(strings.TrimSpace(plot))
 	if plot == "" {
@@ -43,7 +45,7 @@ func normalizePlotText(plot string, maxRunes int) string {
 	return truncated + "..."
 }
 
-// IMDBPlugin looks up movie info on imdbapi.dev and announces MOVIE-INFO.
+// IMDBPlugin looks up movie info on api.tiffara.com and announces MOVIE-INFO.
 // Uses the same async worker pattern as TVMazePlugin so HTTP latency never
 // blocks the sitebot's event loop.
 type IMDBPlugin struct {
@@ -66,7 +68,7 @@ type imdbJob struct {
 	data    map[string]string
 }
 
-// imdbapi.dev response types — only the fields we use.
+// Tiffara IMDb API response types — only the fields we use.
 // Field names are camelCase in the JSON (not snake_case).
 type imdbSearchResult struct {
 	Titles []imdbTitle `json:"titles"`
@@ -250,17 +252,17 @@ func (p *IMDBPlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 	return nil, nil
 }
 
-// lookup queries imdbapi.dev. If year is non-zero, it's used to disambiguate.
+// lookup queries api.tiffara.com. If year is non-zero, it's used to disambiguate.
 // Returns the best match (prefers movie type over series, prefers matching year).
 func (p *IMDBPlugin) lookup(title string, year int) (*imdbTitle, error) {
-	u := "https://api.imdbapi.dev/search/titles?query=" + url.QueryEscape(title)
+	u := imdbAPIBaseURL + "/search/titles?query=" + url.QueryEscape(title)
 	resp, err := p.client.Get(u)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("imdbapi.dev status %d", resp.StatusCode)
+		return nil, fmt.Errorf("api.tiffara.com status %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -434,7 +436,7 @@ func absInt(n int) int {
 
 // fetchDetails hits /titles/{id} for the full title record.
 func (p *IMDBPlugin) fetchDetails(id string) (*imdbTitle, error) {
-	u := "https://api.imdbapi.dev/titles/" + url.PathEscape(id)
+	u := imdbAPIBaseURL + "/titles/" + url.PathEscape(id)
 	resp, err := p.client.Get(u)
 	if err != nil {
 		return nil, err
