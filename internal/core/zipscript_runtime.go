@@ -47,6 +47,10 @@ func HasRaceStats(users []VFSRaceUser, groups []VFSRaceGroup, totalBytes int64, 
 	return zipscript.HasRaceStats(toZipscriptRaceUsers(users), toZipscriptRaceGroups(groups), totalBytes, present, total)
 }
 
+func shouldRenderCWDRaceBanner(cfg *Config, users []VFSRaceUser, groups []VFSRaceGroup, totalBytes int64, present, total int) bool {
+	return cfg != nil && cfg.ShowCWDBanner && HasRaceStats(users, groups, totalBytes, present, total)
+}
+
 func RenderCompactRaceStats(w io.Writer, users []VFSRaceUser, groups []VFSRaceGroup, totalBytes int64, present, total int) {
 	zipscript.RenderCompactRaceStats(w, toZipscriptRaceUsers(users), toZipscriptRaceGroups(groups), totalBytes, present, total)
 }
