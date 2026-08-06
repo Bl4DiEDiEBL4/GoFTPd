@@ -23,7 +23,10 @@ func (s *Session) HandleSiteChmod(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Invalid mode (use octal, e.g. 755).\r\n")
 		return false
 	}
-	vpath := path.Join(s.CurrentDir, args[1])
+	// FTP paths always use forward slashes. Normalize backslashes before path
+	// cleaning so a Windows client cannot smuggle "..\\" through to filepath.Join.
+	target := strings.ReplaceAll(args[1], "\\", "/")
+	vpath := path.Join(s.CurrentDir, target)
 	aclPath := path.Join(s.Config.ACLBasePath, vpath)
 	if s.ACLEngine == nil || !s.ACLEngine.CanPerform(s.User, "CHMOD", aclPath) {
 		fmt.Fprintf(s.Conn, "550 Access Denied: Insufficient flags.\r\n")

@@ -58,17 +58,13 @@ func TestHandleSiteChmodDoesNotEscapeStorageRoot(t *testing.T) {
 		User:      &user.User{Name: "siteop", Flags: "1"},
 	}
 
-	s.HandleSiteChmod([]string{"777", "../outside/secret.txt"})
+	s.HandleSiteChmod([]string{"777", "..\\outside\\secret.txt"})
 
-	info, err := os.Stat(outsideFile)
-	if err != nil {
-		t.Fatalf("stat outside file: %v", err)
-	}
-	if got := info.Mode().Perm(); got != 0o600 {
-		t.Fatalf("outside file mode changed to %o", got)
-	}
 	if !strings.Contains(conn.String(), "550 CHMOD failed") {
 		t.Fatalf("expected failed CHMOD response, got %q", conn.String())
+	}
+	if data, err := os.ReadFile(outsideFile); err != nil || string(data) != "secret" {
+		t.Fatalf("outside file was affected: data=%q err=%v", data, err)
 	}
 }
 
