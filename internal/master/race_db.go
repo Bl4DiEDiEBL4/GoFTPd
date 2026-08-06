@@ -581,6 +581,12 @@ func (r *RaceDB) ScrubReleaseRaceMetadata(dirPath, owner, group string) error {
 }
 
 func (r *RaceDB) Reconcile(vfs *VirtualFileSystem) error {
+	// At startup the master may open the race DB before any slave has populated
+	// the VFS. Treating that temporary empty state as authoritative would erase
+	// every cached release before the first remerge completes.
+	if vfs == nil || vfs.Count() <= 1 {
+		return nil
+	}
 	releaseRows, err := r.db.Query(`SELECT path FROM releases`)
 	if err != nil {
 		return err
