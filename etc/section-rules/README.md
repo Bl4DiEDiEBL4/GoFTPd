@@ -26,5 +26,5 @@ zipscript:
     directory: "etc/section-rules"
 ```
 
-The included files were seeded from `etc/msgs/rules.msg`. The general rules
-are included in every section file, followed by that section's own rules.
+The included files were seeded from the section-specific blocks in
+`etc/msgs/rules.msg`. Rule lines use simple `01`, `02`, `03` numbering.
