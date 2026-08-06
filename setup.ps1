@@ -48,6 +48,57 @@ function Write-Utf8NoBom([string]$Path, [string]$Value) {
     [System.IO.File]::WriteAllText($Path, $Value, $encoding)
 }
 
+function Get-TextCorruptionScore([string]$Value) {
+    $score = 0
+    foreach ($character in $Value.ToCharArray()) {
+        $codePoint = [int]$character
+        if (($codePoint -lt 32 -and $codePoint -notin 9, 10, 13) -or
+            ($codePoint -ge 127 -and $codePoint -le 159)) {
+            $score += 100
+        }
+        if ($character -in @([char]0x00C2, [char]0x00C3, [char]0x00E2, [char]0x00F0, [char]0xFFFD)) {
+            $score++
+        }
+    }
+    return $score
+}
+
+function Read-Utf8Text([string]$Path) {
+    $utf8 = New-Object System.Text.UTF8Encoding($false, $true)
+    $original = $utf8.GetString([System.IO.File]::ReadAllBytes($Path))
+    $current = $original
+    $currentScore = Get-TextCorruptionScore $current
+
+    if ($currentScore -gt 0) {
+        $codePage = [Globalization.CultureInfo]::CurrentCulture.TextInfo.ANSICodePage
+        $ansi = [System.Text.Encoding]::GetEncoding(
+            $codePage,
+            [System.Text.EncoderFallback]::ExceptionFallback,
+            [System.Text.DecoderFallback]::ExceptionFallback
+        )
+
+        for ($pass = 0; $pass -lt 4; $pass++) {
+            try {
+                $candidate = $utf8.GetString($ansi.GetBytes($current))
+            } catch {
+                break
+            }
+            $candidateScore = Get-TextCorruptionScore $candidate
+            if ($candidateScore -ge $currentScore) {
+                break
+            }
+            $current = $candidate
+            $currentScore = $candidateScore
+        }
+    }
+
+    if ($current -ne $original) {
+        Say "repair UTF-8 text in $Path"
+        Write-Utf8NoBom $Path $current
+    }
+    return $current
+}
+
 function Get-GoArch {
     if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64" -or $env:PROCESSOR_ARCHITEW6432 -eq "ARM64") {
         return "arm64"
@@ -128,7 +179,7 @@ function Replace-Text([string]$Path, [string]$Old, [string]$New) {
     if (-not (Test-Path -LiteralPath $Path)) {
         return
     }
-    $text = Get-Content -LiteralPath $Path -Raw
+    $text = Read-Utf8Text $Path
     if ($text.Contains($Old)) {
         $text = $text.Replace($Old, $New)
         Write-Utf8NoBom $Path $text
@@ -139,7 +190,7 @@ function Replace-Regex([string]$Path, [string]$Pattern, [string]$Replacement) {
     if (-not (Test-Path -LiteralPath $Path)) {
         return
     }
-    $text = Get-Content -LiteralPath $Path -Raw
+    $text = Read-Utf8Text $Path
     $updated = [regex]::Replace($text, $Pattern, $Replacement)
     if ($updated -ne $text) {
         Write-Utf8NoBom $Path $updated
@@ -240,7 +291,7 @@ function Resolve-SlaveName {
 
     $slaveConfig = Join-Path $Root "etc/config-slave.yml"
     if (Test-Path -LiteralPath $slaveConfig) {
-        $text = Get-Content -LiteralPath $slaveConfig -Raw
+        $text = Read-Utf8Text $slaveConfig
         $match = [regex]::Match($text, '(?m)^\s+name:\s*["'']?([A-Za-z0-9._-]+)["'']?\s*(?:#.*)?$')
         if ($match.Success) {
             return $match.Groups[1].Value
