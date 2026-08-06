@@ -134,6 +134,8 @@ slave:
   bind_ip:       ""             # Public IP advertised in PASV responses from this slave.
                                 # If empty, slave auto-detects from the master connection.
                                 # Set explicitly if the slave sits behind NAT.
+  local_bind_ip: ""             # Optional local interface for PASV listeners and outbound FXP.
+                                # Behind NAT use the LAN IP here, never the public bind_ip.
   timeout:       60             # Slave-side inactivity timeout for master traffic.
                                 # Keep this aligned with master.heartbeat_timeout.
   transfer_buffer_size: 4194304  # Optional slave data-transfer buffer size in bytes.

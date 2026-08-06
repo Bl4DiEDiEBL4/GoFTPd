@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -148,6 +149,13 @@ func (rs *RemoteSlave) GetDiskStatus() protocol.DiskStatus {
 	return rs.diskStatus
 }
 
+func (rs *RemoteSlave) updateDiskStatus(status protocol.DiskStatus) {
+	rs.diskMu.Lock()
+	rs.diskStatus = status
+	rs.diskMu.Unlock()
+	rs.SetProperty("pasv_addr", strings.TrimSpace(status.PASVAddress))
+}
+
 func (rs *RemoteSlave) GetPASVIP() string {
 	rs.propMu.RLock()
 	addr, ok := rs.properties["pasv_addr"]
@@ -164,6 +172,9 @@ func (rs *RemoteSlave) GetPASVIP() string {
 
 func (rs *RemoteSlave) SetProperty(key, value string) {
 	rs.propMu.Lock()
+	if rs.properties == nil {
+		rs.properties = make(map[string]string)
+	}
 	rs.properties[key] = value
 	rs.propMu.Unlock()
 }
@@ -308,9 +319,7 @@ func (rs *RemoteSlave) Run(masterSlaveManager *SlaveManager) {
 		// Dispatch by type ( switch in RemoteSlave.run())
 		switch resp := obj.(type) {
 		case *protocol.AsyncResponseDiskStatus:
-			rs.diskMu.Lock()
-			rs.diskStatus = resp.Status
-			rs.diskMu.Unlock()
+			rs.updateDiskStatus(resp.Status)
 			masterSlaveManager.publishDiskStatus(rs)
 
 		case *protocol.AsyncResponseRemerge:

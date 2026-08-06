@@ -92,6 +92,10 @@ Start each component in its own PowerShell window:
 Windows uses a regular append-only event file instead of a Unix FIFO; the
 installer gives the daemon and sitebot the same path automatically. The
 generated server certificate covers only `localhost`, `127.0.0.1`, and `::1`.
+When the Windows slave is behind NAT, set `slave.bind_ip` to the public IP
+advertised to FTP clients and `slave.local_bind_ip` to the machine's LAN IP.
+Forward the configured FTP control and slave passive-port ranges to that LAN
+IP on the router.
 For master and slaves on separate machines, issue certificates for the real
 hostnames and distribute the master CA and per-slave client identities as
 described in [Master-Slave Authentication](docs/Master-Slave-TLS.md).

@@ -54,7 +54,8 @@ type Slave struct {
 	masterCACert       string // CA used to verify the master's presented cert; empty = legacy InsecureSkipVerify
 	clientCert         string // this slave's own mTLS identity presented to the master
 	clientKey          string
-	bindIP             string
+	bindIP             string // public address advertised to data clients
+	localBindIP        string // optional local interface used for listeners and outbound data sockets
 	transferBufferSize int
 	freeSpaceMB        int
 	debug              bool
@@ -129,8 +130,9 @@ type SlaveConfig struct {
 	MasterCACert       string        `yaml:"master_ca_cert"` // CA cert used to verify the master's server cert
 	ClientCert         string        `yaml:"client_cert"`    // this slave's mTLS client cert (CN must equal Name)
 	ClientKey          string        `yaml:"client_key"`
-	BindIP             string        `yaml:"bind_ip"`
-	Timeout            int           `yaml:"timeout"` // seconds, default 60
+	BindIP             string        `yaml:"bind_ip"`       // public PASV address; may be a NAT address
+	LocalBindIP        string        `yaml:"local_bind_ip"` // local interface; empty lets the OS choose
+	Timeout            int           `yaml:"timeout"`       // seconds, default 60
 	TransferBufferSize int           `yaml:"transfer_buffer_size"`
 	FreeSpaceMB        int           `yaml:"free_space_mb"`
 	Debug              bool
@@ -173,7 +175,8 @@ func NewSlave(cfg SlaveConfig) *Slave {
 		masterCACert:       strings.TrimSpace(cfg.MasterCACert),
 		clientCert:         strings.TrimSpace(cfg.ClientCert),
 		clientKey:          strings.TrimSpace(cfg.ClientKey),
-		bindIP:             cfg.BindIP,
+		bindIP:             strings.TrimSpace(cfg.BindIP),
+		localBindIP:        strings.TrimSpace(cfg.LocalBindIP),
 		timeout:            timeout,
 		transferBufferSize: bufferSize,
 		freeSpaceMB:        cfg.FreeSpaceMB,
@@ -1995,6 +1998,7 @@ func (s *Slave) getDiskStatus() protocol.DiskStatus {
 		SpaceAvailable: totalAvail,
 		SpaceCapacity:  totalCap,
 		Roots:          roots,
+		PASVAddress:    s.bindIP,
 	}
 }
 
@@ -2162,7 +2166,7 @@ func (s *Slave) listenOnPortRange() (net.Listener, error) {
 		start := int(atomic.AddUint32(&s.pasvNext, 1)-1) % span
 		for i := 0; i < span; i++ {
 			port := s.pasvPortMin + ((start + i) % span)
-			bindAddr := fmt.Sprintf("%s:%d", s.bindIP, port)
+			bindAddr := net.JoinHostPort(s.localBindIP, strconv.Itoa(port))
 			l, err := net.Listen("tcp", bindAddr)
 			if err == nil {
 				return l, nil
@@ -2171,7 +2175,7 @@ func (s *Slave) listenOnPortRange() (net.Listener, error) {
 		return nil, fmt.Errorf("no available port in range %d-%d", s.pasvPortMin, s.pasvPortMax)
 	}
 	// Random port
-	return net.Listen("tcp", s.bindIP+":0")
+	return net.Listen("tcp", net.JoinHostPort(s.localBindIP, "0"))
 }
 
 func (s *Slave) removeTransfer(idx int32) {

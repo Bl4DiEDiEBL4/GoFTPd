@@ -590,6 +590,7 @@ func startSlave(cfg *core.Config) {
 	pasvMin := intFromCfg(slaveCfg, "pasv_port_min", 0)
 	pasvMax := intFromCfg(slaveCfg, "pasv_port_max", 0)
 	bindIP, _ := slaveCfg["bind_ip"].(string)
+	localBindIP, _ := slaveCfg["local_bind_ip"].(string)
 	masterCACert, _ := slaveCfg["master_ca_cert"].(string)
 	clientCert, _ := slaveCfg["client_cert"].(string)
 	clientKey, _ := slaveCfg["client_key"].(string)
@@ -603,8 +604,8 @@ func startSlave(cfg *core.Config) {
 		"remerge_entry_yield_ms":            "remove it; delay_ms now also yields inside very large directories",
 	})
 
-	log.Printf("[STARTUP] Slave mode [name=%s] [master=%s:%d] [roots=%v] [mounted_roots=%v] [bind_ip=%s] [pasv=%d-%d]",
-		name, masterHost, masterPort, roots, mountedRoots, bindIP, pasvMin, pasvMax)
+	log.Printf("[STARTUP] Slave mode [name=%s] [master=%s:%d] [roots=%v] [mounted_roots=%v] [bind_ip=%s] [local_bind_ip=%s] [pasv=%d-%d]",
+		name, masterHost, masterPort, roots, mountedRoots, bindIP, localBindIP, pasvMin, pasvMax)
 
 	s := slave.NewSlave(slave.SlaveConfig{
 		Name:               name,
@@ -621,6 +622,7 @@ func startSlave(cfg *core.Config) {
 		ClientCert:         clientCert,
 		ClientKey:          clientKey,
 		BindIP:             bindIP,
+		LocalBindIP:        localBindIP,
 		Timeout:            timeout,
 		TransferBufferSize: transferBufferSize,
 		FreeSpaceMB:        cfg.FreeSpaceMB,
