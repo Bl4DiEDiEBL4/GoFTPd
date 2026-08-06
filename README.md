@@ -153,6 +153,11 @@ a per-slave IP/CIDR mask before starting the slave. Existing deployments must
 configure one of these methods before upgrading or their slaves will be
 refused. See [Master-Slave Authentication](docs/Master-Slave-TLS.md).
 
+For a slave behind NAT, set `slave.bind_ip` to the public IP advertised to FTP
+clients and `slave.local_bind_ip` to the machine's LAN IP. Forward the slave's
+configured passive-port range to that LAN IP on the router. Leave
+`local_bind_ip` empty when the operating system should select the interface.
+
 Edit `sitebot/etc/config.yml` before starting the sitebot. The daemon and
 sitebot must use the same `event_fifo` path.
 External scripts can also write JSON-line `CUSTOM` events to that FIFO for
