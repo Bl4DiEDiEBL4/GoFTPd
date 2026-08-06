@@ -406,6 +406,10 @@ zipscript:
   enabled: true                # master-side zipscript module on/off
   debug: false                 # reserved for zipscript-specific debug output
 
+  section_rules:
+    cwd: true                  # show SECTION.txt rules in a drawbox when entering a section
+    directory: "etc/section-rules"
+
   race:
     enabled: true              # enables race tracking derived labels/stats
     max_users_in_top: 15       # limit HOF / SITE RACE user rows (0 = unlimited)

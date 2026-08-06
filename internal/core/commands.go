@@ -535,6 +535,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
+				emitCWDSectionRules(s, s.CurrentDir)
 				emitCWDZipDIZInfo(s, bridge, s.CurrentDir)
 				emitCWDAudioInfo(s, bridge, s.CurrentDir)
 				if s.Config.ShowDiz != nil {

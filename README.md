@@ -192,6 +192,35 @@ a per-slave IP/CIDR mask before starting the slave. Existing deployments must
 configure one of these methods before upgrading or their slaves will be
 refused. See [Master-Slave Authentication](docs/Master-Slave-TLS.md).
 
+For a slave behind NAT, set `slave.bind_ip` to the public IP advertised to FTP
+clients and `slave.local_bind_ip` to the machine's LAN IP. Forward the slave's
+configured passive-port range to that LAN IP on the router. Leave
+`local_bind_ip` empty when the operating system should select the interface.
+
+### Section CWD Rules
+
+To show a custom drawbox when users enter a section, create a UTF-8 text file
+under `etc/section-rules/` named after that directory:
+
+```text
+etc/section-rules/TV-720P.txt
+etc/section-rules/MP3.txt
+etc/section-rules/TV-DE.txt
+```
+
+The last example also matches `/FOREIGN/TV-DE`. Rule files support `%S` for
+the section name, `%U` for the FTP username, and `%V` for the daemon version.
+Long lines wrap inside the fixed-width CP437 box. A missing or empty file emits
+nothing. Configure the feature under `zipscript`:
+
+```yaml
+section_rules:
+  cwd: true
+  directory: "etc/section-rules"
+```
+
+Set `cwd: false` to keep the rule files installed without displaying them.
+
 Edit `sitebot/etc/config.yml` before starting the sitebot. The daemon and
 sitebot must use the same `event_fifo` path.
 External scripts can also write JSON-line `CUSTOM` events to that FIFO for
