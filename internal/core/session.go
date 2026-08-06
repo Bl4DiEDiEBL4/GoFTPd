@@ -90,6 +90,7 @@ type Session struct {
 	TransferStartedAt     time.Time
 	TransferSlaveName     string
 	TransferSlaveIdx      int32
+	transferConn          net.Conn
 }
 
 func (s *Session) currentTransferTypeByte() byte {

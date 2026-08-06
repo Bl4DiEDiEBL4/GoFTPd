@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"weaveftpd/internal/core"
 	"weaveftpd/internal/protocol"
 )
@@ -258,6 +259,45 @@ func TestListDirRepairsZeroSizeFromVerifiedRaceDB(t *testing.T) {
 			t.Fatalf("listing owner/group = %s/%s, want steel/iND", entry.Owner, entry.Group)
 		}
 		return
+	}
+	t.Fatalf("expected listed file")
+}
+
+func TestListDirRepairsFreshNonzeroShortSizeFromVerifiedRaceDB(t *testing.T) {
+	const checksum = 0x87654321
+	const shortSize = int64(444000)
+	const fullSize = int64(4800000)
+	releasePath := "/0DAY/Fresh.Short.Release-GRP"
+	filePath := releasePath + "/fresh.short.release-grp.zip"
+
+	sm := NewSlaveManager("127.0.0.1", 1099, false, "", "", 60)
+	sm.GetVFS().AddFile(filePath, VFSFile{
+		Path:         filePath,
+		Size:         shortSize,
+		SlaveName:    "LOCAL",
+		Owner:        "WeaveFTPd",
+		Group:        "WeaveFTPd",
+		LastModified: time.Now().Unix(),
+	})
+
+	raceDB, err := NewRaceDB(filepath.Join(t.TempDir(), "race.db"))
+	if err != nil {
+		t.Fatalf("new race DB: %v", err)
+	}
+	defer raceDB.Close()
+	if err := raceDB.RecordUpload(filePath, "steel", "iND", fullSize, 2500, checksum); err != nil {
+		t.Fatalf("record upload: %v", err)
+	}
+
+	bridge := &Bridge{sm: sm, raceDB: raceDB, readFileCache: make(map[string]cachedReadFileResult)}
+	entries := bridge.ListDir(releasePath)
+	for _, entry := range entries {
+		if entry.Name == "fresh.short.release-grp.zip" {
+			if entry.Size != fullSize {
+				t.Fatalf("listing size = %d, want immediate repair to %d", entry.Size, fullSize)
+			}
+			return
+		}
 	}
 	t.Fatalf("expected listed file")
 }

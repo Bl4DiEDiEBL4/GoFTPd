@@ -520,4 +520,16 @@ func TestCleanupOldNukesDeletesBridgePathAfterSiteWipe(t *testing.T) {
 	if !strings.Contains(gotData["message"], "deleted old nuked release") {
 		t.Fatalf("cleanup announce missing message: %#v", gotData)
 	}
+	if gotData["relname"] != "Old.Release-GRP" {
+		t.Fatalf("cleanup relname = %q, want Old.Release-GRP", gotData["relname"])
+	}
+}
+
+func TestDisplayReleaseNameUsesConfiguredPrefix(t *testing.T) {
+	if got := displayReleaseName("NUKED-Old.Release-GRP", "NUKED-"); got != "Old.Release-GRP" {
+		t.Fatalf("custom prefix result = %q", got)
+	}
+	if got := displayReleaseName("[GROUP]-Legit.Release", "[NUKED]-"); got != "[GROUP]-Legit.Release" {
+		t.Fatalf("legitimate bracketed release was altered: %q", got)
+	}
 }

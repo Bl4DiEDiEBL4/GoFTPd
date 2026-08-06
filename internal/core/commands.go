@@ -643,8 +643,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		}
 
 		if s.Config.Mode == "master" && s.MasterManager != nil {
-			if bridge, ok := s.MasterManager.(MasterBridge); ok {
-				if activeUploadForPathWithBridge(bridge, targetPath) {
+			if _, ok := s.MasterManager.(MasterBridge); ok {
+				if activeUploadForPath(targetPath) {
 					fmt.Fprintf(s.Conn, "550 %s: file is currently being uploaded.\r\n", path.Base(targetPath))
 					return false
 				}
@@ -784,7 +784,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		}
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
-				if activeUploadForPathWithBridge(bridge, filePath) {
+				if activeUploadForPath(filePath) {
 					fmt.Fprintf(s.Conn, "550 Cannot delete: file is currently being uploaded.\r\n")
 					return false
 				}
@@ -1588,8 +1588,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		}
 		defer releaseUploadPath(uploadPath)
 		if s.Config.Mode == "master" && s.MasterManager != nil {
-			if bridge, ok := s.MasterManager.(MasterBridge); ok {
-				if activeDownloadForPathWithBridge(bridge, uploadPath) {
+			if _, ok := s.MasterManager.(MasterBridge); ok {
+				if activeDownloadForPath(uploadPath) {
 					writeTemporaryUploadBusyResponse(s.Conn, fileName)
 					return false
 				}
@@ -2023,7 +2023,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					fmt.Fprintf(s.Conn, "550 File not found on any slave.\r\n")
 					return false
 				}
-				if activeUploadForPathWithBridge(bridge, filePath) {
+				if activeUploadForPath(filePath) {
 					fmt.Fprintf(s.Conn, "550 No Permission To Download A File Currently Being Uploaded.\r\n")
 					return false
 				}
@@ -2062,6 +2062,11 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						return false
 					}
 				}
+				if !reserveDownloadPath(filePath) {
+					fmt.Fprintf(s.Conn, "550 No Permission To Download A File Currently Being Uploaded.\r\n")
+					return false
+				}
+				defer releaseDownloadPath(filePath)
 				if s.Config.Passthrough && s.ActiveAddr != "" && s.PassthruSlave == nil {
 					portAddr := s.ActiveAddr
 					s.ActiveAddr = ""
@@ -2215,6 +2220,11 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				return false
 			}
 		}
+		if !reserveDownloadPath(filePath) {
+			fmt.Fprintf(s.Conn, "550 No Permission To Download A File Currently Being Uploaded.\r\n")
+			return false
+		}
+		defer releaseDownloadPath(filePath)
 		raw, err := s.getRawDataConn()
 		if err != nil {
 			fmt.Fprintf(s.Conn, "425 Data connection failed\r\n")
@@ -2819,97 +2829,52 @@ func raceCRCKey(name string) string {
 	return strings.ToLower(name)
 }
 
+// sessionTransferringPath reports whether any live session is transferring
+// cleanPath in the given direction.
+//
+// This scans the session map directly and stops at the first match. It
+// deliberately does NOT go through listActiveSessions: that builds a snapshot
+// struct for every session (including a RemoteAddr().String() allocation and a
+// deferred recover per session) and then sorts the whole slice, which is a lot of
+// per-file work for a single yes/no answer. These guards run before the 150 on
+// STOR and RETR, so the cost lands directly on race turnaround.
+func sessionTransferringPath(cleanPath, direction string) bool {
+	found := false
+	activeSessions.Range(func(_, value interface{}) bool {
+		s, ok := value.(*Session)
+		if !ok || s == nil {
+			return true
+		}
+		s.stateMu.RLock()
+		dir := s.TransferDirection
+		tpath := s.TransferPath
+		s.stateMu.RUnlock()
+		if dir != direction || tpath == "" {
+			return true
+		}
+		if path.Clean(tpath) == cleanPath {
+			found = true
+			return false // stop ranging
+		}
+		return true
+	})
+	return found
+}
+
 func activeUploadForPath(filePath string) bool {
 	cleanPath := path.Clean(filePath)
 	if uploadPathReserved(cleanPath) {
 		return true
 	}
-	for _, snap := range listActiveSessions() {
-		if snap.TransferDirection != "upload" {
-			continue
-		}
-		if path.Clean(snap.TransferPath) == cleanPath {
-			return true
-		}
-	}
-	return false
-}
-
-func activeUploadForPathWithBridge(bridge MasterBridge, filePath string) bool {
-	if activeUploadForPath(filePath) {
-		return true
-	}
-	if bridge == nil {
-		return false
-	}
-	type freshLiveTransferStatsBridge interface {
-		GetLiveTransferStatsFresh() []LiveTransferStat
-	}
-	cleanPath := path.Clean(filePath)
-	if !liveTransferStatsContainUpload(bridge.GetLiveTransferStats(), cleanPath) {
-		return false
-	}
-	if freshBridge, ok := bridge.(freshLiveTransferStatsBridge); ok {
-		return liveTransferStatsContainUpload(freshBridge.GetLiveTransferStatsFresh(), cleanPath)
-	}
-	return true
-}
-
-func liveTransferStatsContainUpload(stats []LiveTransferStat, cleanPath string) bool {
-	for _, stat := range stats {
-		if stat.Direction != "upload" {
-			continue
-		}
-		if path.Clean(stat.Path) == cleanPath {
-			return true
-		}
-	}
-	return false
+	return sessionTransferringPath(cleanPath, "upload")
 }
 
 func activeDownloadForPath(filePath string) bool {
 	cleanPath := path.Clean(filePath)
-	for _, snap := range listActiveSessions() {
-		if snap.TransferDirection != "download" {
-			continue
-		}
-		if path.Clean(snap.TransferPath) == cleanPath {
-			return true
-		}
-	}
-	return false
-}
-
-func activeDownloadForPathWithBridge(bridge MasterBridge, filePath string) bool {
-	if activeDownloadForPath(filePath) {
+	if downloadPathReserved(cleanPath) {
 		return true
 	}
-	if bridge == nil {
-		return false
-	}
-	type freshLiveTransferStatsBridge interface {
-		GetLiveTransferStatsFresh() []LiveTransferStat
-	}
-	cleanPath := path.Clean(filePath)
-	if !liveTransferStatsContainDownload(bridge.GetLiveTransferStats(), cleanPath) {
-		return false
-	}
-	if freshBridge, ok := bridge.(freshLiveTransferStatsBridge); ok {
-		return liveTransferStatsContainDownload(freshBridge.GetLiveTransferStatsFresh(), cleanPath)
-	}
-	return true
-}
-
-func liveTransferStatsContainDownload(stats []LiveTransferStat, cleanPath string) bool {
-	for _, stat := range stats {
-		if stat.Direction != "download" {
-			continue
-		}
-		if path.Clean(stat.Path) == cleanPath {
-			return true
-		}
-	}
-	return false
+	return sessionTransferringPath(cleanPath, "download")
 }
 
 func mediaInfoPluginSettings(cfg *Config) (sections []string, sampleOnly bool, videoExts map[string]bool) {

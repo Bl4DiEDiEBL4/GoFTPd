@@ -58,6 +58,16 @@ Compatibility
   instead of passing min/max speed policy into the slave transfer loop.
 
 Performance
+- The in-flight path guards no longer build and sort a snapshot of every session.
+  Answering "is anyone transferring this one path?" allocated a struct per session
+  (plus a RemoteAddr().String() and a deferred recover each) and then sorted the
+  whole slice; it now scans the session map directly and stops at the first match.
+  These guards run before the 150 on STOR and RETR, so the cost was per raced file.
+- The STOR/RETR in-flight conflict guards no longer fan out to every online slave.
+  Upload reservations and counted download reservations are established before
+  the 150, then combined with the master's session registry. This removes both
+  the per-file network fan-out and stale slave snapshots that could briefly report
+  a completed transfer as still active.
 - Let Linux TCP autotuning manage data-socket buffers by default, with
   `ForceDataSocketBuffers` available for tuned hosts.
 - Set TCP_NODELAY on FTP control connections to reduce small-response latency.
@@ -70,6 +80,11 @@ Performance
   blocking the upload 226 response.
 
 Reliability
+- Fixed `slowkick` aborting a direct-slave transfer without disconnecting the FTP
+  control session, which let the same user immediately claim another slot. Local
+  and master-proxied data sockets are now tracked and closed during a kick too, so
+  disconnecting the session actually interrupts every transfer mode before the
+  optional login tempban is applied.
 - Fixed browsing getting slower the longer the daemon runs (fast after a restart,
   then seconds to list a small folder). The slave stored a transfer entry for
   every LISTEN/CONNECT data-channel setup but only removed it when a matching

@@ -1,6 +1,10 @@
 package core
 
-import "testing"
+import (
+	"net"
+	"testing"
+	"time"
+)
 
 type fakeTransferAborter struct {
 	slaveName string
@@ -40,5 +44,28 @@ func TestAbortCurrentTransferUsesBridgeAbort(t *testing.T) {
 	}
 	if s.PretCmd != "" || s.PretArg != "" || s.PassthruSlave != nil || s.PassthruXferIdx != 0 {
 		t.Fatalf("expected pending passthrough state to be cleared after abort")
+	}
+}
+
+func TestAbortCurrentTransferClosesTrackedDataConn(t *testing.T) {
+	server, client := net.Pipe()
+	defer client.Close()
+
+	s := &Session{}
+	s.beginTransfer("upload", "/MP3/release/01-track.mp3")
+	tracked := trackTransferConn(s, server, "upload")
+	if tracked == nil || s.transferConn == nil {
+		t.Fatalf("expected transfer data connection to be tracked")
+	}
+
+	if !s.abortCurrentTransfer("slowkick") {
+		t.Fatalf("expected tracked data connection to be aborted")
+	}
+	_ = client.SetReadDeadline(time.Now().Add(time.Second))
+	if _, err := client.Read(make([]byte, 1)); err == nil {
+		t.Fatalf("expected peer read to fail after slowkick closes data connection")
+	}
+	if s.transferConn != nil {
+		t.Fatalf("expected tracked data connection to be cleared")
 	}
 }

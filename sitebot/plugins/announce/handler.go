@@ -1005,6 +1005,9 @@ func (p *AnnouncePlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 		}
 		message = humanizeAutonukeMessage(message, vars["tag"], vars["reason"])
 		vars["message"] = message
+		// Expose the friendly "AUTONUKE INCOMPLETE"-style label so the theme can
+		// colorize it (and the section/release) per-part like the NUKE line.
+		vars["autonuke_label"] = friendlyAutonukeLabel(vars["tag"], vars["reason"])
 		outs = append(outs, plugin.Output{Type: "AUTONUKEWARN", Text: p.render("AUTONUKEWARN", vars, "WARN: "+message)})
 	case event.EventAutonukeDelete:
 		message := strings.TrimSpace(vars["message"])

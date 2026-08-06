@@ -239,8 +239,8 @@ func (h *Handler) recordSlowTransferKick(cfg configSnapshot, snap plugin.ActiveS
 	}
 	if cfg.announceKick {
 		h.emitSlowEvent(policy.kickEvent, snap, float64(actualSpeedBytes), policy)
-		h.logf("kicked %s for slow %s in %s at %.1fKB/s", snap.User, policy.direction, snap.TransferPath, float64(actualSpeedBytes)/1024.0)
 	}
+	h.logf("kicked %s for slow %s in %s at %.1fKB/s", snap.User, policy.direction, snap.TransferPath, float64(actualSpeedBytes)/1024.0)
 }
 
 func (h *Handler) Stop() error {
@@ -387,16 +387,19 @@ func (h *Handler) kickSlowTransfer(cfg configSnapshot, snap plugin.ActiveSession
 	}
 
 	reason := fmt.Sprintf("slowkick: %.0fB/s below %.0fB/s", speed, policy.minSpeedBytes)
-	aborted := false
+	stopped := false
 	if h.svc != nil {
-		if h.svc.AbortTransfer != nil && strings.TrimSpace(snap.TransferSlaveName) != "" && snap.TransferSlaveIdx != 0 {
-			aborted = h.svc.AbortTransfer(snap.TransferSlaveName, snap.TransferSlaveIdx, reason)
+		// Disconnecting the FTP session also aborts its attached slave or local
+		// data connection. An abort without the disconnect leaves the user logged
+		// in and able to claim another slot immediately, which is not a kick.
+		if h.svc.DisconnectSession != nil && snap.ID != 0 {
+			stopped = h.svc.DisconnectSession(snap.ID)
 		}
-		if !aborted && h.svc.DisconnectSession != nil && snap.ID != 0 {
-			aborted = h.svc.DisconnectSession(snap.ID)
+		if !stopped && h.svc.AbortTransfer != nil && strings.TrimSpace(snap.TransferSlaveName) != "" && snap.TransferSlaveIdx != 0 {
+			stopped = h.svc.AbortTransfer(snap.TransferSlaveName, snap.TransferSlaveIdx, reason)
 		}
 	}
-	if !aborted {
+	if !stopped {
 		h.forgetKickedTransfer(key)
 		h.logf("unable to abort slow %s for %s in %s", policy.direction, snap.User, snap.TransferPath)
 		return

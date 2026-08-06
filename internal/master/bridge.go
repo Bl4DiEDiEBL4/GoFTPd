@@ -588,13 +588,9 @@ func (b *Bridge) repairZeroSizeListEntries(dirPath string, files []*VFSFile) boo
 		return false
 	}
 
-	// Trigger on any "suspect" entry: a zero-size file, or a non-zero file that has
-	// no verified completion recorded (XferTime==0 && Checksum==0). The latter is
-	// either a file still uploading (the DB has no verified record yet, so nothing
-	// is changed) or a stuck partial size left by a leech/duplicate transfer (e.g.
-	// a .zip frozen at 444k) -- which the DB's verified size will correct. A fully
-	// completed file carries a checksum, so a dir of verified files never triggers
-	// the DB query and stays on the zero-cost path.
+	// Trigger on any suspect entry. A completed file can be left with a non-zero
+	// partial VFS size, so delaying non-zero repair exposes that short size to
+	// racing clients. The per-directory DB result cache below bounds the lookup.
 	needsRepair := false
 	for _, f := range files {
 		if f == nil || f.IsDir || f.IsSymlink {
