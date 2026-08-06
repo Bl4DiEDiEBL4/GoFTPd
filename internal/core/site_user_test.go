@@ -97,13 +97,17 @@ func TestSaveUserIPsOnlyPreservesUserfileGroups(t *testing.T) {
 
 func TestSiteChangeFieldSummaryUsesCanonicalNames(t *testing.T) {
 	summary := siteChangeFieldSummary()
+	fields := map[string]bool{}
+	for _, field := range strings.Split(summary, ",") {
+		fields[strings.TrimSpace(field)] = true
+	}
 	for _, needle := range []string{"NUM_LOGINS", "MAX_SIM", "GROUP_SIMULT"} {
-		if !strings.Contains(summary, needle) {
+		if !fields[needle] {
 			t.Fatalf("siteChangeFieldSummary() missing %q in %q", needle, summary)
 		}
 	}
 	for _, unwanted := range []string{"LOGINS", "LOGINSLOTS", "MAXSIM", "GROUPSIMULT", "SIMULT"} {
-		if strings.Contains(summary, unwanted) {
+		if fields[unwanted] {
 			t.Fatalf("siteChangeFieldSummary() should not include alias %q in %q", unwanted, summary)
 		}
 	}

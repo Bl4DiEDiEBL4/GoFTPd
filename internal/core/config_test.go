@@ -135,6 +135,8 @@ slave:
   name: "SLAVE1"
   master_host: "127.0.0.1"
   master_port: 1099
+  roots:
+    - "./site"
 plugins:
   autonuke:
     enabled: true

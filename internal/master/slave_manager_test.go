@@ -208,11 +208,12 @@ func TestSetRemergeChecksumThreadsNormalizes(t *testing.T) {
 func TestProcessRemergePrunesGhostChildrenPerScannedDirectory(t *testing.T) {
 	sm := NewSlaveManager("127.0.0.1", 1099, false, "", "", 60*time.Second)
 	rs := NewRemoteSlave("LOCAL", nil, nil, 60*time.Second, nil)
+	old := time.Now().Unix() - remergePurgeRecencyGraceSec - 1
 
 	sm.vfs.AddFile("/X265", VFSFile{IsDir: true, Seen: true, SlaveName: "LOCAL"})
 	sm.vfs.AddFile("/X265/keep", VFSFile{IsDir: true, Seen: true, SlaveName: "LOCAL"})
-	sm.vfs.AddFile("/X265/ghost", VFSFile{IsDir: true, Seen: true, SlaveName: "LOCAL"})
-	sm.vfs.AddFile("/X265/ghost/file.r00", VFSFile{Size: 100, Seen: true, SlaveName: "LOCAL"})
+	sm.vfs.AddFile("/X265/ghost", VFSFile{IsDir: true, Seen: true, SlaveName: "LOCAL", LastModified: old})
+	sm.vfs.AddFile("/X265/ghost/file.r00", VFSFile{Size: 100, Seen: true, SlaveName: "LOCAL", LastModified: old})
 
 	sm.ProcessRemerge(rs, &protocol.AsyncResponseRemerge{
 		Path:          "/X265",

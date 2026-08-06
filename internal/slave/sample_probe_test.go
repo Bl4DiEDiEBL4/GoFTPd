@@ -18,7 +18,7 @@ func TestProbeMKVMetadataParsesSegmentContainer(t *testing.T) {
 
 	infoPayload := append(
 		mkvTestElement([]byte{0x2A, 0xD7, 0xB1}, []byte{0x0F, 0x42, 0x40}),
-		mkvTestElement([]byte{0x44, 0x89}, mkvFloat64Bytes(80.0))...,
+		mkvTestElement([]byte{0x44, 0x89}, mkvFloat64Bytes(80_000.0))...,
 	)
 	videoPayload := append(
 		mkvTestElement([]byte{0xB0}, []byte{0x07, 0x80}),

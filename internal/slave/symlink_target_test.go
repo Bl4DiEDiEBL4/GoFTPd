@@ -6,7 +6,7 @@ import (
 )
 
 func TestVirtualSymlinkTargetMapsPhysicalRootToVFS(t *testing.T) {
-	siteRoot := filepath.Join(string(filepath.Separator), "glftpd", "site")
+	siteRoot := filepath.Join(t.TempDir(), "site")
 	s := &Slave{roots: []MountedRoot{{Path: siteRoot, MountPath: "/"}}}
 
 	linkPath := filepath.Join(siteRoot, "!Today_XXX-0DAY")
@@ -18,7 +18,7 @@ func TestVirtualSymlinkTargetMapsPhysicalRootToVFS(t *testing.T) {
 }
 
 func TestVirtualSymlinkTargetMapsRelativeRootTargetToVFS(t *testing.T) {
-	siteRoot := filepath.Join(string(filepath.Separator), "glftpd", "site")
+	siteRoot := filepath.Join(t.TempDir(), "site")
 	s := &Slave{roots: []MountedRoot{{Path: siteRoot, MountPath: "/"}}}
 
 	linkPath := filepath.Join(siteRoot, "!Today_XXX-0DAY")
@@ -30,8 +30,9 @@ func TestVirtualSymlinkTargetMapsRelativeRootTargetToVFS(t *testing.T) {
 }
 
 func TestVirtualSymlinkTargetMapsMountedRootToVFS(t *testing.T) {
-	siteRoot := filepath.Join(string(filepath.Separator), "glftpd", "site")
-	archiveRoot := filepath.Join(string(filepath.Separator), "glftpd", "DISK1")
+	baseDir := t.TempDir()
+	siteRoot := filepath.Join(baseDir, "site")
+	archiveRoot := filepath.Join(baseDir, "DISK1")
 	s := &Slave{roots: []MountedRoot{
 		{Path: siteRoot, MountPath: "/"},
 		{Path: archiveRoot, MountPath: "/ARCHiVE"},

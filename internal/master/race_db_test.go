@@ -332,8 +332,8 @@ func TestRaceDBGetRaceStatsUsesAggregateUserSpeeds(t *testing.T) {
 	if users[0].DurationMs != 5000 {
 		t.Fatalf("expected summed duration 5000ms, got %d", users[0].DurationMs)
 	}
-	if users[0].Speed != 150 {
-		t.Fatalf("expected aggregate user speed 150 bytes/s, got %f", users[0].Speed)
+	if users[0].Speed != 60 {
+		t.Fatalf("expected bytes over summed transfer time speed 60 bytes/s, got %f", users[0].Speed)
 	}
 	if users[0].PeakSpeed != 100 {
 		t.Fatalf("expected peak user speed 100 bytes/s, got %f", users[0].PeakSpeed)
@@ -341,8 +341,8 @@ func TestRaceDBGetRaceStatsUsesAggregateUserSpeeds(t *testing.T) {
 	if users[0].SlowSpeed != 50 {
 		t.Fatalf("expected slow user speed 50 bytes/s, got %f", users[0].SlowSpeed)
 	}
-	if groups[0].Speed != 150 {
-		t.Fatalf("expected aggregate group speed 150 bytes/s, got %f", groups[0].Speed)
+	if groups[0].Speed != 60 {
+		t.Fatalf("expected bytes over summed transfer time group speed 60 bytes/s, got %f", groups[0].Speed)
 	}
 }
 

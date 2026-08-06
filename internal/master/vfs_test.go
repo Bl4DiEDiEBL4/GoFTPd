@@ -104,6 +104,7 @@ func TestVFSRaceStatsUseCachedDirectChildren(t *testing.T) {
 	vfs.AddFile("/site/FLAC/release/01-track.flac", VFSFile{
 		Size:     100,
 		Seen:     true,
+		Checksum: 1,
 		Owner:    "steel",
 		Group:    "Admin",
 		XferTime: 1000,
@@ -111,6 +112,7 @@ func TestVFSRaceStatsUseCachedDirectChildren(t *testing.T) {
 	vfs.AddFile("/site/FLAC/release/02-track.flac", VFSFile{
 		Size:     200,
 		Seen:     true,
+		Checksum: 2,
 		Owner:    "steel",
 		Group:    "Admin",
 		XferTime: 2000,
@@ -207,6 +209,7 @@ func TestVFSRaceStatsRefreshAfterDelete(t *testing.T) {
 	vfs.AddFile("/site/MP3/release/01-track.mp3", VFSFile{
 		Size:     100,
 		Seen:     true,
+		Checksum: 1,
 		Owner:    "n0pe",
 		Group:    "Admin",
 		XferTime: 1000,
@@ -214,6 +217,7 @@ func TestVFSRaceStatsRefreshAfterDelete(t *testing.T) {
 	vfs.AddFile("/site/MP3/release/02-track.mp3", VFSFile{
 		Size:     200,
 		Seen:     true,
+		Checksum: 2,
 		Owner:    "n0pe",
 		Group:    "Admin",
 		XferTime: 1000,
@@ -449,9 +453,10 @@ func TestVFSPurgeUnseenSubtreeKeepsRecentUnseenUpload(t *testing.T) {
 
 func TestVFSScopedRemergePurgesUnseenSubtreeOnly(t *testing.T) {
 	vfs := NewVirtualFileSystem()
+	old := time.Now().Unix() - remergePurgeRecencyGraceSec - 1
 	vfs.AddFile("/TV-1080P", VFSFile{IsDir: true, Seen: true, SlaveName: "LOCAL"})
-	vfs.AddFile("/TV-1080P/old", VFSFile{IsDir: true, Seen: true, SlaveName: "LOCAL"})
-	vfs.AddFile("/TV-1080P/old/file.r00", VFSFile{Size: 100, Seen: true, SlaveName: "LOCAL"})
+	vfs.AddFile("/TV-1080P/old", VFSFile{IsDir: true, Seen: true, SlaveName: "LOCAL", LastModified: old})
+	vfs.AddFile("/TV-1080P/old/file.r00", VFSFile{Size: 100, Seen: true, SlaveName: "LOCAL", LastModified: old})
 	vfs.AddFile("/TV-1080P/keep", VFSFile{IsDir: true, Seen: true, SlaveName: "LOCAL"})
 	vfs.AddFile("/X265/other", VFSFile{IsDir: true, Seen: true, SlaveName: "LOCAL"})
 
@@ -915,7 +920,7 @@ func TestVFSRaceStatsIgnoreVerifiedFilesWithoutXferTime(t *testing.T) {
 	}
 }
 
-func TestVFSVerifiedPresentFilesFilteredExcludeUploading(t *testing.T) {
+func TestVFSVerifiedPresentFilesIgnoreStaleUploadingFilter(t *testing.T) {
 	vfs := NewVirtualFileSystem()
 	vfs.AddFile("/X265/release", VFSFile{IsDir: true, Seen: true})
 	vfs.SetSFVData("/X265/release", "release.sfv", map[string]uint32{
@@ -928,12 +933,12 @@ func TestVFSVerifiedPresentFilesFilteredExcludeUploading(t *testing.T) {
 	verified := vfs.GetVerifiedSFVPresentFilesFiltered("/X265/release", map[string]bool{
 		"file2.r01": true,
 	})
-	if len(verified) != 1 || !verified["file1.r00"] || verified["file2.r01"] {
-		t.Fatalf("expected uploading file to be excluded from verified set, got %+v", verified)
+	if len(verified) != 2 || !verified["file1.r00"] || !verified["file2.r01"] {
+		t.Fatalf("expected CRC-verified files to survive stale uploading filter, got %+v", verified)
 	}
 }
 
-func TestVFSRaceStatsFilteredExcludeUploading(t *testing.T) {
+func TestVFSRaceStatsIgnoreStaleUploadingFilterForVerifiedFile(t *testing.T) {
 	vfs := NewVirtualFileSystem()
 	vfs.AddFile("/X265/release", VFSFile{IsDir: true, Seen: true})
 	vfs.SetSFVData("/X265/release", "release.sfv", map[string]uint32{
@@ -960,17 +965,17 @@ func TestVFSRaceStatsFilteredExcludeUploading(t *testing.T) {
 	users, groups, totalBytes, present, total := vfs.GetRaceStatsFiltered("/X265/release", map[string]bool{
 		"live.r01": true,
 	})
-	if present != 1 || total != 2 {
-		t.Fatalf("expected uploading file to stay out of present count, got present=%d total=%d", present, total)
+	if present != 2 || total != 2 {
+		t.Fatalf("expected both CRC-verified files to count, got present=%d total=%d", present, total)
 	}
-	if totalBytes != 100 {
-		t.Fatalf("expected only completed verified bytes, got %d", totalBytes)
+	if totalBytes != 300 {
+		t.Fatalf("expected both CRC-verified file sizes, got %d", totalBytes)
 	}
-	if len(users) != 1 || users[0].Name != "doneuser" {
-		t.Fatalf("expected only completed uploader stats, got %+v", users)
+	if len(users) != 2 {
+		t.Fatalf("expected both completed uploader stats, got %+v", users)
 	}
-	if len(groups) != 1 || groups[0].Files != 1 || groups[0].Bytes != 100 {
-		t.Fatalf("expected only completed group stats, got %+v", groups)
+	if len(groups) != 1 || groups[0].Files != 2 || groups[0].Bytes != 300 {
+		t.Fatalf("expected both completed files in group stats, got %+v", groups)
 	}
 }
 
