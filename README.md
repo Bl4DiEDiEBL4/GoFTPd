@@ -61,6 +61,41 @@ For a first-time guided setup, use:
 ./setup.sh install
 ```
 
+### Windows Console Setup
+
+Native Windows does not need OpenSSL or a service wrapper. From PowerShell,
+allow scripts for the current window and run the console installer:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\setup.ps1 -Mode install -Config both
+```
+
+The script downloads Go 1.25 when Go is missing or too old, builds the daemon
+and sitebot, copies missing config and plugin templates, generates a localhost
+TLS/mTLS certificate set, and configures the master and local slave to use it.
+The generated client certificate identity matches `slave.name` (default
+`LOCAL`). To choose another local slave name on first setup, use:
+
+```powershell
+.\setup.ps1 -Mode install -Config both -SlaveName WINDOWS1
+```
+
+Start each component in its own PowerShell window:
+
+```powershell
+.\run-master.ps1
+.\run-slave.ps1
+.\run-sitebot.ps1
+```
+
+Windows uses a regular append-only event file instead of a Unix FIFO; the
+installer gives the daemon and sitebot the same path automatically. The
+generated server certificate covers only `localhost`, `127.0.0.1`, and `::1`.
+For master and slaves on separate machines, issue certificates for the real
+hostnames and distribute the master CA and per-slave client identities as
+described in [Master-Slave Authentication](docs/Master-Slave-TLS.md).
+
 If you only want to compile both binaries without touching config setup, use:
 
 ```bash

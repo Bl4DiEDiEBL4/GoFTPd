@@ -9,7 +9,9 @@ param(
     [switch]$SkipCerts,
     [switch]$Force,
 
-    [string]$GoVersion = "1.25.0"
+    [string]$GoVersion = "1.25.0",
+
+    [string]$SlaveName = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,8 +19,18 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ToolsDir = Join-Path $Root ".tools"
 Set-Location $Root
 
+if ($SlaveName -and $SlaveName -notmatch '^[A-Za-z0-9._-]+$') {
+    throw "SlaveName may contain only letters, numbers, dots, underscores, and dashes."
+}
+
 function Say($Message = "") {
     Write-Host $Message
+}
+
+function Assert-NativeSuccess([string]$Action) {
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Action failed with exit code $LASTEXITCODE."
+    }
 }
 
 function To-ConfigPath([string]$Path) {
@@ -31,6 +43,11 @@ function Ensure-Dir([string]$Path) {
     }
 }
 
+function Write-Utf8NoBom([string]$Path, [string]$Value) {
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $Value, $encoding)
+}
+
 function Get-GoArch {
     if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64" -or $env:PROCESSOR_ARCHITEW6432 -eq "ARM64") {
         return "arm64"
@@ -38,19 +55,40 @@ function Get-GoArch {
     return "amd64"
 }
 
+function Get-GoVersion([string]$GoExe) {
+    try {
+        $versionOutput = (& $GoExe version 2>$null | Select-Object -First 1)
+        if ($versionOutput -match '\bgo(\d+\.\d+(?:\.\d+)?)\b') {
+            return [version]$Matches[1]
+        }
+    } catch {
+        return $null
+    }
+    return $null
+}
+
 function Ensure-Go {
+    $requiredVersion = [version]$GoVersion
     $cmd = Get-Command go -ErrorAction SilentlyContinue
     if ($cmd) {
-        Say "found  Go: $($cmd.Source)"
-        return $cmd.Source
+        $installedVersion = Get-GoVersion $cmd.Source
+        if ($installedVersion -and $installedVersion -ge $requiredVersion) {
+            Say "found  Go $installedVersion`: $($cmd.Source)"
+            return $cmd.Source
+        }
+        Say "skip   system Go $installedVersion (need Go $requiredVersion or newer)"
     }
 
     $goRoot = Join-Path $ToolsDir "go"
     $goExe = Join-Path $goRoot "bin/go.exe"
     if (Test-Path -LiteralPath $goExe) {
-        $env:PATH = "$(Join-Path $goRoot "bin");$env:PATH"
-        Say "found  bundled Go: $goExe"
-        return $goExe
+        $bundledVersion = Get-GoVersion $goExe
+        if ($bundledVersion -and $bundledVersion -ge $requiredVersion) {
+            $env:PATH = "$(Join-Path $goRoot "bin");$env:PATH"
+            Say "found  bundled Go $bundledVersion`: $goExe"
+            return $goExe
+        }
+        Say "replace bundled Go $bundledVersion (need Go $requiredVersion or newer)"
     }
 
     $arch = Get-GoArch
@@ -93,7 +131,18 @@ function Replace-Text([string]$Path, [string]$Old, [string]$New) {
     $text = Get-Content -LiteralPath $Path -Raw
     if ($text.Contains($Old)) {
         $text = $text.Replace($Old, $New)
-        Set-Content -LiteralPath $Path -Value $text -NoNewline
+        Write-Utf8NoBom $Path $text
+    }
+}
+
+function Replace-Regex([string]$Path, [string]$Pattern, [string]$Replacement) {
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+    $text = Get-Content -LiteralPath $Path -Raw
+    $updated = [regex]::Replace($text, $Pattern, $Replacement)
+    if ($updated -ne $text) {
+        Write-Utf8NoBom $Path $updated
     }
 }
 
@@ -125,9 +174,9 @@ Set-Location $PSScriptRoot
 Set-Location (Join-Path $PSScriptRoot "sitebot")
 .\sitebot.exe --config etc/config.yml
 '@
-    Set-Content -LiteralPath (Join-Path $Root "run-master.ps1") -Value $master
-    Set-Content -LiteralPath (Join-Path $Root "run-slave.ps1") -Value $slave
-    Set-Content -LiteralPath (Join-Path $Root "run-sitebot.ps1") -Value $sitebot
+    Write-Utf8NoBom (Join-Path $Root "run-master.ps1") $master
+    Write-Utf8NoBom (Join-Path $Root "run-slave.ps1") $slave
+    Write-Utf8NoBom (Join-Path $Root "run-sitebot.ps1") $sitebot
     Say "write  run-master.ps1"
     Say "write  run-slave.ps1"
     Say "write  run-sitebot.ps1"
@@ -172,17 +221,67 @@ function Build-Binaries {
     $goExe = Ensure-Go
     Say "Building weaveftpd.exe..."
     & $goExe build -o (Join-Path $Root "weaveftpd.exe") ./cmd/weaveftpd
+    Assert-NativeSuccess "Daemon build"
 
     Say "Building sitebot.exe..."
     Push-Location (Join-Path $Root "sitebot")
     try {
         & $goExe build -o (Join-Path $Root "sitebot/sitebot.exe") ./cmd
+        Assert-NativeSuccess "Sitebot build"
     } finally {
         Pop-Location
     }
 }
 
-function Generate-CertsWithGo([string]$GoExe, [string]$CertDir) {
+function Resolve-SlaveName {
+    if ($SlaveName) {
+        return $SlaveName
+    }
+
+    $slaveConfig = Join-Path $Root "etc/config-slave.yml"
+    if (Test-Path -LiteralPath $slaveConfig) {
+        $text = Get-Content -LiteralPath $slaveConfig -Raw
+        $match = [regex]::Match($text, '(?m)^\s+name:\s*["'']?([A-Za-z0-9._-]+)["'']?\s*(?:#.*)?$')
+        if ($match.Success) {
+            return $match.Groups[1].Value
+        }
+    }
+
+    return "LOCAL"
+}
+
+function Get-ClientCertificateName([string]$ClientCert) {
+    try {
+        $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($ClientCert)
+        try {
+            return $cert.GetNameInfo(
+                [System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName,
+                $false
+            )
+        } finally {
+            $cert.Dispose()
+        }
+    } catch {
+        return $null
+    }
+}
+
+function Configure-GeneratedMTLS([string]$Name) {
+    $masterConfig = Join-Path $Root "etc/config.yml"
+    $slaveConfig = Join-Path $Root "etc/config-slave.yml"
+
+    Replace-Regex $masterConfig '(?m)^(\s*slave_ca_cert:\s*)""(\s*(?:#.*)?)$' '${1}"./etc/certs/ca.crt"${2}'
+
+    if ($SlaveName -and (Test-Path -LiteralPath $slaveConfig)) {
+        $nameReplacement = '${1}"' + $Name + '"${2}'
+        Replace-Regex $slaveConfig '(?m)^(\s{2}name:\s*)(?:"[^"]*"|''[^'']*''|[^\s#]+)(\s*(?:#.*)?)$' $nameReplacement
+    }
+    Replace-Regex $slaveConfig '(?m)^(\s*master_ca_cert:\s*)""(\s*(?:#.*)?)$' '${1}"./etc/certs/ca.crt"${2}'
+    Replace-Regex $slaveConfig '(?m)^(\s*client_cert:\s*)""(\s*(?:#.*)?)$' '${1}"./etc/certs/client.crt"${2}'
+    Replace-Regex $slaveConfig '(?m)^(\s*client_key:\s*)""(\s*(?:#.*)?)$' '${1}"./etc/certs/client.key"${2}'
+}
+
+function Generate-CertsWithGo([string]$GoExe, [string]$CertDir, [string]$Name) {
     Ensure-Dir $ToolsDir
     $helper = Join-Path $ToolsDir "makecerts.go"
     $source = @'
@@ -204,10 +303,11 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		log.Fatal("usage: makecerts <cert-dir>")
+	if len(os.Args) != 3 {
+		log.Fatal("usage: makecerts <cert-dir> <slave-name>")
 	}
 	dir := os.Args[1]
+	slaveName := os.Args[2]
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		log.Fatal(err)
 	}
@@ -229,7 +329,7 @@ func main() {
 	server := leaf(2, "WeaveFTPd FTP", x509.ExtKeyUsageServerAuth)
 	server.DNSNames = []string{"localhost"}
 	server.IPAddresses = []net.IP{net.ParseIP("127.0.0.1"), net.ParseIP("::1")}
-	client := leaf(3, "WeaveFTPd Slave", x509.ExtKeyUsageClientAuth)
+	client := leaf(3, slaveName, x509.ExtKeyUsageClientAuth)
 
 	writeCert(filepath.Join(dir, "ca.crt"), mustCert(ca, ca, &caKey.PublicKey, caKey))
 	writeKey(filepath.Join(dir, "ca.key"), caKey)
@@ -286,43 +386,39 @@ func writeKey(path string, key *ecdsa.PrivateKey) {
 	}
 }
 '@
-    Set-Content -LiteralPath $helper -Value $source -NoNewline
-    Say "OpenSSL not found; generating TLS certs with Go."
-    & $GoExe run $helper $CertDir
+    Write-Utf8NoBom $helper $source
+    Say "Generating localhost TLS and mTLS certificates with Go."
+    & $GoExe run $helper $CertDir $Name
+    Assert-NativeSuccess "Certificate generation"
 }
 
 function Generate-Certs {
     $certDir = Join-Path $Root "etc/certs"
-    $serverCert = Join-Path $certDir "server.crt"
-    $serverKey = Join-Path $certDir "server.key"
-    if ((Test-Path -LiteralPath $serverCert) -and (Test-Path -LiteralPath $serverKey) -and -not $Force) {
-        Say "keep   TLS certs in $certDir"
+    $name = Resolve-SlaveName
+    $requiredFiles = @("ca.crt", "ca.key", "server.crt", "server.key", "client.crt", "client.key")
+    $missingFiles = @($requiredFiles | Where-Object {
+        -not (Test-Path -LiteralPath (Join-Path $certDir $_))
+    })
+
+    if ($missingFiles.Count -eq 0 -and -not $Force) {
+        $clientName = Get-ClientCertificateName (Join-Path $certDir "client.crt")
+        if ($clientName -ne $name) {
+            throw "Existing client.crt has CN '$clientName', but slave.name is '$name'. Run setup.ps1 -Mode certs -Force to regenerate the local certificate set."
+        }
+        Configure-GeneratedMTLS $name
+        Say "keep   TLS certs in $certDir (slave identity: $name)"
         return
     }
 
-    $opensslCmd = Get-Command openssl -ErrorAction SilentlyContinue
-    if (-not $opensslCmd) {
-        $goExe = Ensure-Go
-        Generate-CertsWithGo $goExe $certDir
-        return
+    if ($missingFiles.Count -ne $requiredFiles.Count -and -not $Force) {
+        throw "TLS certificate set is incomplete (missing: $($missingFiles -join ', ')). Run setup.ps1 -Mode certs -Force to regenerate it."
     }
 
+    $goExe = Ensure-Go
     Ensure-Dir $certDir
-    Push-Location $certDir
-    try {
-        Say "Generating TLS certs in $certDir..."
-        & $opensslCmd.Source ecparam -genkey -name secp384r1 -out ca.key
-        & $opensslCmd.Source req -new -x509 -sha384 -days 3650 -key ca.key -out ca.crt -subj "/CN=WeaveFTPd Root CA/O=WeaveFTPd"
-        & $opensslCmd.Source ecparam -genkey -name secp384r1 -out server.key
-        & $opensslCmd.Source req -new -sha384 -key server.key -out server.csr -subj "/CN=WeaveFTPd FTP/O=WeaveFTPd"
-        & $opensslCmd.Source x509 -req -sha384 -days 3650 -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt
-        & $opensslCmd.Source ecparam -genkey -name secp384r1 -out client.key
-        & $opensslCmd.Source req -new -sha384 -key client.key -out client.csr -subj "/CN=WeaveFTPd Slave/O=WeaveFTPd"
-        & $opensslCmd.Source x509 -req -sha384 -days 3650 -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt
-        Remove-Item -LiteralPath "server.csr", "client.csr", "ca.srl" -Force -ErrorAction SilentlyContinue
-    } finally {
-        Pop-Location
-    }
+    Generate-CertsWithGo $goExe $certDir $name
+    Configure-GeneratedMTLS $name
+    Say "ready  TLS certs in $certDir (slave identity: $name)"
 }
 
 Say "=============================================================="
@@ -362,4 +458,4 @@ Say "  The daemon appends JSON lines; the sitebot tails only new lines."
 Say ""
 Say "Dependency note:"
 Say "  If go.exe is missing, setup downloads Go $GoVersion into .tools\go."
-Say "  OpenSSL is optional; certs use OpenSSL when present, otherwise Go."
+Say "  OpenSSL is not required; setup generates certificates with Go."
