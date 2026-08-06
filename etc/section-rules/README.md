@@ -27,4 +27,4 @@ zipscript:
 ```
 
 The included files were seeded from the section-specific blocks in
-`etc/msgs/rules.msg`. Rule lines use simple `01`, `02`, `03` numbering.
+`etc/msgs/rules.msg`. Rule lines use simple `01.`, `02.`, `03.` numbering.
