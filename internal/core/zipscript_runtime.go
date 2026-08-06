@@ -257,7 +257,21 @@ func releaseStatusForDir(bridge MasterBridge, dirPath string) (ReleaseStatus, bo
 }
 
 func releaseStatusComplete(status ReleaseStatus) bool {
-	return status.Total > 0 && status.Present >= status.Total
+	return raceCountsComplete(status.Present, status.Total)
+}
+
+// raceCountsComplete reports whether present has reached the expected total.
+// An unknown total (<= 0) is never complete: for zip races this means the
+// file_id.diz-derived part count hasn't been read yet (it lives inside
+// whichever payload .zip carries it, which may not be the first one to
+// land), not that there's no count to track, so a low presentCount must not
+// be reported complete just because the total isn't known yet. This is the
+// single source of truth for the "is this release/file done" boolean that
+// used to be reimplemented ad hoc at each call site, with the zip path
+// briefly disagreeing with the rest (see vfs.go's checksum-verification
+// consolidation for the same pattern applied to CRC comparisons).
+func raceCountsComplete(present, total int) bool {
+	return total > 0 && present >= total
 }
 
 func incompleteMarkerName(pattern, relname string) string {
@@ -443,9 +457,9 @@ func ensureSFVDataAvailable(cfg *Config, bridge MasterBridge, dirPath string) ma
 }
 
 // maybeGenerateReleaseM3U creates an .m3u playlist from the SFV for a completed
-// MP3 release (pzs-ng create_m3u behaviour). weaveftpd does not otherwise produce
+// MP3/FLAC release (pzs-ng create_m3u behaviour). weaveftpd does not otherwise produce
 // an m3u, so without this an outbound race / link script can complete before a
-// racer uploads one. No-op when disabled, the section is not MP3, there is no
+// racer uploads one. No-op when disabled, the section is not MP3/FLAC, there is no
 // SFV, or the release already has an .m3u.
 func maybeGenerateReleaseM3U(s *Session, bridge MasterBridge, dirPath string) {
 	if s == nil || s.Config == nil || bridge == nil {
@@ -642,7 +656,6 @@ func populateUploadRaceData(bridge MasterBridge, cfg *Config, dirPath, fileName 
 			presentCount = zipscript.ZipDirPayloadCount(zipBridge(bridge).ListZipDirEntries(dirPath))
 		}
 		users, totalBytes, _ := zipDirRaceStats(bridge, dirPath, entries, expected)
-		raceComplete := expected > 0 && presentCount >= expected
 		zipscript.CacheZipReleaseProgress(zipBridge(bridge), dirPath, presentCount, expected)
 		if presentCount > 0 {
 			raceDurationMs := bridge.GetRaceWallClockMilliseconds(dirPath)
@@ -688,7 +701,7 @@ func populateUploadRaceData(bridge MasterBridge, cfg *Config, dirPath, fileName 
 				data["leader_pct"] = fmt.Sprintf("%d", leader.Percent)
 				data["leader_speed"] = fmt.Sprintf("%.2fMB/s", leader.Speed/1024.0/1024.0)
 			}
-			return users, groups, totalBytes, totalFiles, raceDurationMs, raceComplete || expected == 0 || presentCount >= expected
+			return users, groups, totalBytes, totalFiles, raceDurationMs, raceCountsComplete(presentCount, expected)
 		}
 		return nil, nil, 0, 0, 0, false
 	}
@@ -731,7 +744,7 @@ func populateUploadRaceData(bridge MasterBridge, cfg *Config, dirPath, fileName 
 				data["leader_pct"] = fmt.Sprintf("%d", leader.Percent)
 				data["leader_speed"] = fmt.Sprintf("%.2fMB/s", leader.Speed/1024.0/1024.0)
 			}
-			return users, groups, totalBytes, total, raceDurationMs, present >= total
+			return users, groups, totalBytes, total, raceDurationMs, raceCountsComplete(present, total)
 		}
 	}
 	return nil, nil, 0, 0, 0, false
@@ -852,7 +865,7 @@ func dirRaceStatusName(bridge MasterBridge, cfg *Config, dirPath, siteName strin
 	extra := listStatusAudioExtra(bridge, cfg, dirPath)
 	if total > 0 {
 		totalMB := float64(totalBytes) / (1024 * 1024)
-		if present >= total {
+		if raceCountsComplete(present, total) {
 			if extra != "" {
 				statusEntries = append(statusEntries, fmt.Sprintf("[%s] - ( %.0fM %dF - COMPLETE - %s ) - [%s]", siteName, totalMB, total, extra, siteName))
 				extra = ""
@@ -1317,7 +1330,7 @@ func emitReleaseUploadEventAndRace(s *Session, bridge MasterBridge, in releaseUp
 		if err := bridge.SyncReleaseRaceStats(in.UploadDir); err != nil && s.Config.Debug {
 			log.Printf("[MASTER-ZS] release race sync failed for %s: %v", in.UploadDir, err)
 		}
-		// Generate the MP3 .m3u from the SFV before the complete announce/hook fires,
+		// Generate the audio .m3u from the SFV before the complete announce/hook fires,
 		// so outbound races and link scripts always find it (like glftpd/pzs-ng).
 		maybeGenerateReleaseM3U(s, bridge, in.UploadDir)
 		if state.AudioFields == nil {

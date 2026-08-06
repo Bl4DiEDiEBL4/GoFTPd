@@ -17,6 +17,7 @@ func TestAuthStateBackupOnceCreatesDaemonBackups(t *testing.T) {
 	mustWrite(t, filepath.Join("etc", "group"), "iND::300:\n", 0644)
 	mustWrite(t, filepath.Join("etc", "permissions.yml"), "rules: []\n", 0644)
 	mustWrite(t, filepath.Join("etc", "affils.yml"), "affils: []\n", 0644)
+	mustWrite(t, filepath.Join("etc", "slave_masks.txt"), "SLAVE1 127.0.0.1\n", 0644)
 	mustWrite(t, filepath.Join("etc", "users", "Finity"), "USER test\nGROUP iND 0\n", 0600)
 	mustWrite(t, filepath.Join("etc", "groups", "iND"), "GROUP iND\n", 0644)
 
@@ -30,6 +31,7 @@ func TestAuthStateBackupOnceCreatesDaemonBackups(t *testing.T) {
 	assertFile(t, filepath.Join(snap, "etc", "group"), "iND::300:\n")
 	assertFile(t, filepath.Join(snap, "etc", "permissions.yml"), "rules: []\n")
 	assertFile(t, filepath.Join(snap, "etc", "affils.yml"), "affils: []\n")
+	assertFile(t, filepath.Join(snap, "etc", "slave_masks.txt"), "SLAVE1 127.0.0.1\n")
 	assertFile(t, filepath.Join(snap, "etc", "users", "Finity"), "USER test\nGROUP iND 0\n")
 	assertFile(t, filepath.Join(snap, "etc", "groups", "iND"), "GROUP iND\n")
 }

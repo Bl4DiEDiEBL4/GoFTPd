@@ -98,3 +98,87 @@ func TestReserveUploadPathBlocksDuplicateUntilRelease(t *testing.T) {
 	}
 	releaseUploadPath(filePath)
 }
+
+func TestActiveDownloadForPathDetectsInFlightDownload(t *testing.T) {
+	filePath := "/UPLOAD/release/file.r00"
+
+	if activeDownloadForPath(filePath) {
+		t.Fatalf("no session active yet, expected no in-flight download")
+	}
+
+	server, client := net.Pipe()
+	defer client.Close()
+
+	s := &Session{
+		Conn:     server,
+		IsLogged: true,
+	}
+	s.beginTransfer("download", filePath)
+	s.ID = registerSession(s)
+	defer unregisterSession(s.ID)
+
+	if !activeDownloadForPath(filePath) {
+		t.Fatalf("expected in-flight download to be detected")
+	}
+	if activeDownloadForPath("/UPLOAD/release/other-file.r00") {
+		t.Fatalf("expected unrelated path to report no in-flight download")
+	}
+
+	s.endTransfer()
+	if activeDownloadForPath(filePath) {
+		t.Fatalf("expected download path to clear once transfer ends")
+	}
+}
+
+func TestDownloadPathReservationCountsConcurrentReaders(t *testing.T) {
+	filePath := "/UPLOAD/release/shared-file.r00"
+	releaseDownloadPath(filePath)
+
+	if !reserveDownloadPath(filePath) || !reserveDownloadPath(filePath) {
+		t.Fatalf("expected concurrent download reservations to succeed")
+	}
+	if !activeDownloadForPath(filePath) {
+		t.Fatalf("reserved download path should be treated as active")
+	}
+
+	releaseDownloadPath(filePath)
+	if !activeDownloadForPath(filePath) {
+		t.Fatalf("one remaining reader should keep the path active")
+	}
+	releaseDownloadPath(filePath)
+	if activeDownloadForPath(filePath) {
+		t.Fatalf("path should clear after the final reader exits")
+	}
+}
+
+func TestUploadReservationBlocksDownloadReservation(t *testing.T) {
+	filePath := "/UPLOAD/release/uploading-file.r00"
+	releaseUploadPath(filePath)
+	releaseDownloadPath(filePath)
+
+	if !reserveUploadPath(filePath) {
+		t.Fatalf("expected upload reservation to succeed")
+	}
+	defer releaseUploadPath(filePath)
+
+	if reserveDownloadPath(filePath) {
+		releaseDownloadPath(filePath)
+		t.Fatalf("download reservation must not pass an active upload reservation")
+	}
+}
+
+func TestDownloadReservationBlocksUploadReservation(t *testing.T) {
+	filePath := "/UPLOAD/release/downloading-file.r00"
+	releaseUploadPath(filePath)
+	releaseDownloadPath(filePath)
+
+	if !reserveDownloadPath(filePath) {
+		t.Fatalf("expected download reservation to succeed")
+	}
+	defer releaseDownloadPath(filePath)
+
+	if reserveUploadPath(filePath) {
+		releaseUploadPath(filePath)
+		t.Fatalf("upload reservation must not pass an active download reservation")
+	}
+}

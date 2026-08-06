@@ -606,14 +606,30 @@ func (h *Handler) emitCleanupDeleted(rel releaseCandidate, reason string) {
 	if h == nil || h.svc == nil || h.svc.EmitEvent == nil {
 		return
 	}
-	message := fmt.Sprintf("deleted old nuked release [%s] %s (%s)", rel.Section, rel.Name, reason)
-	h.svc.EmitEvent(string(core.EventAutonukeDelete), rel.Path, rel.Name, rel.Section, 0, 0, map[string]string{
-		"relname": rel.Name,
+	// The dir on disk uses the configured nuke prefix; announce the original
+	// release name, not the nuke folder name.
+	relName := displayReleaseName(rel.Name, h.cfg.NukedPrefix)
+	message := fmt.Sprintf("deleted old nuked release [%s] %s (%s)", rel.Section, relName, reason)
+	h.svc.EmitEvent(string(core.EventAutonukeDelete), rel.Path, relName, rel.Section, 0, 0, map[string]string{
+		"relname": relName,
 		"section": rel.Section,
 		"owner":   h.ownerLabel(rel),
 		"reason":  reason,
 		"message": message,
 	})
+}
+
+// displayReleaseName strips the exact configured nuke directory prefix so custom
+// styles work without altering legitimate release names that start with brackets.
+func displayReleaseName(name, prefix string) string {
+	n := strings.TrimSpace(name)
+	prefix = strings.TrimSpace(prefix)
+	if prefix != "" && strings.HasPrefix(n, prefix) {
+		if relName := strings.TrimSpace(strings.TrimPrefix(n, prefix)); relName != "" {
+			return relName
+		}
+	}
+	return n
 }
 
 func (h *Handler) nukedAgeMinutes(nukedPath string, fallbackModTime int64) int {

@@ -85,6 +85,63 @@ func TestCheckActiveTransfersAbortsSlowSlaveUpload(t *testing.T) {
 	}
 }
 
+func TestCheckActiveTransfersDisconnectsSessionToKickUser(t *testing.T) {
+	started := time.Now().Add(-8 * time.Second)
+	disconnected := false
+	abortFallbackCalled := false
+
+	h := New()
+	h.svc = &plugin.Services{
+		Logger: log.New(os.Stderr, "", 0),
+		ListActiveSessions: func() []plugin.ActiveSession {
+			return []plugin.ActiveSession{{
+				ID:                9,
+				User:              "tester",
+				PrimaryGroup:      "USERS",
+				LoggedIn:          true,
+				TransferDirection: "upload",
+				TransferPath:      "/TV/release/file.r00",
+				TransferStartedAt: started,
+				TransferSlaveName: "SLAVE1",
+				TransferSlaveIdx:  42,
+			}}
+		},
+		GetLiveTransferStats: func() []plugin.LiveTransferStat {
+			return []plugin.LiveTransferStat{{
+				SlaveName:     "SLAVE1",
+				TransferIndex: 42,
+				Path:          "/TV/release/file.r00",
+				StartedAt:     started,
+				Transferred:   1024,
+				SpeedBytes:    1024,
+			}}
+		},
+		DisconnectSession: func(id uint64) bool {
+			disconnected = id == 9
+			return disconnected
+		},
+		AbortTransfer: func(string, int32, string) bool {
+			abortFallbackCalled = true
+			return true
+		},
+	}
+	h.monitorUploads = true
+	h.minUsersOnline = 0
+	h.minUploadSpeedBytes = 5 * 1024
+	h.uploadGrace = 7 * time.Second
+	h.announceKick = false
+	h.tempbanAfterKick = false
+
+	h.checkActiveTransfers(started.Add(8 * time.Second))
+
+	if !disconnected {
+		t.Fatalf("expected slowkick to disconnect the FTP session")
+	}
+	if abortFallbackCalled {
+		t.Fatalf("did not expect direct abort fallback after session disconnect succeeded")
+	}
+}
+
 func TestCheckActiveTransfersSkipsExcludedExtension(t *testing.T) {
 	started := time.Now().Add(-10 * time.Second)
 	var aborted bool

@@ -46,6 +46,15 @@ func (s *Session) attachTransferToSlave(slaveName string, slaveIdx int32) {
 	s.stateMu.Unlock()
 }
 
+func (s *Session) attachTransferConn(conn net.Conn) {
+	if s == nil || conn == nil {
+		return
+	}
+	s.stateMu.Lock()
+	s.transferConn = conn
+	s.stateMu.Unlock()
+}
+
 func (s *Session) addTransferBytes(n int64) {
 	if s == nil || n <= 0 {
 		return
@@ -67,6 +76,7 @@ func (s *Session) endTransfer() {
 	s.TransferStartedAt = time.Time{}
 	s.TransferSlaveName = ""
 	s.TransferSlaveIdx = 0
+	s.transferConn = nil
 	s.stateMu.Unlock()
 	// Several upload paths call endTransfer explicitly and again via defer.
 	// Record metrics only on the first call (when a transfer was actually
@@ -141,5 +151,7 @@ func trackTransferConn(s *Session, conn net.Conn, direction string) net.Conn {
 	if s == nil || conn == nil || direction == "" {
 		return conn
 	}
-	return &bandwidthTrackingConn{Conn: conn, session: s, direction: direction}
+	tracked := &bandwidthTrackingConn{Conn: conn, session: s, direction: direction}
+	s.attachTransferConn(tracked)
+	return tracked
 }

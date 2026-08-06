@@ -19,12 +19,17 @@ func (s *Session) abortCurrentTransfer(reason string) bool {
 	slaveName := s.TransferSlaveName
 	slaveIdx := s.TransferSlaveIdx
 	hasTransfer := strings.TrimSpace(s.TransferDirection) != "" && strings.TrimSpace(s.TransferPath) != ""
+	dataConn := s.transferConn
 	s.stateMu.RUnlock()
 
 	if hasTransfer {
 		if aborter, ok := s.MasterManager.(transferAborter); ok && strings.TrimSpace(slaveName) != "" && slaveIdx != 0 {
 			aborted = aborter.AbortTransfer(slaveName, slaveIdx, reason)
 		}
+	}
+	if dataConn != nil {
+		_ = dataConn.Close()
+		aborted = true
 	}
 
 	if s.DataListen != nil {

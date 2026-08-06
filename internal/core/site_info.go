@@ -81,6 +81,7 @@ var baseSiteHelpEntries = []siteHelpEntry{
 	{Command: "SLAVEBAN", Usage: "<ip|cidr>", Summary: "Add an IP or CIDR to the persistent slave control denylist", Area: "Release/admin"},
 	{Command: "SLAVEUNBAN", Usage: "<ip|cidr>", Summary: "Remove an IP or CIDR from the persistent slave control denylist and clear matching temp bans", Area: "Release/admin"},
 	{Command: "SLAVECLEARBAN", Usage: "<ip|cidr>", Summary: "Clear an active slave control temp ban without changing the persistent denylist", Area: "Release/admin"},
+	{Command: "SLAVE", Usage: "MASKS | <name> MASKS | <name> ADDMASK|DELMASK <mask>", Summary: "Manage per-slave IP masks used when mTLS is disabled", Area: "Release/admin"},
 	{Command: "SEARCH", Usage: "<pattern>", Summary: "Search releases", Area: "Search/rescan"},
 	{Command: "RACE", Usage: "<release>", Summary: "Show race stats for a release", Area: "Search/rescan"},
 	{Command: "RESCAN", Usage: "<path>", Summary: "Rescan a path", Area: "Search/rescan"},
