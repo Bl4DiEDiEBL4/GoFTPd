@@ -280,6 +280,22 @@ func TestIgnoredReleaseSubdirsIncludeSpamByDefault(t *testing.T) {
 	}
 }
 
+func TestReleaseDisplayNameIncludesParentForMultiDiscSubdirs(t *testing.T) {
+	tests := map[string]string{
+		"/BLURAY/Legion.Of.The.Dead.2001.COMPLETE.BLURAY-FULLBRUTALiTY/DISC1": "Legion.Of.The.Dead.2001.COMPLETE.BLURAY-FULLBRUTALiTY/DISC1",
+		"/BLURAY/Example.Release-GRP/CD02":                                    "Example.Release-GRP/CD02",
+		"/BLURAY/Example.Release-GRP/DISK2":                                   "Example.Release-GRP/DISK2",
+		"/BLURAY/Example.Release-GRP/DVD1":                                    "Example.Release-GRP/DVD1",
+		"/BLURAY/Example.Release-GRP":                                         "Example.Release-GRP",
+		"/BLURAY/Example.Release-GRP/Sample":                                  "Sample",
+	}
+	for dirPath, want := range tests {
+		if got := ReleaseDisplayName(dirPath); got != want {
+			t.Fatalf("ReleaseDisplayName(%q) = %q, want %q", dirPath, got, want)
+		}
+	}
+}
+
 func TestIgnoredReleaseSubdirNeverTriggersRaceEnd(t *testing.T) {
 	announce := true
 	cfg := Config{
