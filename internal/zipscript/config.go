@@ -11,6 +11,7 @@ type Config struct {
 	List         ListConfig         `yaml:"list"`
 	Incomplete   IncompleteConfig   `yaml:"incomplete"`
 	AllowedFiles AllowedFilesConfig `yaml:"allowed_files"`
+	SectionRules SectionRulesConfig `yaml:"section_rules"`
 	Audio        AudioConfig        `yaml:"audio"`
 	Media        MediaConfig        `yaml:"media"`
 	Hooks        HooksConfig        `yaml:"hooks"`
@@ -86,6 +87,11 @@ type ListConfig struct {
 type AllowedFilesConfig struct {
 	AllowedTypes []string `yaml:"allowed_types"`
 	IgnoredTypes []string `yaml:"ignored_types"`
+}
+
+type SectionRulesConfig struct {
+	CWD       bool   `yaml:"cwd"`
+	Directory string `yaml:"directory"`
 }
 
 type AudioConfig struct {
@@ -235,6 +241,9 @@ func (c *Config) ApplyDefaults() {
 	if c.List.MissingFiles == nil {
 		enabled := true
 		c.List.MissingFiles = &enabled
+	}
+	if c.SectionRules.Directory == "" {
+		c.SectionRules.Directory = "etc/section-rules"
 	}
 	if c.Race.CWDRaceStats == nil {
 		enabled := true

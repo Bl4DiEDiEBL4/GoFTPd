@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"strings"
+	"unicode"
 )
 
 func ProgressBar(present, total, width int) string {
@@ -111,6 +112,73 @@ func boxRight(s string, w int) string {
 
 // BoxInnerWidth matches the CWD race-stats banner.
 const BoxInnerWidth = 70
+
+const maxSectionRuleLines = 60
+
+func BuildSectionRulesBox(section string, lines []string, version string) []string {
+	if len(lines) == 0 {
+		return nil
+	}
+
+	const full = BoxInnerWidth
+	const margin = 1
+	const contentWidth = full - (margin * 2)
+	title := strings.ToUpper(strings.TrimSpace(section)) + " RULES"
+	out := []string{
+		bxTL + strings.Repeat(bxH, full) + bxTR,
+		bxV + boxCenter(title, full) + bxV,
+		bxV + boxRight("WeaveFTPd v"+version+" ", full) + bxV,
+		bxLT + strings.Repeat(bxH, full) + bxRT,
+	}
+
+	truncated := false
+	for _, line := range lines {
+		for _, wrapped := range wrapBoxText(line, contentWidth) {
+			if len(out)-4 >= maxSectionRuleLines {
+				truncated = true
+				break
+			}
+			out = append(out, bxV+strings.Repeat(" ", margin)+boxText(wrapped, contentWidth)+strings.Repeat(" ", margin)+bxV)
+		}
+		if truncated {
+			break
+		}
+	}
+	if truncated {
+		out = append(out, bxV+strings.Repeat(" ", margin)+boxText("...", contentWidth)+strings.Repeat(" ", margin)+bxV)
+	}
+	out = append(out, bxBL+strings.Repeat(bxH, full)+bxBR)
+	return out
+}
+
+func wrapBoxText(value string, width int) []string {
+	value = strings.TrimSpace(value)
+	if value == "" || width <= 0 {
+		return []string{""}
+	}
+
+	var out []string
+	remaining := []rune(value)
+	for len(remaining) > width {
+		cut := width
+		for i := width; i > 0; i-- {
+			if unicode.IsSpace(remaining[i-1]) {
+				cut = i - 1
+				break
+			}
+		}
+		if cut == 0 {
+			cut = width
+		}
+		out = append(out, strings.TrimSpace(string(remaining[:cut])))
+		remaining = remaining[cut:]
+		for len(remaining) > 0 && unicode.IsSpace(remaining[0]) {
+			remaining = remaining[1:]
+		}
+	}
+	out = append(out, strings.TrimSpace(string(remaining)))
+	return out
+}
 
 func BuildAudioInfoBox(dirPath string, fields map[string]string, version string) []string {
 	if len(fields) == 0 {

@@ -619,6 +619,12 @@ func TestValidateUploadReadableSfvStillEnforcesRestrictAndDoubleSfv(t *testing.T
 func TestApplyDefaultsEnableDrFTPDStyleListAndCwdToggles(t *testing.T) {
 	cfg := Config{}
 	cfg.ApplyDefaults()
+	if cfg.SectionRules.CWD {
+		t.Fatalf("expected section rules CWD display to require explicit opt-in")
+	}
+	if cfg.SectionRules.Directory != "etc/section-rules" {
+		t.Fatalf("section rules directory = %q, want default", cfg.SectionRules.Directory)
+	}
 
 	if cfg.List.StatusBarEnabled == nil || !*cfg.List.StatusBarEnabled {
 		t.Fatalf("expected statusbar_enabled default to true")

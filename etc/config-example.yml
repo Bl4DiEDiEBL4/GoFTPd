@@ -17,8 +17,8 @@ sitename_long:  "WeaveFTPd"        # Full site name, shown in FTP banners
 sitename_short: "WeaveFTPd"            # 2-3 char site tag used in race stats
 # Version is loaded from sibling file: etc/version
 timezone:       "Europe/Amsterdam" # IANA timezone for FTP LIST/MLSD/MDTM and dated dirs; empty/"Local" uses OS local time
-show_cwd_banner: true           # Show the WeaveFTPd logo banner on CWD when there is no actual race data.
-                                # Real race-stat banners are still shown regardless of this setting.
+show_cwd_banner: true           # Show the CWD race-stat banner when actual race data exists.
+                                # Empty section/release directories never show a race banner.
 show_real_owner_group: false    # Show stored file owner/group in LIST, MLSD, and STAT -l for real VFS files.
                                 # false keeps the virtual WeaveFTPd/WeaveFTPd ownership look.
 
@@ -379,7 +379,7 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 #                read-only old date dirs, and NEWDAY events
 #    tvmaze  — looks up TV shows on TVMaze when a release dir is created,
 #              writes .tvmaze into the dir (shown via show_diz above)
-#    imdb    — same for movies via imdbapi.dev, writes .imdb
+#    imdb    — same for movies via api.tiffara.com, writes .imdb
 #    pretime - looks up release pre times from SQLite, MySQL, or HTTP APIs
 #              and emits NEWPRETIME / OLDPRETIME append announces
 #    pre     - handles SITE PRE for affil staging dirs and PREBW announces
@@ -405,6 +405,10 @@ nukedir_style:       "[NUKED]-%N"   # Renamed dir pattern (%N = release name)
 zipscript:
   enabled: true                # master-side zipscript module on/off
   debug: false                 # reserved for zipscript-specific debug output
+
+  section_rules:
+    cwd: true                  # show SECTION.txt rules in a drawbox when entering a section
+    directory: "etc/section-rules"
 
   race:
     enabled: true              # enables race tracking derived labels/stats

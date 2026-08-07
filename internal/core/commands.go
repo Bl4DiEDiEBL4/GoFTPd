@@ -536,6 +536,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
+				emitCWDSectionRules(s, s.CurrentDir)
 				emitCWDZipDIZInfo(s, bridge, s.CurrentDir)
 				emitCWDAudioInfo(s, bridge, s.CurrentDir)
 				if s.Config.ShowDiz != nil {
@@ -568,7 +569,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 							s.CurrentDir, len(users), len(groups), totalBytes, present, total)
 					}
 
-					if HasRaceStats(users, groups, totalBytes, present, total) {
+					if shouldRenderCWDRaceBanner(s.Config, users, groups, totalBytes, present, total) {
 						var builder strings.Builder
 						RenderRaceStats(
 							&builder,
@@ -583,18 +584,6 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						for _, line := range strings.Split(strings.TrimRight(builder.String(), "\r\n"), "\n") {
 							fmt.Fprintf(s.Conn, "250-%s\r\n", line)
 						}
-					} else if s.Config.ShowCWDBanner {
-						var builder strings.Builder
-						RenderRaceHeader(&builder, s.Config.Version)
-						for _, line := range strings.Split(strings.TrimRight(builder.String(), "\r\n"), "\n") {
-							fmt.Fprintf(s.Conn, "250-%s\r\n", line)
-						}
-					}
-				} else if s.Config.ShowCWDBanner {
-					var builder strings.Builder
-					RenderRaceHeader(&builder, s.Config.Version)
-					for _, line := range strings.Split(strings.TrimRight(builder.String(), "\r\n"), "\n") {
-						fmt.Fprintf(s.Conn, "250-%s\r\n", line)
 					}
 				}
 			}

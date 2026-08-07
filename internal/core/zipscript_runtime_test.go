@@ -2,6 +2,21 @@ package core
 
 import "testing"
 
+func TestShouldRenderCWDRaceBannerRequiresRaceData(t *testing.T) {
+	cfg := &Config{ShowCWDBanner: true}
+	if shouldRenderCWDRaceBanner(cfg, nil, nil, 0, 0, 0) {
+		t.Fatal("empty race data should not render a CWD race banner")
+	}
+	if !shouldRenderCWDRaceBanner(cfg, []VFSRaceUser{{Name: "racer"}}, nil, 100, 1, 1) {
+		t.Fatal("actual race data should render when the CWD banner is enabled")
+	}
+
+	cfg.ShowCWDBanner = false
+	if shouldRenderCWDRaceBanner(cfg, []VFSRaceUser{{Name: "racer"}}, nil, 100, 1, 1) {
+		t.Fatal("disabled CWD banner should not render race data")
+	}
+}
+
 func TestRaceCountsComplete(t *testing.T) {
 	cases := []struct {
 		name           string

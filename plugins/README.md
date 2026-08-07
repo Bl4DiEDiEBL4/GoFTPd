@@ -7,7 +7,7 @@ release nuked, etc.) and doing work with the master's VFS bridge.
 
 - **autonuke** - periodically scans release paths and auto-nukes empty, incomplete, half-empty, or banned releases using the normal nuke pipeline
 - **tvmaze** - async TV show lookup on MKD, writes `.tvmaze` into the release dir
-- **imdb** - async movie lookup on MKD (via imdbapi.dev), writes `.imdb`
+- **imdb** - async movie lookup on MKD (via api.tiffara.com), writes `.imdb`
 - **pretime** - async pretime lookup on MKD via SQLite, MySQL, PostgreSQL, or HTTP/JSON sources, emits `NEWPRETIME` / `OLDPRETIME`
 - **pre** - handles SITE PRE and affil management, and emits PRE bandwidth / audio metadata events
 - **request** - handles SITE REQUEST/REQUESTS/REQFILL/REQTOP/REQDEL/REQWIPE and mirrors request/fill stats to `userdata/request_state.json`
