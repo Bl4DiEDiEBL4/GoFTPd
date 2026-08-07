@@ -41,6 +41,8 @@ type StatusMarkerEntry struct {
 }
 
 var zipPayloadNameRE = regexp.MustCompile(`(?i)\.(zip|z\d\d)$`)
+var multiDiscReleaseDirRE = regexp.MustCompile(`(?i)^(?:cd|disc|disk|dvd)[0-9]{1,2}$`)
+var discDirNameRE = regexp.MustCompile(`(?i)^(?:cd|disc|disk|dvd)[0-9]+$`)
 
 var scenePayloadExts = map[string]bool{
 	"rar":  true,
@@ -196,6 +198,31 @@ func ReleaseSubdirLabel(cfg Config, dirPath string) string {
 	return strings.TrimSpace(path.Base(path.Clean(dirPath)))
 }
 
+// IsMultiDiscReleaseSubdir matches the numbered disc directories that pzs-ng
+// treats as children of the parent release for announce display purposes.
+func IsMultiDiscReleaseSubdir(dirPath string) bool {
+	name := strings.TrimSpace(path.Base(path.Clean(dirPath)))
+	return multiDiscReleaseDirRE.MatchString(name)
+}
+
+// ReleaseDisplayName keeps each disc as an independent race while including
+// its parent release in announces, for example Release-GRP/DISC1.
+func ReleaseDisplayName(dirPath string) string {
+	clean := path.Clean("/" + strings.TrimSpace(dirPath))
+	name := strings.TrimSpace(path.Base(clean))
+	if name == "" || name == "." || name == "/" {
+		return ""
+	}
+	if !IsMultiDiscReleaseSubdir(clean) {
+		return name
+	}
+	parent := strings.TrimSpace(path.Base(path.Dir(clean)))
+	if parent == "" || parent == "." || parent == "/" {
+		return name
+	}
+	return parent + "/" + name
+}
+
 func IncompleteEnabled(cfg Config) bool {
 	return cfg.Enabled && cfg.Incomplete.Enabled
 }
@@ -332,8 +359,7 @@ func appendStatusMarker(out *[]StatusMarkerEntry, seen map[string]struct{}, name
 
 func isDiscDirName(name string) bool {
 	lower := strings.ToLower(strings.TrimSpace(name))
-	ok, _ := regexp.MatchString(`^(cd|disc|disk|dvd)\d+$`, lower)
-	return ok
+	return discDirNameRE.MatchString(lower)
 }
 
 func isStatusMarkerName(pattern, name string) bool {

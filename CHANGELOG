@@ -24,6 +24,9 @@ Security
 - Extended auth-state backups to include the persistent slave mask file.
 
 Reliability and race integrity
+- Multi-disc races now follow pzs-ng announce naming: `CD1`, `DISC1`, `DISK1`,
+  and `DVD1` races retain independent totals but display as
+  `Parent.Release/CD1` instead of losing the parent release name.
 - Prevented zip races from reporting COMPLETE while the expected part count is
   still unknown. Completion now always requires a known positive total.
 - Consolidated SFV checksum-state decisions so an unknown checksum is not

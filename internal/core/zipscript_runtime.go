@@ -676,7 +676,7 @@ func populateUploadRaceData(bridge MasterBridge, cfg *Config, dirPath, fileName 
 				totalFiles = expected
 			}
 			groups := raceGroupsFromUsers(users, totalFiles)
-			data["relname"] = path.Base(dirPath)
+			data["relname"] = zipscript.ReleaseDisplayName(dirPath)
 			if expected > 0 {
 				data["t_files"] = fmt.Sprintf("%d", expected)
 				data["t_present"] = fmt.Sprintf("%d", presentCount)
@@ -730,7 +730,7 @@ func populateUploadRaceData(bridge MasterBridge, cfg *Config, dirPath, fileName 
 			if avgSpeedMB <= 0 {
 				avgSpeedMB = raceSpeedMBForDuration(totalBytes, raceDurationMs)
 			}
-			data["relname"] = path.Base(dirPath)
+			data["relname"] = zipscript.ReleaseDisplayName(dirPath)
 			data["t_files"] = fmt.Sprintf("%d", total)
 			data["t_present"] = fmt.Sprintf("%d", present)
 			data["t_filesleft"] = fmt.Sprintf("%d", maxInt(0, total-present))
@@ -1228,6 +1228,8 @@ func buildReleaseUploadPipelineState(s *Session, bridge MasterBridge, in release
 		if zipscript.IsIgnoredReleaseSubdir(s.Config.Zipscript, in.UploadDir) || !zipscript.AnnounceReleaseSubdirs(s.Config.Zipscript) {
 			state.EventData["skip_release_announce"] = "true"
 		}
+	} else if zipscript.IsMultiDiscReleaseSubdir(in.UploadDir) {
+		state.EventData["relname"] = zipscript.ReleaseDisplayName(in.UploadDir)
 	}
 	if state.SFVUpload && state.SFVEntries != nil {
 		state.EventData["t_filecount"] = fmt.Sprintf("%d", len(state.SFVEntries))
@@ -1503,7 +1505,7 @@ func emitReleaseMetadataEvent(s *Session, evtType EventType, dirPath, filePath, 
 	data["filepath"] = filePath
 	data["filename"] = fileName
 	data["path"] = dirPath
-	data["relname"] = path.Base(dirPath)
+	data["relname"] = zipscript.ReleaseDisplayName(dirPath)
 	s.emitEvent(evtType, dirPath, path.Base(dirPath), size, speedMB, data)
 }
 

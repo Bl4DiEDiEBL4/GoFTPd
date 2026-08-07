@@ -43,6 +43,28 @@ func TestNormalizeReleaseDisplayNameUsesUploadParentDir(t *testing.T) {
 	}
 }
 
+func TestMultiDiscSFVAnnounceIncludesParentRelease(t *testing.T) {
+	p := New()
+	rel := "Legion.Of.The.Dead.2001.COMPLETE.BLURAY-FULLBRUTALiTY/DISC1"
+	outs, err := p.OnEvent(&event.Event{
+		Type:     event.EventUpload,
+		User:     "Neptun",
+		Section:  "BLURAY",
+		Filename: "disc1.sfv",
+		Path:     "/BLURAY/" + rel + "/disc1.sfv",
+		Data: map[string]string{
+			"relname":     rel,
+			"t_filecount": "79",
+		},
+	})
+	if err != nil {
+		t.Fatalf("OnEvent SFV failed: %v", err)
+	}
+	if len(outs) != 1 || !strings.Contains(outs[0].Text, "Got SFV for "+rel) {
+		t.Fatalf("multi-disc SFV output = %+v, want parent/disc release name", outs)
+	}
+}
+
 func TestReleaseNameUsesDirectoryBaseForNukeEvents(t *testing.T) {
 	evt := &event.Event{
 		Type:     event.EventNuke,
