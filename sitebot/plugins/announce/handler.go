@@ -185,8 +185,10 @@ func raceStateReady(st *releaseState, vars map[string]string) bool {
 }
 
 func releaseName(evt *event.Event) string {
-	if rel := strings.TrimSpace(evt.Data["release_name"]); rel != "" {
-		return rel
+	for _, key := range []string{"release_name", "relname"} {
+		if rel := strings.TrimSpace(evt.Data[key]); rel != "" && rel != "." && rel != "/" {
+			return rel
+		}
 	}
 	if evt.Path == "" {
 		return evt.Filename

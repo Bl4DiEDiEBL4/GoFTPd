@@ -435,7 +435,9 @@ func emitRaceEnd(s *Session, dirPath string, users []VFSRaceUser, groups []VFSRa
 	if avgMB <= 0 {
 		avgMB = raceSpeedMBForDuration(totalBytes, raceDurationMs)
 	}
-	rel := path.Base(dirPath)
+	rel := zipscript.ReleaseDisplayName(dirPath)
+	hookReleaseName := ""
+	hookReleaseSubdir := ""
 	common := map[string]string{
 		"relname":    rel,
 		"t_files":    fmt.Sprintf("%dF", total),
@@ -448,9 +450,14 @@ func emitRaceEnd(s *Session, dirPath string, users []VFSRaceUser, groups []VFSRa
 	if subdir := zipscript.ReleaseSubdirLabel(s.Config.Zipscript, dirPath); subdir != "" {
 		common["release_subdir"] = subdir
 		common["release_name"] = path.Base(path.Dir(dirPath))
+		hookReleaseName = common["release_name"]
+		hookReleaseSubdir = subdir
 		if zipscript.IsIgnoredReleaseSubdir(s.Config.Zipscript, dirPath) || !zipscript.AnnounceReleaseSubdirs(s.Config.Zipscript) {
 			common["skip_release_announce"] = "true"
 		}
+	} else if zipscript.IsMultiDiscReleaseSubdir(dirPath) {
+		hookReleaseName = path.Base(path.Dir(dirPath))
+		hookReleaseSubdir = path.Base(dirPath)
 	}
 
 	// COMPLETE line
@@ -522,8 +529,8 @@ func emitRaceEnd(s *Session, dirPath string, users []VFSRaceUser, groups []VFSRa
 	zipscript.RunOnCompleteHook(s.Config.Zipscript, zipscript.CompleteHookContext{
 		DirPath:       dirPath,
 		RelName:       rel,
-		ReleaseName:   common["release_name"],
-		ReleaseSubdir: common["release_subdir"],
+		ReleaseName:   hookReleaseName,
+		ReleaseSubdir: hookReleaseSubdir,
 		Section:       section,
 		SectionRoot:   sectionRoot,
 		TotalBytes:    totalBytes,
