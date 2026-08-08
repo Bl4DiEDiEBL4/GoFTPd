@@ -20,6 +20,7 @@ import (
 )
 
 const imdbAPIBaseURL = "https://api.tiffara.com"
+const imdbLookupAttempts = 3
 
 func normalizePlotText(plot string, maxRunes int) string {
 	plot = html.UnescapeString(strings.TrimSpace(plot))
@@ -256,20 +257,8 @@ func (p *IMDBPlugin) OnEvent(evt *event.Event) ([]plugin.Output, error) {
 // Returns the best match (prefers movie type over series, prefers matching year).
 func (p *IMDBPlugin) lookup(title string, year int) (*imdbTitle, error) {
 	u := imdbAPIBaseURL + "/search/titles?query=" + url.QueryEscape(title)
-	resp, err := p.client.Get(u)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("api.tiffara.com status %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
 	var sr imdbSearchResult
-	if err := json.Unmarshal(body, &sr); err != nil {
+	if err := getIMDBJSON(p.client, u, &sr); err != nil {
 		return nil, err
 	}
 	if len(sr.Titles) == 0 {
@@ -437,23 +426,42 @@ func absInt(n int) int {
 // fetchDetails hits /titles/{id} for the full title record.
 func (p *IMDBPlugin) fetchDetails(id string) (*imdbTitle, error) {
 	u := imdbAPIBaseURL + "/titles/" + url.PathEscape(id)
-	resp, err := p.client.Get(u)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("status %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
 	var t imdbTitle
-	if err := json.Unmarshal(body, &t); err != nil {
+	if err := getIMDBJSON(p.client, u, &t); err != nil {
 		return nil, err
 	}
 	return &t, nil
+}
+
+func getIMDBJSON(client *http.Client, endpoint string, dst interface{}) error {
+	var lastErr error
+	for attempt := 1; attempt <= imdbLookupAttempts; attempt++ {
+		resp, err := client.Get(endpoint)
+		if err != nil {
+			lastErr = err
+		} else {
+			body, readErr := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			switch {
+			case readErr != nil:
+				lastErr = readErr
+			case resp.StatusCode == http.StatusOK:
+				if err := json.Unmarshal(body, dst); err != nil {
+					return fmt.Errorf("decode api.tiffara.com response: %w", err)
+				}
+				return nil
+			default:
+				lastErr = fmt.Errorf("api.tiffara.com status %d", resp.StatusCode)
+				if resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode < http.StatusInternalServerError {
+					return lastErr
+				}
+			}
+		}
+		if attempt < imdbLookupAttempts {
+			time.Sleep(time.Duration(attempt) * 250 * time.Millisecond)
+		}
+	}
+	return lastErr
 }
 
 func (p *IMDBPlugin) doLookup(job imdbJob) {
@@ -463,9 +471,7 @@ func (p *IMDBPlugin) doLookup(job imdbJob) {
 	}
 	m, err := p.lookup(title, year)
 	if err != nil {
-		if p.debug {
-			log.Printf("[IMDB] lookup %q (%d) failed: %v", title, year, err)
-		}
+		log.Printf("[IMDB] lookup failed for %s (query=%q year=%d): %v", job.rel, title, year, err)
 		return
 	}
 

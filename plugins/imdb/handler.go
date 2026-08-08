@@ -28,6 +28,7 @@ import (
 )
 
 const imdbAPIBaseURL = "https://api.tiffara.com"
+const imdbLookupAttempts = 3
 
 // Handler is the imdb plugin. One instance per weaveftpd process.
 type Handler struct {
@@ -194,44 +195,15 @@ type imdbTitle struct {
 func (h *Handler) doLookup(j job) {
 	title, year := parseMovieName(j.relname)
 	if title == "" {
+		log.Printf("[IMDB] parseMovieName returned empty title for %s, skipping", j.relname)
 		return
 	}
+	log.Printf("[IMDB] lookup %s (title=%q year=%d)", j.relname, title, year)
 
-	searchURL := imdbAPIBaseURL + "/search/titles?query=" + url.QueryEscape(title)
-	resp, err := h.client.Get(searchURL)
+	best, err := h.lookupTitle(title, year)
 	if err != nil {
-		if h.debug {
-			log.Printf("[IMDB] search %q failed: %v", title, err)
-		}
+		log.Printf("[IMDB] search %q failed: %v", title, err)
 		return
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return
-	}
-	var sr imdbSearchResp
-	if err := json.Unmarshal(body, &sr); err != nil {
-		return
-	}
-	if len(sr.Titles) == 0 {
-		return
-	}
-
-	best := selectBestIMDBTitle(sr.Titles, title, year)
-	if best == nil {
-		if h.debug {
-			log.Printf("[IMDB] no safe match for %q (%d)", title, year)
-		}
-		return
-	}
-
-	// Fetch full detail record — search-results don't include genres/plot/etc.
-	if full := h.fetchDetails(best.ID); full != nil {
-		best = full
 	}
 
 	content := formatIMDBFile(best, h.version)
@@ -241,6 +213,30 @@ func (h *Handler) doLookup(j job) {
 		return
 	}
 	log.Printf("[IMDB] Wrote .imdb for %s", j.relname)
+}
+
+func (h *Handler) lookupTitle(title string, year int) (*imdbTitle, error) {
+	searchURL := imdbAPIBaseURL + "/search/titles?query=" + url.QueryEscape(title)
+	var sr imdbSearchResp
+	if err := getIMDBJSON(h.client, searchURL, &sr); err != nil {
+		return nil, err
+	}
+	if len(sr.Titles) == 0 {
+		return nil, fmt.Errorf("no results")
+	}
+
+	best := selectBestIMDBTitle(sr.Titles, title, year)
+	if best == nil {
+		return nil, fmt.Errorf("no safe match")
+	}
+
+	// Fetch full detail record — search-results don't include genres/plot/etc.
+	if full, err := h.fetchDetails(best.ID); err == nil {
+		best = full
+	} else if h.debug {
+		log.Printf("[IMDB] detail lookup %s failed: %v", best.ID, err)
+	}
+	return best, nil
 }
 
 func selectBestIMDBTitle(titles []imdbTitle, query string, year int) *imdbTitle {
@@ -294,28 +290,47 @@ func isMovieLikeIMDBType(t string) bool {
 	}
 }
 
-func (h *Handler) fetchDetails(id string) *imdbTitle {
+func (h *Handler) fetchDetails(id string) (*imdbTitle, error) {
 	if id == "" {
-		return nil
+		return nil, fmt.Errorf("empty IMDb title ID")
 	}
 	u := imdbAPIBaseURL + "/titles/" + url.PathEscape(id)
-	resp, err := h.client.Get(u)
-	if err != nil {
-		return nil
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil
-	}
 	var t imdbTitle
-	if err := json.Unmarshal(body, &t); err != nil {
-		return nil
+	if err := getIMDBJSON(h.client, u, &t); err != nil {
+		return nil, err
 	}
-	return &t
+	return &t, nil
+}
+
+func getIMDBJSON(client *http.Client, endpoint string, dst interface{}) error {
+	var lastErr error
+	for attempt := 1; attempt <= imdbLookupAttempts; attempt++ {
+		resp, err := client.Get(endpoint)
+		if err != nil {
+			lastErr = err
+		} else {
+			body, readErr := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			switch {
+			case readErr != nil:
+				lastErr = readErr
+			case resp.StatusCode == http.StatusOK:
+				if err := json.Unmarshal(body, dst); err != nil {
+					return fmt.Errorf("decode api.tiffara.com response: %w", err)
+				}
+				return nil
+			default:
+				lastErr = fmt.Errorf("api.tiffara.com status %d", resp.StatusCode)
+				if resp.StatusCode != http.StatusTooManyRequests && resp.StatusCode < http.StatusInternalServerError {
+					return lastErr
+				}
+			}
+		}
+		if attempt < imdbLookupAttempts {
+			time.Sleep(time.Duration(attempt) * 250 * time.Millisecond)
+		}
+	}
+	return lastErr
 }
 
 // =============================================================================
