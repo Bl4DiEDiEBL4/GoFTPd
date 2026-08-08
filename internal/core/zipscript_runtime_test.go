@@ -12,8 +12,8 @@ func TestShouldRenderCWDRaceBannerRequiresRaceData(t *testing.T) {
 	}
 
 	cfg.ShowCWDBanner = false
-	if shouldRenderCWDRaceBanner(cfg, []VFSRaceUser{{Name: "racer"}}, nil, 100, 1, 1) {
-		t.Fatal("disabled CWD banner should not render race data")
+	if !shouldRenderCWDRaceBanner(cfg, []VFSRaceUser{{Name: "racer"}}, nil, 100, 1, 1) {
+		t.Fatal("real race data should render independently of the legacy CWD banner toggle")
 	}
 }
 
