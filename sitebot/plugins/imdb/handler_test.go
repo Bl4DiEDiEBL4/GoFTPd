@@ -1,6 +1,35 @@
 package imdb
 
-import "testing"
+import (
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
+	"testing"
+)
+
+func TestGetIMDBJSONRetriesAndDecodesTiffaraSearch(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			http.Error(w, "try again", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"titles":[{"id":"tt0213802","type":"movie","primaryTitle":"Legion of the Dead","originalTitle":"Legion of the Dead","startYear":2001}]}`))
+	}))
+	defer server.Close()
+
+	var result imdbSearchResult
+	if err := getIMDBJSON(server.Client(), server.URL, &result); err != nil {
+		t.Fatalf("getIMDBJSON() error = %v", err)
+	}
+	if requests.Load() != 2 {
+		t.Fatalf("requests = %d, want 2", requests.Load())
+	}
+	if len(result.Titles) != 1 || result.Titles[0].ID != "tt0213802" {
+		t.Fatalf("decoded titles = %#v", result.Titles)
+	}
+}
 
 func TestNormalizePlotText(t *testing.T) {
 	got := normalizePlotText("What was supposed to be fun &amp; games\nbecomes a long story", 24)
