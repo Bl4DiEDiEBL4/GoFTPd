@@ -17,8 +17,8 @@ sitename_long:  "WeaveFTPd"        # Full site name, shown in FTP banners
 sitename_short: "WeaveFTPd"            # 2-3 char site tag used in race stats
 # Version is loaded from sibling file: etc/version
 timezone:       "Europe/Amsterdam" # IANA timezone for FTP LIST/MLSD/MDTM and dated dirs; empty/"Local" uses OS local time
-show_cwd_banner: true           # Show the CWD race-stat banner when actual race data exists.
-                                # Empty section/release directories never show a race banner.
+show_cwd_banner: true           # Legacy compatibility setting; empty CWD banners are no longer shown.
+                                # Real race stats use zipscript.race.cwd_*_race_stats below.
 show_real_owner_group: false    # Show stored file owner/group in LIST, MLSD, and STAT -l for real VFS files.
                                 # false keeps the virtual WeaveFTPd/WeaveFTPd ownership look.
 

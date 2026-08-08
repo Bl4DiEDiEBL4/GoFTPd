@@ -48,7 +48,7 @@ func HasRaceStats(users []VFSRaceUser, groups []VFSRaceGroup, totalBytes int64, 
 }
 
 func shouldRenderCWDRaceBanner(cfg *Config, users []VFSRaceUser, groups []VFSRaceGroup, totalBytes int64, present, total int) bool {
-	return cfg != nil && cfg.ShowCWDBanner && HasRaceStats(users, groups, totalBytes, present, total)
+	return cfg != nil && HasRaceStats(users, groups, totalBytes, present, total)
 }
 
 func RenderCompactRaceStats(w io.Writer, users []VFSRaceUser, groups []VFSRaceGroup, totalBytes int64, present, total int) {
