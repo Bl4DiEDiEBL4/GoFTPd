@@ -4,7 +4,7 @@
 
 # WeaveFTPd
 
-[Bl4DiEDiEBL4/WeaveFTPd](https://github.com/Bl4DiEDiEBL4/WeaveFTPd)
+[WeaveFTPd/WeaveFTPd](https://github.com/WeaveFTPd/WeaveFTPd)
 
 > Still under active development. Things may change or break.
 
