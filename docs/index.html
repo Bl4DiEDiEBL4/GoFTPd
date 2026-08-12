@@ -301,6 +301,10 @@ cd WeaveFTPd
                 <i data-lucide="router" aria-hidden="true"></i>
                 <p><strong>Behind NAT:</strong> set <code>slave.bind_ip</code> to the public address, <code>slave.local_bind_ip</code> to the machine's LAN address, and forward the slave passive range to that LAN address.</p>
               </div>
+              <div class="guide-note">
+                <i data-lucide="shield-alert" aria-hidden="true"></i>
+                <p><strong>Verification matters:</strong> a source-mask setup keeps the slave control link encrypted, but does not verify the master certificate. Use mTLS for both identities. Active/SSCN <code>PROT P</code> FXP data connections also use a legacy compatibility client that encrypts traffic without certificate-authenticating the data peer.</p>
+              </div>
               <p class="guide-more"><a href="https://github.com/WeaveFTPd/WeaveFTPd/wiki/Master-Slave-Authentication">Read the complete authentication guide <i data-lucide="arrow-up-right" aria-hidden="true"></i></a></p>
             </article>
 
@@ -315,7 +319,7 @@ cd WeaveFTPd
               </div>
               <div class="guide-note">
                 <i data-lucide="shield-check" aria-hidden="true"></i>
-                <p>IRC TLS verification defaults to certificate checking. Use <code>strict</code> for a public CA, <code>custom</code> plus <code>tls_ca_cert</code> for a private CA, and <code>insecure</code> only as an explicit legacy fallback.</p>
+                <p>IRC TLS verification defaults to certificate checking. Use <code>strict</code> for a public CA or <code>custom</code> plus <code>tls_ca_cert</code> for a private CA. <code>insecure</code> keeps TLS encryption but accepts any server certificate, so use it only as an explicit legacy fallback.</p>
               </div>
               <p class="guide-more"><a href="https://github.com/WeaveFTPd/WeaveFTPd/wiki/Sitebot">Open the Sitebot guide <i data-lucide="arrow-up-right" aria-hidden="true"></i></a></p>
             </article>
