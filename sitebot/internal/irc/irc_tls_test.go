@@ -76,23 +76,6 @@ func TestBuildTLSConfigInvalidVerifyMode(t *testing.T) {
 	}
 }
 
-func TestRedactDebugCommand(t *testing.T) {
-	tests := map[string]string{
-		"PASS hunter2":                               "PASS [REDACTED]",
-		"AUTHENTICATE dXNlcjpzZWNyZXQ=":              "AUTHENTICATE [REDACTED]",
-		"OPER sitebot super-secret":                  "OPER sitebot [REDACTED]",
-		"PRIVMSG NickServ :IDENTIFY sitebot secret":  "PRIVMSG NickServ :IDENTIFY [REDACTED]",
-		"PRIVMSG NickServ :REGISTER secret bot@site": "PRIVMSG NickServ :REGISTER [REDACTED]",
-		"PRIVMSG #weave :release complete":           "PRIVMSG #weave :release complete",
-	}
-
-	for input, want := range tests {
-		if got := redactDebugCommand(input); got != want {
-			t.Errorf("redactDebugCommand(%q) = %q, want %q", input, got, want)
-		}
-	}
-}
-
 func selfSignedTestCertPEM(t *testing.T) []byte {
 	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

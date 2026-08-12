@@ -587,12 +587,11 @@ func epochFromValue(value any) int64 {
 
 func safeInt(value any, fallback int) int {
 	n := safeInt64(value, int64(fallback))
-	maxInt := int64(^uint(0) >> 1)
-	minInt := -maxInt - 1
-	if n < minInt || n > maxInt {
+	parsed, err := strconv.Atoi(strconv.FormatInt(n, 10))
+	if err != nil {
 		return fallback
 	}
-	return int(n)
+	return parsed
 }
 
 func safeInt64(value any, fallback int64) int64 {

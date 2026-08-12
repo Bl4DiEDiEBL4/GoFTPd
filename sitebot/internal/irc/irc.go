@@ -141,45 +141,11 @@ func (b *Bot) SendRaw(cmd string) error {
 	}
 	_, err := b.Conn.Write([]byte(cmd + "\r\n"))
 	if b.Debug {
-		log.Printf("[IRC] >> %s", redactDebugCommand(cmd))
+		// Never log raw IRC commands: PASS, OPER, and NickServ commands contain
+		// credentials, while arbitrary message payloads may be private as well.
+		log.Printf("[IRC] >> outbound command sent")
 	}
 	return err
-}
-
-// redactDebugCommand keeps protocol debugging useful without writing IRC
-// credentials to logs. SendRaw is also used for NickServ registration and
-// identification, so those payloads must not be logged either.
-func redactDebugCommand(cmd string) string {
-	parts := strings.Fields(cmd)
-	if len(parts) == 0 {
-		return cmd
-	}
-
-	switch strings.ToUpper(parts[0]) {
-	case "PASS", "AUTHENTICATE":
-		return parts[0] + " [REDACTED]"
-	case "OPER":
-		if len(parts) > 1 {
-			return parts[0] + " " + parts[1] + " [REDACTED]"
-		}
-		return parts[0] + " [REDACTED]"
-	case "PRIVMSG", "NOTICE":
-		trailing := strings.Index(cmd, " :")
-		if trailing == -1 {
-			return cmd
-		}
-		payload := strings.TrimSpace(cmd[trailing+2:])
-		if payload == "" {
-			return cmd
-		}
-		action := strings.ToUpper(strings.Fields(payload)[0])
-		switch action {
-		case "IDENTIFY", "REGISTER", "GHOST", "REGAIN", "RECOVER":
-			return cmd[:trailing] + " :" + action + " [REDACTED]"
-		}
-	}
-
-	return cmd
 }
 
 func (b *Bot) SendMessage(channel, msg string) error {
