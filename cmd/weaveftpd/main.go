@@ -97,15 +97,12 @@ func main() {
 
 	// 4. Setup Shared TLS Cache for FXP/Resumption
 	sharedCache := tls.NewLRUClientSessionCache(256)
-	var ticketKey [32]byte
-	copy(ticketKey[:], "weaveftpd-secret-session-key-32byte")
 
 	tlsConfig := &tls.Config{
 		Certificates:                []tls.Certificate{cert},
 		MinVersion:                  tls.VersionTLS12,
 		MaxVersion:                  tls.VersionTLS13,
 		ClientSessionCache:          sharedCache,
-		SessionTicketKey:            ticketKey,
 		InsecureSkipVerify:          true,
 		DynamicRecordSizingDisabled: true,
 	}
