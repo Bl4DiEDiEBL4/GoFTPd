@@ -586,7 +586,13 @@ func epochFromValue(value any) int64 {
 }
 
 func safeInt(value any, fallback int) int {
-	return int(safeInt64(value, int64(fallback)))
+	n := safeInt64(value, int64(fallback))
+	maxInt := int64(^uint(0) >> 1)
+	minInt := -maxInt - 1
+	if n < minInt || n > maxInt {
+		return fallback
+	}
+	return int(n)
 }
 
 func safeInt64(value any, fallback int64) int64 {
