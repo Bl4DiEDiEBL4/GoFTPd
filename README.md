@@ -191,6 +191,26 @@ Sitebot verifies IRC TLS certificates by default. Use `irc.tls_verify: custom`
 with `irc.tls_ca_cert` for a private IRC CA, or explicitly set `insecure` only
 when certificate verification is intentionally disabled.
 
+### TLS Verification and FXP Compatibility
+
+TLS always encrypts the connection, but it only authenticates the peer when
+certificate verification is enabled. Keep the default `irc.tls_verify: strict`
+for public IRC networks, use `custom` with your private CA where needed, and
+use `insecure` only as an explicit compatibility fallback: it encrypts traffic
+but accepts any IRC server certificate.
+
+The same distinction applies to a slave with no `slave.master_ca_cert`: its
+control connection is encrypted, while the master certificate is not verified.
+That legacy mode still requires a per-slave IP mask, but an IP mask authenticates
+the slave to the master; it does not authenticate the master to the slave.
+Configure the CA and slave client certificates for mTLS in production.
+
+For compatibility with active/SSCN `PROT P` FXP peers and slave-to-slave data
+paths, WeaveFTPd does not currently verify the peer certificate on the
+outbound data-channel TLS client side. Those data channels are encrypted but
+not certificate-authenticated. Restrict FXP to trusted peers; this does not
+weaken master/slave control-channel mTLS.
+
 The example user is `weaveftpd` / `weaveftpd`. Change that before exposing the
 daemon.
 

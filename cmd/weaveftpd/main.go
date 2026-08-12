@@ -100,10 +100,12 @@ func main() {
 	sharedCache := tls.NewLRUClientSessionCache(256)
 
 	tlsConfig := &tls.Config{
-		Certificates:                []tls.Certificate{cert},
-		MinVersion:                  tls.VersionTLS12,
-		MaxVersion:                  tls.VersionTLS13,
-		ClientSessionCache:          sharedCache,
+		Certificates:       []tls.Certificate{cert},
+		MinVersion:         tls.VersionTLS12,
+		MaxVersion:         tls.VersionTLS13,
+		ClientSessionCache: sharedCache,
+		// Active/SSCN FXP data clients need legacy peer-certificate compatibility.
+		// The channel remains encrypted; its peer identity is not verified.
 		InsecureSkipVerify:          true,
 		DynamicRecordSizingDisabled: true,
 	}

@@ -79,6 +79,28 @@ slaves:
 After that slave name has persisted masks, `SITE SLAVE ... ADDMASK/DELMASK` is
 authoritative and later config changes do not overwrite them.
 
+## TLS Verification Boundaries
+
+TLS encryption and certificate verification are separate protections. An
+`insecure` setting still encrypts traffic, but it accepts any certificate and
+therefore does not authenticate the remote peer.
+
+- Sitebot defaults to `irc.tls_verify: strict`. Use `custom` and
+  `irc.tls_ca_cert` for a private IRC CA. `insecure` remains available as an
+  explicit compatibility setting, with a startup warning.
+- A slave with `slave.master_ca_cert` verifies the master's certificate. If it
+  is empty, the legacy IP-mask setup still encrypts the control connection but
+  does not authenticate the master. An IP mask only authenticates the slave to
+  the master; it is not a replacement for master certificate verification.
+- Active/SSCN `PROT P` FXP and slave-to-slave outbound data connections use a
+  compatibility TLS client that does not verify a peer certificate. Those data
+  channels are encrypted but not certificate-authenticated. Keep FXP peers
+  trusted and use mTLS for the independent master/slave control link.
+
+WeaveFTPd intentionally keeps these compatibility modes for existing sites.
+New deployments should use strict/custom verification for IRC and mTLS for
+master/slave control connections.
+
 ## Upgrade Checklist
 
 Before restarting an existing deployment with this version:
@@ -100,4 +122,4 @@ SLAVE2 2001:db8:10::/64
 
 Sitebot now verifies IRC TLS certificates by default. Use `custom` plus
 `irc.tls_ca_cert` for a private IRC CA. `insecure` preserves the old behavior
-but does not authenticate the IRC server.
+but does not authenticate the IRC server; it still encrypts the IRC connection.

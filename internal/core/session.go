@@ -300,6 +300,9 @@ func (s *Session) upgradeDataTLS(conn net.Conn, tlsConfig *tls.Config) (net.Conn
 	tlsCfg := tlsConfig.Clone()
 	var tlsConn *tls.Conn
 	if (s.lastDataConnActive && s.SSCN) || (!s.lastDataConnActive && s.nextDataTLSClientMode) {
+		// Active/SSCN FXP data peers often use self-signed certificates or an IP
+		// address that is not in the certificate SAN. Keep the compatibility path
+		// encrypted, while documenting that the peer identity is not verified.
 		tlsCfg.InsecureSkipVerify = true
 		tlsConn = tls.Client(conn, tlsCfg)
 	} else {
