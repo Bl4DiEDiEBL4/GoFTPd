@@ -61,7 +61,7 @@
         <ul class="hero-facts" aria-label="Project highlights">
           <li><strong>Go</strong><span>single-binary daemon</span></li>
           <li><strong>TLS + mTLS</strong><span>control and data security</span></li>
-          <li><strong>Linux + Windows</strong><span>native and Docker paths</span></li>
+          <li><strong>Linux + Windows</strong><span>mainline + native beta branch</span></li>
         </ul>
       </div>
     </section>
@@ -159,7 +159,7 @@
         <div class="deploy-copy">
           <p class="section-kicker">Deploy</p>
           <h2 id="deploy-title">Start with the layout that fits</h2>
-          <p>The guided Linux installer is the shortest path. Docker keeps master, sitebot, and slaves separated. The Windows branch provides a native PowerShell setup with pure-Go SQLite.</p>
+          <p>The guided Linux installer is the shortest path. Docker keeps master, sitebot, and slaves separated. Native Windows support lives on the separate <code>windows</code> beta branch and uses PowerShell plus pure-Go SQLite.</p>
           <div class="security-note">
             <i data-lucide="lock-keyhole" aria-hidden="true"></i>
             <div><strong>Slave connections fail closed.</strong><span>Configure a per-slave mTLS identity or a matching IP/CIDR mask before connecting remote storage.</span></div>
@@ -209,18 +209,186 @@ Set-ExecutionPolicy -Scope Process Bypass
       <div class="page-width">
         <div class="section-heading docs-heading">
           <div>
-            <p class="section-kicker">Documentation</p>
+            <p class="section-kicker">Operator guide / Version 1.3.0</p>
             <h2 id="docs-title">From first boot to multi-slave</h2>
+            <p>The essential installation, security, networking, and maintenance guidance lives here. Use the wiki for the deeper plugin and command reference.</p>
           </div>
-          <a class="text-link" href="https://github.com/WeaveFTPd/WeaveFTPd#readme">Open full README <i data-lucide="arrow-up-right" aria-hidden="true"></i></a>
+          <a class="button button-secondary docs-wiki-button" href="https://github.com/WeaveFTPd/WeaveFTPd/wiki">
+            <i data-lucide="book-open" aria-hidden="true"></i>
+            Browse the wiki
+          </a>
         </div>
-        <div class="docs-list">
-          <a href="https://github.com/WeaveFTPd/WeaveFTPd#quick-start"><i data-lucide="rocket" aria-hidden="true"></i><span><strong>Quick start</strong><small>Build, configure, generate certificates, and start.</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
-          <a href="https://github.com/WeaveFTPd/WeaveFTPd/blob/main/docs/Master-Slave-TLS.md"><i data-lucide="key-round" aria-hidden="true"></i><span><strong>Master/slave authentication</strong><small>mTLS identities, certificate rotation, and IP masks.</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
-          <a href="https://github.com/WeaveFTPd/WeaveFTPd/blob/main/docker/deploy/README.md"><i data-lucide="container" aria-hidden="true"></i><span><strong>Docker deploy pack</strong><small>Master + sitebot, local slave, and remote slave layouts.</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
-          <a href="https://github.com/WeaveFTPd/WeaveFTPd#site-commands"><i data-lucide="square-terminal" aria-hidden="true"></i><span><strong>SITE command reference</strong><small>Accounts, groups, releases, traffic, search, and plugins.</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
-          <a href="https://github.com/WeaveFTPd/WeaveFTPd#sitebot"><i data-lucide="radio" aria-hidden="true"></i><span><strong>Sitebot</strong><small>IRC announces, routing, encryption, and command plugins.</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
-          <a href="https://github.com/WeaveFTPd/WeaveFTPd/blob/main/CHANGELOG"><i data-lucide="history" aria-hidden="true"></i><span><strong>Version 1.3.0 changelog</strong><small>Compatibility, security, reliability, audio, and integrations.</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
+
+        <div class="guide-layout">
+          <nav class="guide-nav" aria-label="Operator guide sections">
+            <strong>On this page</strong>
+            <a href="#guide-start"><i data-lucide="rocket" aria-hidden="true"></i>Quick start</a>
+            <a href="#guide-topology"><i data-lucide="network" aria-hidden="true"></i>Master and slave</a>
+            <a href="#guide-security"><i data-lucide="key-round" aria-hidden="true"></i>Security and NAT</a>
+            <a href="#guide-sitebot"><i data-lucide="radio" aria-hidden="true"></i>Sitebot and FIFO</a>
+            <a href="#guide-platforms"><i data-lucide="container" aria-hidden="true"></i>Docker and Windows</a>
+            <a href="#guide-operations"><i data-lucide="wrench" aria-hidden="true"></i>Config and updates</a>
+            <a href="#guide-reference"><i data-lucide="square-terminal" aria-hidden="true"></i>Commands and plugins</a>
+          </nav>
+
+          <div class="guide-content">
+            <article class="guide-section" id="guide-start">
+              <p class="guide-number">01 / Quick start</p>
+              <h3>Install the Linux mainline</h3>
+              <p class="guide-lead">The guided installer creates missing configs, plugin files, certificates, and binaries while preserving existing live configuration.</p>
+              <div class="code-window guide-code">
+                <div class="code-toolbar"><span>Linux / first install</span><button class="icon-button copy-button" type="button" data-copy-target="guide-start-snippet" aria-label="Copy first install commands" title="Copy commands"><i data-lucide="copy" aria-hidden="true"></i></button></div>
+                <pre><code id="guide-start-snippet">git clone https://github.com/WeaveFTPd/WeaveFTPd.git
+cd WeaveFTPd
+./setup.sh install
+./weaveftpd --config ./etc/config.yml</code></pre>
+              </div>
+              <div class="guide-note critical-note">
+                <i data-lucide="triangle-alert" aria-hidden="true"></i>
+                <p><strong>Before exposing the server:</strong> replace the example <code>weaveftpd / weaveftpd</code> login, set the public and passive addresses, and keep <code>require_tls_control</code> plus <code>require_tls_data</code> enabled.</p>
+              </div>
+              <div class="guide-columns">
+                <div class="guide-subsection">
+                  <h4>Master config</h4>
+                  <p>Start from <code>etc/config-example.yml</code>. The master owns FTP control, authentication, ACLs, VFS state, SITE commands, routing, plugins, and race state.</p>
+                </div>
+                <div class="guide-subsection">
+                  <h4>Slave config</h4>
+                  <p>Start from <code>etc/config-slave-example.yml</code>. A pure slave needs the daemon, its physical <code>roots</code>, client-facing TLS, and its connection to the master.</p>
+                </div>
+              </div>
+            </article>
+
+            <article class="guide-section" id="guide-topology">
+              <p class="guide-number">02 / Master and slave</p>
+              <h3>Choose the data path before opening ports</h3>
+              <p class="guide-lead">FTP control always terminates on the master. The configured transfer mode decides whether payloads go directly to a slave or are relayed by the master.</p>
+              <div class="guide-facts">
+                <div><strong>Passthrough</strong><span>Recommended. Clients and FXP peers must reach each slave's advertised address and passive range.</span></div>
+                <div><strong>Proxy</strong><span>Only the master must be public, but every byte crosses the master and consumes relay bandwidth.</span></div>
+                <div><strong>Routing</strong><span>Section/path policy selects eligible slaves, then load is balanced by active transfers, weight, and free space.</span></div>
+              </div>
+              <div class="guide-note">
+                <i data-lucide="route" aria-hidden="true"></i>
+                <p><strong>Typical ports:</strong> the FTP control listener is configured with <code>listen_port</code>, slaves connect to <code>master.control_port</code>, and passthrough data uses each slave's <code>pasv_port_min</code> through <code>pasv_port_max</code>.</p>
+              </div>
+            </article>
+
+            <article class="guide-section" id="guide-security">
+              <p class="guide-number">03 / Security and NAT</p>
+              <h3>Slave authentication fails closed</h3>
+              <p class="guide-lead">Every slave needs either its own mTLS identity or a source mask registered for that exact slave name. A global allowlist alone is not authentication.</p>
+              <div class="guide-columns">
+                <div class="guide-subsection">
+                  <h4>Recommended: mTLS</h4>
+                  <p>Issue one certificate per slave. Its certificate Common Name must exactly equal <code>slave.name</code>, and the master certificate SAN must match <code>slave.master_host</code>.</p>
+                  <div class="code-window guide-code compact-code">
+                    <div class="code-toolbar"><span>Master / certificates</span><button class="icon-button copy-button" type="button" data-copy-target="guide-mtls-snippet" aria-label="Copy mTLS commands" title="Copy commands"><i data-lucide="copy" aria-hidden="true"></i></button></div>
+                    <pre><code id="guide-mtls-snippet">./setup.sh certs "My Site"
+./setup.sh slavecert SLAVE1</code></pre>
+                  </div>
+                </div>
+                <div class="guide-subsection">
+                  <h4>Alternative: source mask</h4>
+                  <p>Leave the master/slave client-certificate settings empty and register the connecting public IP or CIDR before starting the slave.</p>
+                  <div class="code-window guide-code compact-code">
+                    <div class="code-toolbar"><span>FTP / siteop</span><button class="icon-button copy-button" type="button" data-copy-target="guide-mask-snippet" aria-label="Copy slave mask command" title="Copy command"><i data-lucide="copy" aria-hidden="true"></i></button></div>
+                    <pre><code id="guide-mask-snippet">SITE SLAVE SLAVE1 ADDMASK 203.0.113.20/32</code></pre>
+                  </div>
+                </div>
+              </div>
+              <div class="guide-note critical-note">
+                <i data-lucide="router" aria-hidden="true"></i>
+                <p><strong>Behind NAT:</strong> set <code>slave.bind_ip</code> to the public address, <code>slave.local_bind_ip</code> to the machine's LAN address, and forward the slave passive range to that LAN address.</p>
+              </div>
+              <p class="guide-more"><a href="https://github.com/WeaveFTPd/WeaveFTPd/wiki/Master-Slave-Authentication">Read the complete authentication guide <i data-lucide="arrow-up-right" aria-hidden="true"></i></a></p>
+            </article>
+
+            <article class="guide-section" id="guide-sitebot">
+              <p class="guide-number">04 / Sitebot and FIFO</p>
+              <h3>Keep the event transport local to the master</h3>
+              <p class="guide-lead">The daemon writes JSON-line events and the sitebot turns them into routed IRC output. Both processes must point to the exact same <code>event_fifo</code> path.</p>
+              <div class="guide-facts">
+                <div><strong>Native Linux</strong><span>The event path is a POSIX FIFO. Restart the daemon and sitebot after changing that path.</span></div>
+                <div><strong>Separate containers</strong><span>Master and sitebot may run separately when they share the same host-mounted <code>/app/etc</code> directory.</span></div>
+                <div><strong>Remote slaves</strong><span>They do not need the FIFO or a sitebot. Sitebot belongs on the master machine.</span></div>
+              </div>
+              <div class="guide-note">
+                <i data-lucide="shield-check" aria-hidden="true"></i>
+                <p>IRC TLS verification defaults to certificate checking. Use <code>strict</code> for a public CA, <code>custom</code> plus <code>tls_ca_cert</code> for a private CA, and <code>insecure</code> only as an explicit legacy fallback.</p>
+              </div>
+              <p class="guide-more"><a href="https://github.com/WeaveFTPd/WeaveFTPd/wiki/Sitebot">Open the Sitebot guide <i data-lucide="arrow-up-right" aria-hidden="true"></i></a></p>
+            </article>
+
+            <article class="guide-section" id="guide-platforms">
+              <p class="guide-number">05 / Docker and Windows</p>
+              <h3>Use the deployment path that matches the host</h3>
+              <div class="guide-columns">
+                <div class="guide-subsection">
+                  <h4>Docker on Linux</h4>
+                  <p>The deploy pack builds local images; no public container registry is required. It uses host networking for PASV/CPSV addresses, passive ranges, and FXP peer checks.</p>
+                  <p>Run master and sitebot on the master host. Add the optional local-slave profile there, or initialize <code>slave.compose.yml</code> on another machine.</p>
+                  <p class="guide-more"><a href="https://github.com/WeaveFTPd/WeaveFTPd/wiki/Docker">Docker deployment guide <i data-lucide="arrow-up-right" aria-hidden="true"></i></a></p>
+                </div>
+                <div class="guide-subsection">
+                  <h4>Native Windows beta</h4>
+                  <p>Switch to the separate <code>windows</code> branch. Its PowerShell setup can download Go when missing, generates certificates without OpenSSL, uses pure-Go SQLite on Windows, and creates console runner scripts.</p>
+                  <p>Windows uses an append-only event file instead of a POSIX FIFO. Native services are intentionally outside the current setup scope.</p>
+                  <p class="guide-more"><a href="https://github.com/WeaveFTPd/WeaveFTPd/tree/windows">View the Windows branch <i data-lucide="arrow-up-right" aria-hidden="true"></i></a></p>
+                </div>
+              </div>
+            </article>
+
+            <article class="guide-section" id="guide-operations">
+              <p class="guide-number">06 / Config and updates</p>
+              <h3>Keep runtime state outside Git changes</h3>
+              <div class="guide-columns config-columns">
+                <div class="guide-subsection">
+                  <h4>Important files</h4>
+                  <dl class="config-list">
+                    <div><dt><code>etc/config.yml</code></dt><dd>Active daemon configuration</dd></div>
+                    <div><dt><code>etc/permissions.yml</code></dt><dd>ACL and SITE command policy</dd></div>
+                    <div><dt><code>etc/users/</code></dt><dd>User records and transfer totals</dd></div>
+                    <div><dt><code>sitebot/etc/config.yml</code></dt><dd>IRC, routes, encryption, plugins</dd></div>
+                    <div><dt><code>plugins/*/config.yml</code></dt><dd>Site-local daemon plugin settings</dd></div>
+                  </dl>
+                </div>
+                <div class="guide-subsection">
+                  <h4>Normal update</h4>
+                  <div class="code-window guide-code compact-code">
+                    <div class="code-toolbar"><span>Repository root</span><button class="icon-button copy-button" type="button" data-copy-target="guide-update-snippet" aria-label="Copy update commands" title="Copy commands"><i data-lucide="copy" aria-hidden="true"></i></button></div>
+                    <pre><code id="guide-update-snippet">./setup.sh update
+./setup.sh install
+./setup.sh build</code></pre>
+                  </div>
+                  <p><code>update</code> uses <code>git pull --ff-only</code>. Commit, stash, or back up local tracked edits first. The installer adds missing config pieces without replacing existing active configs.</p>
+                </div>
+              </div>
+              <div class="guide-note">
+                <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                <p><strong>Reload or restart:</strong> use <code>SITE REHASH</code> for supported policy/config changes. Binary updates, listener ports, TLS paths, mode, control port, and FIFO changes require process restarts. Configure recurring scans under <code>slaves[].remerge.jobs[]</code>; removed legacy background/slave remerge keys are ignored.</p>
+              </div>
+              <p class="guide-more"><a href="https://github.com/WeaveFTPd/WeaveFTPd/wiki/Update-and-Maintenance">Update and maintenance guide <i data-lucide="arrow-up-right" aria-hidden="true"></i></a></p>
+            </article>
+
+            <article class="guide-section" id="guide-reference">
+              <p class="guide-number">07 / Commands and plugins</p>
+              <h3>The operational surface</h3>
+              <p class="guide-lead">WeaveFTPd includes the core site workflows directly, while daemon and sitebot plugins add policy, metadata, automation, announces, and IRC commands.</p>
+              <div class="guide-facts">
+                <div><strong>Zipscript</strong><span>SFV/CRC checks, race stats, incomplete markers, ZIP checks, MP3/FLAC playlists, and media probing.</span></div>
+                <div><strong>Daemon plugins</strong><span>Autonuke, dateddirs, IMDb, PRE, pretime, releaseguard, requests, slowkick, spacekeeper, speedtest, and TVMaze.</span></div>
+                <div><strong>SITE commands</strong><span>Accounts, groups, ACL-governed admin, traffic, nukes, PRE, requests, search, rescan, remerge, and slave security.</span></div>
+                <div><strong>Sitebot plugins</strong><span>Announces, metadata, news, free space, requests, quota, TOP, rules, self-IP, control, and staff commands.</span></div>
+              </div>
+              <div class="guide-reference-list">
+                <a href="https://github.com/WeaveFTPd/WeaveFTPd/wiki/SITE-Commands"><span><strong>SITE command reference</strong><small>Syntax, permissions, limits, traffic, remerge, and slave security.</small></span><i data-lucide="arrow-up-right" aria-hidden="true"></i></a>
+                <a href="https://github.com/WeaveFTPd/WeaveFTPd/wiki/Daemon-Plugins"><span><strong>Daemon plugins</strong><small>Configuration and dedicated pages for each built-in module.</small></span><i data-lucide="arrow-up-right" aria-hidden="true"></i></a>
+                <a href="https://github.com/WeaveFTPd/WeaveFTPd/wiki/Sitebot-Plugins"><span><strong>Sitebot plugins</strong><small>IRC commands, routing, themes, encryption, and operator controls.</small></span><i data-lucide="arrow-up-right" aria-hidden="true"></i></a>
+                <a href="https://github.com/WeaveFTPd/WeaveFTPd/blob/main/CHANGELOG"><span><strong>Version 1.3.0 changelog</strong><small>Slave authentication, race integrity, reliability, audio, and integration changes.</small></span><i data-lucide="arrow-up-right" aria-hidden="true"></i></a>
+              </div>
+            </article>
+          </div>
         </div>
       </div>
     </section>
