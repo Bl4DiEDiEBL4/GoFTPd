@@ -41,9 +41,10 @@ slave:
   # `name` above, since the master checks the two match. Generate the
   # CA/server cert with `./setup.sh certs` on the master, then
   # run `./setup.sh slavecert LOCAL` and copy the three required files here.
-  # Leave all three empty only if you accept an unverified link and have
-  # registered an IP mask for this slave name on the master instead
-  # (SITE SLAVE <name> ADDMASK <ip/cidr>).
+  # Leave all three empty only for the legacy IP-mask fallback. TLS remains
+  # encrypted in that mode, but the slave does not verify the master identity;
+  # an IP mask authenticates this slave to the master, not the reverse. Register
+  # the mask with SITE SLAVE <name> ADDMASK <ip/cidr>.
   master_ca_cert: ""
   client_cert: ""
   client_key: ""

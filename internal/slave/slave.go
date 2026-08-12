@@ -215,7 +215,7 @@ func (s *Slave) buildMasterTLSConfig() (*tls.Config, error) {
 		}
 		tlsCfg.RootCAs = pool
 	} else {
-		log.Printf("[Slave] WARNING: slave.master_ca_cert is not set - the master's certificate will not be verified (InsecureSkipVerify). Configure mTLS for a verified master-slave link.")
+		log.Printf("[Slave] WARNING: slave.master_ca_cert is not set - the control link is encrypted but the master's certificate is not verified. Configure mTLS for a verified master-slave link.")
 		tlsCfg.InsecureSkipVerify = true
 	}
 

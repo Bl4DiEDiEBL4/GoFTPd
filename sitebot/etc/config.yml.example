@@ -35,7 +35,8 @@ irc:
   #   strict   - verify against the system trust store (default; use this
   #              for public IRC networks with globally-trusted certs)
   #   custom   - verify against tls_ca_cert below (self-hosted/private IRCd)
-  #   insecure - disable verification entirely (not recommended)
+  #   insecure - keep TLS encryption but accept any server certificate;
+  #              explicit compatibility fallback only (not recommended)
   tls_verify: "strict"
   tls_ca_cert: ""   # required when tls_verify: custom, e.g. "./etc/certs/irc-ca.crt"
   nickserv:

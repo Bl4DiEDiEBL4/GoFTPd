@@ -610,6 +610,8 @@ var dataClientSessionCache = tls.NewLRUClientSessionCache(512)
 // the peer doesn't issue tickets, the handshake falls back to a full one.
 func dataClientTLSConfig(conn net.Conn) *tls.Config {
 	cfg := &tls.Config{
+		// FTP data peers can be addressed by IP and may use self-signed certs.
+		// Keep this legacy FXP path encrypted; the peer identity is not verified.
 		InsecureSkipVerify:          true,
 		DynamicRecordSizingDisabled: true,
 		ClientSessionCache:          dataClientSessionCache,

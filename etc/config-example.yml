@@ -104,7 +104,8 @@ slave:
   master_port:   1099           # Must match master's control_port
   master_ca_cert: ""            # Path to the master CA (e.g. ./etc/certs/master-ca.crt) used to verify the
                                 # master's presented server certificate. Leave empty only if you
-                                # accept an unverified master-slave link (InsecureSkipVerify).
+                                # accept the legacy IP-mask fallback: TLS stays encrypted, but
+                                # the slave does not authenticate the master certificate.
   client_cert:   ""             # This slave's own mTLS client certificate. Its CN MUST equal
                                 # `name` above - the master checks this. e.g. ./etc/certs/slave-SLAVE1.crt
   client_key:    ""             # Private key for client_cert. e.g. ./etc/certs/slave-SLAVE1.key
