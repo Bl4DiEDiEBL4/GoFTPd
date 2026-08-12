@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="WeaveFTPd is a distributed FTP daemon with master/slave storage, TLS, race integrity, plugins, and an IRC sitebot.">
+  <meta name="theme-color" content="#071116">
+  <meta property="og:title" content="WeaveFTPd">
+  <meta property="og:description" content="Distributed FTP infrastructure built for speed, integrity, and operational control.">
+  <meta property="og:image" content="https://weaveftpd.github.io/WeaveFTPd/assets/weaveftpd-banner.png">
+  <meta property="og:type" content="website">
+  <title>WeaveFTPd | Distributed FTP daemon</title>
+  <link rel="icon" href="assets/weaveftpd-profile.jpg">
+  <link rel="stylesheet" href="assets/site.css">
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+  <script src="assets/site.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header" data-header>
+    <nav class="site-nav" aria-label="Primary navigation">
+      <a class="brand" href="#top" aria-label="WeaveFTPd home">
+        <img src="assets/weaveftpd-profile.jpg" width="40" height="40" alt="">
+        <span>WeaveFTPd</span>
+      </a>
+      <button class="icon-button menu-button" type="button" aria-label="Open navigation" aria-expanded="false" data-menu-button title="Menu">
+        <i data-lucide="menu" aria-hidden="true"></i>
+      </button>
+      <div class="nav-links" data-menu>
+        <a href="#architecture">Architecture</a>
+        <a href="#capabilities">Capabilities</a>
+        <a href="#deploy">Deploy</a>
+        <a href="#docs">Docs</a>
+        <a class="button button-small button-quiet" href="https://github.com/WeaveFTPd/WeaveFTPd">
+          <i data-lucide="github" aria-hidden="true"></i>
+          GitHub
+        </a>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <img class="hero-image" src="assets/weaveftpd-hero.jpg" alt="Interwoven data streams connecting distributed servers">
+      <div class="hero-shade" aria-hidden="true"></div>
+      <div class="hero-content page-width">
+        <p class="eyebrow"><span class="status-dot"></span> Open source / Version 1.3.0</p>
+        <h1 id="hero-title">WeaveFTPd</h1>
+        <p class="hero-lead">Distributed FTP infrastructure built for fast transfers, race integrity, and hands-on site operations.</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#deploy">
+            <i data-lucide="terminal" aria-hidden="true"></i>
+            Start deploying
+          </a>
+          <a class="button button-secondary" href="https://github.com/WeaveFTPd/WeaveFTPd">
+            <i data-lucide="github" aria-hidden="true"></i>
+            View source
+          </a>
+        </div>
+        <ul class="hero-facts" aria-label="Project highlights">
+          <li><strong>Go</strong><span>single-binary daemon</span></li>
+          <li><strong>TLS + mTLS</strong><span>control and data security</span></li>
+          <li><strong>Linux + Windows</strong><span>native and Docker paths</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="overview-band" aria-labelledby="overview-title">
+      <div class="page-width overview-layout">
+        <div>
+          <p class="section-kicker">One control plane, many disks</p>
+          <h2 id="overview-title">Keep FTP state central. Move payloads directly.</h2>
+        </div>
+        <p>WeaveFTPd separates authentication, policy, VFS, SITE commands, plugins, and race state from physical storage. In the default passthrough mode, encrypted data travels directly between the client and the selected slave.</p>
+      </div>
+    </section>
+
+    <section class="section architecture-section" id="architecture" aria-labelledby="architecture-title">
+      <div class="page-width">
+        <div class="section-heading">
+          <p class="section-kicker">Architecture</p>
+          <h2 id="architecture-title">Built around the transfer path</h2>
+          <p>Choose direct passthrough for maximum throughput or proxy mode when storage nodes cannot be reached by clients.</p>
+        </div>
+
+        <div class="mode-switch" role="tablist" aria-label="Data path mode">
+          <button type="button" role="tab" aria-selected="true" aria-controls="passthrough-panel" id="passthrough-tab" data-mode-tab="passthrough">Passthrough</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="proxy-panel" id="proxy-tab" data-mode-tab="proxy">Proxy</button>
+        </div>
+
+        <div class="architecture-panel" id="passthrough-panel" role="tabpanel" aria-labelledby="passthrough-tab" data-mode-panel="passthrough">
+          <div class="architecture-flow" aria-label="Client sends FTP control to master and encrypted data directly to a storage slave">
+            <div class="flow-node client-node"><i data-lucide="monitor" aria-hidden="true"></i><strong>FTP client</strong><span>Control + TLS data</span></div>
+            <div class="flow-link"><span>FTP control</span><i data-lucide="arrow-right" aria-hidden="true"></i></div>
+            <div class="flow-node master-node"><i data-lucide="network" aria-hidden="true"></i><strong>Master</strong><span>Auth, VFS, policy</span></div>
+            <div class="flow-link data-link"><span>TLS payload</span><i data-lucide="arrow-right" aria-hidden="true"></i></div>
+            <div class="flow-node slave-node"><i data-lucide="hard-drive" aria-hidden="true"></i><strong>Slave storage</strong><span>Direct disk I/O</span></div>
+          </div>
+          <p class="mode-note"><i data-lucide="zap" aria-hidden="true"></i> Best throughput when slave passive ports are reachable. Secure FXP is supported with SSCN and PROT P.</p>
+        </div>
+
+        <div class="architecture-panel" id="proxy-panel" role="tabpanel" aria-labelledby="proxy-tab" data-mode-panel="proxy" hidden>
+          <div class="architecture-flow proxy-flow" aria-label="Client sends encrypted data through the master to a storage slave">
+            <div class="flow-node client-node"><i data-lucide="monitor" aria-hidden="true"></i><strong>FTP client</strong><span>TLS control + data</span></div>
+            <div class="flow-link data-link"><span>TLS payload</span><i data-lucide="arrow-right" aria-hidden="true"></i></div>
+            <div class="flow-node master-node"><i data-lucide="network" aria-hidden="true"></i><strong>Master proxy</strong><span>Control + relay</span></div>
+            <div class="flow-link"><span>TCP relay</span><i data-lucide="arrow-right" aria-hidden="true"></i></div>
+            <div class="flow-node slave-node"><i data-lucide="hard-drive" aria-hidden="true"></i><strong>Slave storage</strong><span>Private network</span></div>
+          </div>
+          <p class="mode-note"><i data-lucide="shield" aria-hidden="true"></i> Use when only the master is publicly reachable and storage nodes remain private.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section capabilities-section" id="capabilities" aria-labelledby="capabilities-title">
+      <div class="page-width">
+        <div class="section-heading compact-heading">
+          <p class="section-kicker">Capabilities</p>
+          <h2 id="capabilities-title">The pieces a real site needs</h2>
+        </div>
+        <div class="capability-grid">
+          <article class="capability-card">
+            <i data-lucide="gauge" aria-hidden="true"></i>
+            <h3>Transfer performance</h3>
+            <p>Direct slave data paths, pooled buffers, Linux sendfile support, TCP tuning, and TLS session resumption.</p>
+          </article>
+          <article class="capability-card">
+            <i data-lucide="badge-check" aria-hidden="true"></i>
+            <h3>Race integrity</h3>
+            <p>SFV/CRC verification, X-DUPE handling, race stats, multi-disc naming, incomplete markers, and resilient retries.</p>
+          </article>
+          <article class="capability-card">
+            <i data-lucide="shield-check" aria-hidden="true"></i>
+            <h3>Security by default</h3>
+            <p>TLS data channels, CA-backed master/slave mTLS, fail-closed slave authentication, ACLs, and IP masks.</p>
+          </article>
+          <article class="capability-card">
+            <i data-lucide="blocks" aria-hidden="true"></i>
+            <h3>Operational plugins</h3>
+            <p>Autonuke, pretime, release guard, requests, slowkick, spacekeeper, metadata, and dated directories.</p>
+          </article>
+          <article class="capability-card">
+            <i data-lucide="message-square" aria-hidden="true"></i>
+            <h3>IRC sitebot</h3>
+            <p>Race announces, channel routing, FiSH encryption, TOP, requests, quota, free space, rules, and remote control.</p>
+          </article>
+          <article class="capability-card">
+            <i data-lucide="folder-sync" aria-hidden="true"></i>
+            <h3>Virtual filesystem</h3>
+            <p>Central VFS state across multiple roots, mounted archives, remerge controls, metadata snapshots, and routing policy.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section deploy-section" id="deploy" aria-labelledby="deploy-title">
+      <div class="page-width deploy-layout">
+        <div class="deploy-copy">
+          <p class="section-kicker">Deploy</p>
+          <h2 id="deploy-title">Start with the layout that fits</h2>
+          <p>The guided Linux installer is the shortest path. Docker keeps master, sitebot, and slaves separated. The Windows branch provides a native PowerShell setup with pure-Go SQLite.</p>
+          <div class="security-note">
+            <i data-lucide="lock-keyhole" aria-hidden="true"></i>
+            <div><strong>Slave connections fail closed.</strong><span>Configure a per-slave mTLS identity or a matching IP/CIDR mask before connecting remote storage.</span></div>
+          </div>
+        </div>
+
+        <div class="deploy-tool">
+          <div class="deploy-tabs" role="tablist" aria-label="Deployment platform">
+            <button type="button" role="tab" aria-selected="true" aria-controls="linux-code" id="linux-tab" data-deploy-tab="linux"><i data-lucide="terminal" aria-hidden="true"></i>Linux</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="docker-code" id="docker-tab" data-deploy-tab="docker"><i data-lucide="container" aria-hidden="true"></i>Docker</button>
+            <button type="button" role="tab" aria-selected="false" aria-controls="windows-code" id="windows-tab" data-deploy-tab="windows"><i data-lucide="monitor-cog" aria-hidden="true"></i>Windows</button>
+          </div>
+
+          <div class="code-window" id="linux-code" role="tabpanel" aria-labelledby="linux-tab" data-deploy-panel="linux">
+            <div class="code-toolbar"><span>Linux / guided install</span><button class="icon-button copy-button" type="button" data-copy-target="linux-snippet" aria-label="Copy Linux commands" title="Copy commands"><i data-lucide="copy" aria-hidden="true"></i></button></div>
+            <pre><code id="linux-snippet">git clone https://github.com/WeaveFTPd/WeaveFTPd.git
+cd WeaveFTPd
+./setup.sh install
+./weaveftpd</code></pre>
+          </div>
+
+          <div class="code-window" id="docker-code" role="tabpanel" aria-labelledby="docker-tab" data-deploy-panel="docker" hidden>
+            <div class="code-toolbar"><span>Docker / master + sitebot</span><button class="icon-button copy-button" type="button" data-copy-target="docker-snippet" aria-label="Copy Docker commands" title="Copy commands"><i data-lucide="copy" aria-hidden="true"></i></button></div>
+            <pre><code id="docker-snippet">git clone https://github.com/WeaveFTPd/WeaveFTPd.git
+cd WeaveFTPd/docker/deploy
+./init.sh master
+docker build --target daemon -t weaveftpd:latest ../..
+docker build --target sitebot -t weaveftpd-sitebot:latest ../..
+docker compose --env-file master.env \
+  -f master-sitebot.compose.yml up -d master sitebot</code></pre>
+          </div>
+
+          <div class="code-window" id="windows-code" role="tabpanel" aria-labelledby="windows-tab" data-deploy-panel="windows" hidden>
+            <div class="code-toolbar"><span>Windows / native console</span><button class="icon-button copy-button" type="button" data-copy-target="windows-snippet" aria-label="Copy Windows commands" title="Copy commands"><i data-lucide="copy" aria-hidden="true"></i></button></div>
+            <pre><code id="windows-snippet">git clone https://github.com/WeaveFTPd/WeaveFTPd.git
+cd WeaveFTPd
+git switch windows
+Set-ExecutionPolicy -Scope Process Bypass
+.\setup.ps1 -Mode install -Config both
+.\run-master.ps1</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section docs-section" id="docs" aria-labelledby="docs-title">
+      <div class="page-width">
+        <div class="section-heading docs-heading">
+          <div>
+            <p class="section-kicker">Documentation</p>
+            <h2 id="docs-title">From first boot to multi-slave</h2>
+          </div>
+          <a class="text-link" href="https://github.com/WeaveFTPd/WeaveFTPd#readme">Open full README <i data-lucide="arrow-up-right" aria-hidden="true"></i></a>
+        </div>
+        <div class="docs-list">
+          <a href="https://github.com/WeaveFTPd/WeaveFTPd#quick-start"><i data-lucide="rocket" aria-hidden="true"></i><span><strong>Quick start</strong><small>Build, configure, generate certificates, and start.</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
+          <a href="https://github.com/WeaveFTPd/WeaveFTPd/blob/main/docs/Master-Slave-TLS.md"><i data-lucide="key-round" aria-hidden="true"></i><span><strong>Master/slave authentication</strong><small>mTLS identities, certificate rotation, and IP masks.</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
+          <a href="https://github.com/WeaveFTPd/WeaveFTPd/blob/main/docker/deploy/README.md"><i data-lucide="container" aria-hidden="true"></i><span><strong>Docker deploy pack</strong><small>Master + sitebot, local slave, and remote slave layouts.</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
+          <a href="https://github.com/WeaveFTPd/WeaveFTPd#site-commands"><i data-lucide="square-terminal" aria-hidden="true"></i><span><strong>SITE command reference</strong><small>Accounts, groups, releases, traffic, search, and plugins.</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
+          <a href="https://github.com/WeaveFTPd/WeaveFTPd#sitebot"><i data-lucide="radio" aria-hidden="true"></i><span><strong>Sitebot</strong><small>IRC announces, routing, encryption, and command plugins.</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
+          <a href="https://github.com/WeaveFTPd/WeaveFTPd/blob/main/CHANGELOG"><i data-lucide="history" aria-hidden="true"></i><span><strong>Version 1.3.0 changelog</strong><small>Compatibility, security, reliability, audio, and integrations.</small></span><i data-lucide="chevron-right" aria-hidden="true"></i></a>
+        </div>
+      </div>
+    </section>
+
+    <section class="project-cta" aria-labelledby="cta-title">
+      <div class="page-width cta-layout">
+        <div>
+          <p class="section-kicker">Community project</p>
+          <h2 id="cta-title">Build it, race it, report what breaks.</h2>
+          <p>Bug reports, deployment feedback, feature requests, and focused pull requests are welcome.</p>
+        </div>
+        <div class="cta-actions">
+          <a class="button button-primary" href="https://github.com/WeaveFTPd/WeaveFTPd/issues/new/choose"><i data-lucide="circle-dot" aria-hidden="true"></i>Open an issue</a>
+          <a class="button button-secondary" href="https://github.com/WeaveFTPd/WeaveFTPd/pulls"><i data-lucide="git-pull-request" aria-hidden="true"></i>Pull requests</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="page-width footer-layout">
+      <a class="brand footer-brand" href="#top"><img src="assets/weaveftpd-profile.jpg" width="36" height="36" alt=""><span>WeaveFTPd</span></a>
+      <p>Distributed FTP daemon written in Go.</p>
+      <div class="footer-links"><a href="https://github.com/WeaveFTPd/WeaveFTPd">Source</a><a href="https://github.com/WeaveFTPd/WeaveFTPd/issues">Issues</a><a href="https://github.com/WeaveFTPd/WeaveFTPd/blob/main/README.md#license">License</a></div>
+    </div>
+  </footer>
+</body>
+</html>
