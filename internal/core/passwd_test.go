@@ -123,6 +123,81 @@ func TestAddUserToPasswdUsesStableDefaultsForNewUsers(t *testing.T) {
 	}
 }
 
+func TestPasswdHelpersRejectInvalidUsernames(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	passwdPath := filepath.Join(dir, "passwd")
+	if err := os.WriteFile(passwdPath, []byte("Finity:hash:100:300:0:/site:/bin/false\n"), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	for _, name := range []string{"../probe", `..\probe`, "bad:name", "bad name"} {
+		if err := AddUserToPasswd(name, "hash", passwdPath); err == nil {
+			t.Fatalf("AddUserToPasswd(%q) succeeded, want error", name)
+		}
+		if err := RemoveUserFromPasswd(name, passwdPath); err == nil {
+			t.Fatalf("RemoveUserFromPasswd(%q) succeeded, want error", name)
+		}
+	}
+	if err := RenameUserInPasswd("Finity", "bad:name", passwdPath); err == nil {
+		t.Fatalf("RenameUserInPasswd() with invalid new username succeeded, want error")
+	}
+}
+
+func TestRenameUserInPasswdRejectsExistingDestination(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	passwdPath := filepath.Join(dir, "passwd")
+	if err := os.WriteFile(passwdPath, []byte(
+		"olduser:hash:100:300:0:/site:/bin/false\n"+
+			"newuser:hash:101:300:0:/site:/bin/false\n",
+	), 0600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if err := RenameUserInPasswd("olduser", "newuser", passwdPath); err == nil {
+		t.Fatalf("RenameUserInPasswd() succeeded, want duplicate destination error")
+	}
+
+	data, err := os.ReadFile(passwdPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if strings.Count(string(data), "newuser:") != 1 || !strings.Contains(string(data), "olduser:") {
+		t.Fatalf("passwd changed after rejected rename:\n%s", string(data))
+	}
+}
+
+func TestAddGroupToFileRejectsInvalidGroupNameAndSanitizesDescription(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldwd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	if err := os.MkdirAll("etc", 0755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+
+	if err := AddGroupToFile("../evil", "desc", 300); err == nil {
+		t.Fatalf("AddGroupToFile() with invalid group succeeded, want error")
+	}
+	if err := AddGroupToFile("iND", "scene:group", 300); err != nil {
+		t.Fatalf("AddGroupToFile() error = %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join("etc", "group"))
+	if err != nil {
+		t.Fatalf("ReadFile(group) error = %v", err)
+	}
+	if got, want := strings.TrimSpace(string(data)), "iND:scene group:300:"; got != want {
+		t.Fatalf("group line = %q, want %q", got, want)
+	}
+}
+
 func TestAddGroupToFileDoesNotCreateDashBackup(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()

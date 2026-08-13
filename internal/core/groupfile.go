@@ -23,6 +23,11 @@ type GroupFile struct {
 }
 
 func LoadGroupConfig(name string) (*GroupFile, error) {
+	var err error
+	name, err = normalizeSiteGroupName(name)
+	if err != nil {
+		return nil, err
+	}
 	path := filepath.Join("etc", "groups", name)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -81,9 +86,11 @@ func (g *GroupFile) Save() error {
 	if g == nil {
 		return fmt.Errorf("group config is nil")
 	}
-	if g.Name == "" {
-		return fmt.Errorf("group name is empty")
+	name, err := normalizeSiteGroupName(g.Name)
+	if err != nil {
+		return err
 	}
+	g.Name = name
 	path := filepath.Join("etc", "groups", g.Name)
 
 	mode := os.FileMode(0644)

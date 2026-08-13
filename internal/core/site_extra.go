@@ -139,7 +139,11 @@ func (s *Session) HandleSiteGroup(args []string) bool {
 	if len(args) < 1 || strings.TrimSpace(args[0]) == "" {
 		return s.HandleSiteGroups(nil)
 	}
-	group := args[0]
+	group, err := normalizeSiteGroupName(args[0])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid group name %q.\r\n", strings.TrimSpace(args[0]))
+		return false
+	}
 	gid, ok := s.GroupMap[group]
 	if !ok {
 		fmt.Fprintf(s.Conn, "550 Group %s not found.\r\n", group)
@@ -165,7 +169,11 @@ func (s *Session) HandleSiteGrpNfo(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE GRPNFO <group>\r\n")
 		return false
 	}
-	group := args[0]
+	group, err := normalizeSiteGroupName(args[0])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid group name %q.\r\n", strings.TrimSpace(args[0]))
+		return false
+	}
 	data, err := os.ReadFile(filepath.Join("etc", "groups", group))
 	if err != nil {
 		fmt.Fprintf(s.Conn, "550 Group file for %s not found.\r\n", group)
