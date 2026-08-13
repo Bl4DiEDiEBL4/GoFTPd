@@ -267,25 +267,87 @@ func (t *Transfer) ReceiveFile(path string, position int64, expectedPeer string)
 	t.slave.registerUpload(t)
 	defer t.slave.unregisterUpload(t)
 
-	// Transfer with CRC32
+	// Transfer with CRC32. Disk writes (and CRC) run on a separate goroutine
+	// with double buffering so the socket read is never stalled behind a disk
+	// write: in the old serial read->write->read loop the NIC sat idle during
+	// every disk write, which caps sustained 10gbit throughput.
 	h := crc32.NewIEEE()
-	var out io.Writer = io.MultiWriter(file, h)
-	bufPtr := getTransferBuffer(t.slave.getTransferBufferSize())
-	defer putTransferBuffer(bufPtr)
-	buf := *bufPtr
+	bufSize := t.slave.getTransferBufferSize()
+	bufs := [2]*[]byte{getTransferBuffer(bufSize), getTransferBuffer(bufSize)}
+
+	type writeChunk struct {
+		buf *[]byte
+		n   int
+	}
+	freeCh := make(chan *[]byte, len(bufs))
+	for _, b := range bufs {
+		freeCh <- b
+	}
+	writeCh := make(chan writeChunk, len(bufs))
+	var writerFailed atomic.Bool
+	var writerErr error
+	var writerWG sync.WaitGroup
+	writerWG.Add(1)
+	go func() {
+		defer writerWG.Done()
+		for c := range writeCh {
+			if writerErr == nil {
+				if _, werr := file.Write((*c.buf)[:c.n]); werr != nil {
+					writerErr = werr
+					writerFailed.Store(true)
+				} else {
+					_, _ = h.Write((*c.buf)[:c.n])
+					// Count bytes only after they hit the disk, matching the
+					// old serial loop: live status and the final Transferred
+					// must not include chunks still queued (or lost on a
+					// write failure).
+					t.transferred.Add(int64(c.n))
+				}
+			}
+			freeCh <- c.buf
+		}
+	}()
+	writerClosed := false
+	// finishWriter drains the writer goroutine and returns its sticky error.
+	// Must be called before touching file/h from this goroutine again.
+	finishWriter := func() error {
+		if !writerClosed {
+			writerClosed = true
+			close(writeCh)
+			writerWG.Wait()
+		}
+		return writerErr
+	}
+	defer func() {
+		_ = finishWriter()
+		for _, b := range bufs {
+			putTransferBuffer(b)
+		}
+	}()
+
 	lastStatus := time.Now()
 	lastProgress := time.Now()
 	var dataStarted time.Time
+	var curBuf *[]byte
 	nextReadDeadline := time.Now().Add(transferPollTick)
 	_ = conn.SetReadDeadline(nextReadDeadline)
 
 	for {
 		if reason := t.abortSnapshot(); reason != "" {
+			_ = finishWriter()
 			cleanupFailedReceive(file, fullPath, position)
 			return t.errorStatus("aborted: " + reason)
 		}
+		if writerFailed.Load() {
+			werr := finishWriter()
+			cleanupFailedReceive(file, fullPath, position)
+			return t.errorStatus(fmt.Sprintf("write error: %v", werr))
+		}
 
-		n, err := conn.Read(buf)
+		if curBuf == nil {
+			curBuf = <-freeCh
+		}
+		n, err := conn.Read(*curBuf)
 		if n > 0 {
 			if dataStarted.IsZero() {
 				dataStarted = time.Now()
@@ -293,11 +355,8 @@ func (t *Transfer) ReceiveFile(path string, position int64, expectedPeer string)
 				t.started = dataStarted
 				t.mu.Unlock()
 			}
-			if _, werr := out.Write(buf[:n]); werr != nil {
-				cleanupFailedReceive(file, fullPath, position)
-				return t.errorStatus(fmt.Sprintf("write error: %v", werr))
-			}
-			t.transferred.Add(int64(n))
+			writeCh <- writeChunk{buf: curBuf, n: n}
+			curBuf = nil
 			lastProgress = time.Now()
 		}
 		if time.Since(lastStatus) >= transferStatusTick {
@@ -310,6 +369,7 @@ func (t *Transfer) ReceiveFile(path string, position int64, expectedPeer string)
 				// too long so a stalled upload can't hold the slot (and any
 				// leech-while-upload follower) open indefinitely.
 				if time.Since(lastProgress) >= receiveIdleLimit {
+					_ = finishWriter()
 					cleanupFailedReceive(file, fullPath, position)
 					return t.errorStatus("receive idle timeout: no data from source")
 				}
@@ -320,6 +380,7 @@ func (t *Transfer) ReceiveFile(path string, position int64, expectedPeer string)
 			if err == io.EOF {
 				break
 			}
+			_ = finishWriter()
 			cleanupFailedReceive(file, fullPath, position)
 			return t.errorStatus(fmt.Sprintf("read error: %v", err))
 		}
@@ -327,6 +388,12 @@ func (t *Transfer) ReceiveFile(path string, position int64, expectedPeer string)
 			nextReadDeadline = time.Now().Add(transferPollTick)
 			_ = conn.SetReadDeadline(nextReadDeadline)
 		}
+	}
+
+	// Flush all queued disk writes before reading the checksum or file size.
+	if werr := finishWriter(); werr != nil {
+		cleanupFailedReceive(file, fullPath, position)
+		return t.errorStatus(fmt.Sprintf("write error: %v", werr))
 	}
 
 	transferred := t.transferred.Load()
