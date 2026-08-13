@@ -258,7 +258,11 @@ func (t *Transfer) ReceiveFile(path string, position int64, expectedPeer string)
 	}
 	t.mu.Lock()
 	t.direction = TransferReceiving
-	t.started = time.Now()
+	// t.started is set on the first data byte, not here: the window between
+	// slave readiness and the client actually sending (receive-ack round trip,
+	// 150 reply, sender reaction) must not count as transfer time, or announced
+	// speeds get deflated by a fixed per-file overhead (glftpd/drftpd measure
+	// pure data time only).
 	t.mu.Unlock()
 	t.slave.registerUpload(t)
 	defer t.slave.unregisterUpload(t)
@@ -271,6 +275,7 @@ func (t *Transfer) ReceiveFile(path string, position int64, expectedPeer string)
 	buf := *bufPtr
 	lastStatus := time.Now()
 	lastProgress := time.Now()
+	var dataStarted time.Time
 	nextReadDeadline := time.Now().Add(transferPollTick)
 	_ = conn.SetReadDeadline(nextReadDeadline)
 
@@ -282,6 +287,12 @@ func (t *Transfer) ReceiveFile(path string, position int64, expectedPeer string)
 
 		n, err := conn.Read(buf)
 		if n > 0 {
+			if dataStarted.IsZero() {
+				dataStarted = time.Now()
+				t.mu.Lock()
+				t.started = dataStarted
+				t.mu.Unlock()
+			}
 			if _, werr := out.Write(buf[:n]); werr != nil {
 				cleanupFailedReceive(file, fullPath, position)
 				return t.errorStatus(fmt.Sprintf("write error: %v", werr))
@@ -328,9 +339,14 @@ func (t *Transfer) ReceiveFile(path string, position int64, expectedPeer string)
 		finalSize = info.Size()
 	}
 
+	elapsedMs := int64(0)
+	if !dataStarted.IsZero() {
+		elapsedMs = time.Since(dataStarted).Milliseconds()
+	}
+
 	return protocol.TransferStatus{
 		TransferIndex: t.transferIndex,
-		Elapsed:       time.Since(t.started).Milliseconds(),
+		Elapsed:       elapsedMs,
 		Transferred:   transferred,
 		FileSize:      finalSize,
 		Checksum:      h.Sum32(),

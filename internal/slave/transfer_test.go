@@ -84,6 +84,75 @@ func TestCleanupFailedReceiveTruncatesBackToResumeOffset(t *testing.T) {
 	}
 }
 
+func TestReceiveFileStartsTimerOnFirstDataByte(t *testing.T) {
+	dir := t.TempDir()
+	slaveSide, clientSide := net.Pipe()
+	defer clientSide.Close()
+
+	s := &Slave{roots: []MountedRoot{{Path: dir, MountPath: "/"}}}
+	transfer := NewTransfer(nil, slaveSide, 1, s, false, false)
+	transfer.SetPath("/delayed.bin")
+
+	done := make(chan int64, 1)
+	errs := make(chan string, 1)
+	go func() {
+		status := transfer.ReceiveFile("/delayed.bin", 0, "")
+		if status.Error != "" {
+			errs <- status.Error
+			return
+		}
+		done <- status.Elapsed
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		stat := transfer.SnapshotLiveStat()
+		if stat.Direction == TransferReceiving {
+			if stat.StartedUnixMs != 0 {
+				t.Fatalf("receive timer started before data arrived: %d", stat.StartedUnixMs)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("transfer did not enter receiving state")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	if stat := transfer.SnapshotLiveStat(); stat.StartedUnixMs != 0 {
+		t.Fatalf("receive timer started during pre-data wait: %d", stat.StartedUnixMs)
+	}
+
+	if _, err := clientSide.Write([]byte("a")); err != nil {
+		t.Fatalf("write first byte: %v", err)
+	}
+	time.Sleep(25 * time.Millisecond)
+	if _, err := clientSide.Write([]byte("b")); err != nil {
+		t.Fatalf("write second byte: %v", err)
+	}
+	clientSide.Close()
+
+	select {
+	case err := <-errs:
+		t.Fatalf("receive failed: %s", err)
+	case elapsed := <-done:
+		if elapsed <= 0 {
+			t.Fatalf("expected positive elapsed after data, got %d", elapsed)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("receive did not finish")
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "delayed.bin"))
+	if err != nil {
+		t.Fatalf("read upload: %v", err)
+	}
+	if string(data) != "ab" {
+		t.Fatalf("upload content = %q, want ab", string(data))
+	}
+}
+
 func TestFindAssociatedUploadUsesPathIndex(t *testing.T) {
 	s := &Slave{}
 	upload := NewTransfer(nil, nil, 1, s, false, false)

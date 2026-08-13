@@ -1757,9 +1757,11 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					defer s.endTransfer()
 					dataConn = trackTransferConn(s, dataConn, "upload")
 
-					start := time.Now()
-					fileSize, checksum, err = bridge.UploadFile(filePath, dataConn, s.User.Name, s.User.PrimaryGroup, restOffset, s.currentTransferTypeByte())
-					xferMs = time.Since(start).Milliseconds()
+					// Use the slave-measured transfer time (pure data time) for the
+					// announced speed, not wall-clock around the whole call: that
+					// would include slave listen/receive RPCs, the master-to-slave
+					// TLS handshake and status round trips, deflating speeds.
+					fileSize, checksum, xferMs, err = bridge.UploadFile(filePath, dataConn, s.User.Name, s.User.PrimaryGroup, restOffset, s.currentTransferTypeByte())
 					dataConn.Close()
 
 					if err != nil {
