@@ -8,6 +8,14 @@ import (
 	"time"
 )
 
+func TestLoadUserRejectsPathTraversalName(t *testing.T) {
+	for _, name := range []string{"../probe", `..\probe`, "users/Finity", ".", "..", "", "bad:name", "bad name"} {
+		if _, err := LoadUser(name, nil); err == nil {
+			t.Fatalf("LoadUser(%q) succeeded, want error", name)
+		}
+	}
+}
+
 func TestLoadAndSavePreservesImportedUserfileFields(t *testing.T) {
 	tmp := t.TempDir()
 	oldWD, err := os.Getwd()

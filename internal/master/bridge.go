@@ -805,18 +805,18 @@ func (b *Bridge) FindChildFoldMatch(parentPath string, candidates []string) (str
 // In  the FTP client connects directly to the slave's PASV port.
 // Here we bridge through the master since the client already connected to us.
 // A PRET-based optimization (redirect client to slave) can be added later.
-func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group string, position int64, transferType byte) (int64, uint32, error) {
+func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group string, position int64, transferType byte) (int64, uint32, int64, error) {
 	var slave *RemoteSlave
 	if position > 0 {
 		slave = b.sm.SelectSlaveForDownload(filePath)
 		if slave == nil {
-			return 0, 0, fmt.Errorf("resume target not found: %s", filePath)
+			return 0, 0, 0, fmt.Errorf("resume target not found: %s", filePath)
 		}
 	} else {
 		slave = b.sm.SelectSlaveForUpload(filePath)
 	}
 	if slave == nil {
-		return 0, 0, fmt.Errorf("no available slave")
+		return 0, 0, 0, fmt.Errorf("no available slave")
 	}
 
 	slave.IncActiveTransfers()
@@ -825,17 +825,17 @@ func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group s
 	// Tell slave to listen
 	listenIdx, err := IssueListen(slave, false, false)
 	if err != nil {
-		return 0, 0, fmt.Errorf("issue listen to %s: %w", slave.Name(), err)
+		return 0, 0, 0, fmt.Errorf("issue listen to %s: %w", slave.Name(), err)
 	}
 
 	resp, err := slave.FetchResponse(listenIdx, 60*time.Second)
 	if err != nil {
-		return 0, 0, fmt.Errorf("slave %s listen failed: %w", slave.Name(), err)
+		return 0, 0, 0, fmt.Errorf("slave %s listen failed: %w", slave.Name(), err)
 	}
 
 	transferResp, ok := resp.(*protocol.AsyncResponseTransfer)
 	if !ok {
-		return 0, 0, fmt.Errorf("unexpected response from slave")
+		return 0, 0, 0, fmt.Errorf("unexpected response from slave")
 	}
 
 	slaveAddr := net.JoinHostPort(slave.GetPASVIP(), strconv.Itoa(transferResp.Info.Port))
@@ -844,7 +844,7 @@ func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group s
 	// Connect to slave's data port
 	slaveConn, err := net.DialTimeout("tcp", slaveAddr, 10*time.Second)
 	if err != nil {
-		return 0, 0, fmt.Errorf("connect to slave data port: %w", err)
+		return 0, 0, 0, fmt.Errorf("connect to slave data port: %w", err)
 	}
 	configureBridgeDataSocket(slaveConn)
 
@@ -853,14 +853,14 @@ func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group s
 		transferResp.Info.TransferIndex)
 	if err != nil {
 		slaveConn.Close()
-		return 0, 0, fmt.Errorf("issue receive: %w", err)
+		return 0, 0, 0, fmt.Errorf("issue receive: %w", err)
 	}
 
 	// Wait for receive acknowledgement
 	_, err = slave.FetchResponse(recvIdx, 60*time.Second)
 	if err != nil {
 		slaveConn.Close()
-		return 0, 0, fmt.Errorf("receive ack: %w", err)
+		return 0, 0, 0, fmt.Errorf("receive ack: %w", err)
 	}
 	b.notePendingUpload(filePath, slave.Name(), owner, group, position)
 	defer b.clearPendingUpload(filePath)
@@ -876,21 +876,21 @@ func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group s
 	if err != nil {
 		if statusErr == nil && status.Error != "" {
 			b.reconcileFailedUploadState(filePath, slave)
-			return status.Transferred, status.Checksum, fmt.Errorf("%s", status.Error)
+			return status.Transferred, status.Checksum, status.Elapsed, fmt.Errorf("%s", status.Error)
 		}
 		if statusErr != nil {
 			b.reconcileFailedUploadState(filePath, slave)
 		}
 		log.Printf("[Bridge] Upload bridge error: %v (wrote %d bytes)", err, written)
-		return written, checksum, fmt.Errorf("upload bridge: %w", err)
+		return written, checksum, 0, fmt.Errorf("upload bridge: %w", err)
 	}
 	if statusErr != nil {
 		b.reconcileFailedUploadState(filePath, slave)
-		return written, checksum, statusErr
+		return written, checksum, 0, statusErr
 	}
 	if status.Error != "" {
 		b.reconcileFailedUploadState(filePath, slave)
-		return status.Transferred, status.Checksum, fmt.Errorf("%s", status.Error)
+		return status.Transferred, status.Checksum, status.Elapsed, fmt.Errorf("%s", status.Error)
 	}
 
 	finalSize := finalUploadFileSize(status, position)
@@ -899,7 +899,7 @@ func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group s
 	if position > 0 {
 		finalChecksum, err := b.ChecksumFile(filePath)
 		if err != nil {
-			return written, checksum, fmt.Errorf("resume checksum: %w", err)
+			return written, checksum, xferTime, fmt.Errorf("resume checksum: %w", err)
 		}
 		checksum = finalChecksum
 	}
@@ -922,7 +922,7 @@ func (b *Bridge) UploadFile(filePath string, clientData net.Conn, owner, group s
 	b.recordUploadMetadata(filePath, owner, group, finalSize, xferTime, checksum)
 	b.sm.SyncStatusMarkersForPath(filePath, false)
 
-	return finalSize, checksum, nil
+	return finalSize, checksum, xferTime, nil
 }
 
 func finalUploadFileSize(status protocol.TransferStatus, position int64) int64 {

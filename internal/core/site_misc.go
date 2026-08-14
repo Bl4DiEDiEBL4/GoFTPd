@@ -26,7 +26,7 @@ func (s *Session) HandleSiteChmod(args []string) bool {
 	// FTP paths always use forward slashes. Normalize backslashes before path
 	// cleaning so a Windows client cannot smuggle "..\\" through to filepath.Join.
 	target := strings.ReplaceAll(args[1], "\\", "/")
-	vpath := path.Join(s.CurrentDir, target)
+	vpath := resolveSessionPath(s.CurrentDir, target)
 	aclPath := path.Join(s.Config.ACLBasePath, vpath)
 	if s.ACLEngine == nil || !s.ACLEngine.CanPerform(s.User, "CHMOD", aclPath) {
 		fmt.Fprintf(s.Conn, "550 Access Denied: Insufficient flags.\r\n")

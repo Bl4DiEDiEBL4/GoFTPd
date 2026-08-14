@@ -210,12 +210,40 @@ func MutateAndSave(name string, groupMap map[string]int, mutate func(*User) erro
 // LoadUser reads user file - supports userfile format
 func LoadUser(name string, groupMap map[string]int) (*User, error) {
 	// Use exact case - usernames are case-sensitive like weaveftpd
+	var err error
+	name, err = NormalizeName(name)
+	if err != nil {
+		return nil, err
+	}
 	path := filepath.Join("etc", "users", name)
 	return loadUserFile(name, path, groupMap)
 }
 
 func LoadTemplate(name, templatePath string, groupMap map[string]int) (*User, error) {
+	var err error
+	name, err = NormalizeName(name)
+	if err != nil {
+		return nil, err
+	}
 	return loadUserFile(name, templatePath, groupMap)
+}
+
+func NormalizeName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", fmt.Errorf("empty username")
+	}
+	if name == "." || name == ".." ||
+		filepath.Base(name) != name ||
+		strings.ContainsAny(name, "/\\: \t\r\n") {
+		return "", fmt.Errorf("invalid username %q", name)
+	}
+	return name, nil
+}
+
+func validateUserName(name string) error {
+	_, err := NormalizeName(name)
+	return err
 }
 
 // passwdFilePath is where loadUserFile reads UID/GID from. Defaults to the
@@ -587,6 +615,11 @@ func (u *User) Save() error {
 
 func (u *User) saveLocked() error {
 	// Use exact case
+	var err error
+	u.Name, err = NormalizeName(u.Name)
+	if err != nil {
+		return err
+	}
 	path := filepath.Join("etc", "users", u.Name)
 	if u.HomeRoot == "" {
 		u.HomeRoot = "/site"

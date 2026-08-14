@@ -51,6 +51,20 @@ func TestResolveListTargetPathPrefersExplicitCommandTarget(t *testing.T) {
 	}
 }
 
+func TestResolveSessionPathKeepsAbsoluteTargetsAbsolute(t *testing.T) {
+	tests := map[string]string{
+		"release":      "/archive/release",
+		"../other":     "/other",
+		"/MP3/release": "/MP3/release",
+		" /FLAC/rel/ ": "/FLAC/rel",
+	}
+	for in, want := range tests {
+		if got := resolveSessionPath("/archive", in); got != want {
+			t.Fatalf("resolveSessionPath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestHasPreparedDataConnection(t *testing.T) {
 	s := &Session{}
 	if s.hasPreparedDataConnection() {

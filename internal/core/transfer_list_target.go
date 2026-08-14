@@ -26,6 +26,17 @@ func listRequestTargetArg(cmd string, args []string) string {
 	return ""
 }
 
+func resolveSessionPath(currentDir, target string) string {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return path.Clean(currentDir)
+	}
+	if path.IsAbs(target) {
+		return path.Clean(target)
+	}
+	return path.Clean(path.Join(currentDir, target))
+}
+
 func (s *Session) resolveListTargetPath(cmd string, args []string, bridge MasterBridge) string {
 	targetArg := listRequestTargetArg(cmd, args)
 	if targetArg == "" {
@@ -37,11 +48,7 @@ func (s *Session) resolveListTargetPath(cmd string, args []string, bridge Master
 
 	targetPath := s.CurrentDir
 	if targetArg != "" {
-		if path.IsAbs(targetArg) {
-			targetPath = path.Clean(targetArg)
-		} else {
-			targetPath = path.Clean(path.Join(s.CurrentDir, targetArg))
-		}
+		targetPath = resolveSessionPath(s.CurrentDir, targetArg)
 	}
 	if bridge != nil {
 		targetPath = bridge.ResolvePath(targetPath)

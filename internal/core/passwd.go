@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"weaveftpd/internal/user"
+
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/pbkdf2"
 )
@@ -249,6 +251,13 @@ func LoadGroupFile(path string) map[string]int {
 
 // AddGroupToFile appends a group to /etc/group file
 func AddGroupToFile(groupName string, desc string, gid int) error {
+	var err error
+	groupName, err = normalizeSiteGroupName(groupName)
+	if err != nil {
+		return err
+	}
+	desc = sanitizeGroupDescription(desc)
+
 	const groupPath = "etc/group"
 	passwdFileMu.Lock()
 	defer passwdFileMu.Unlock()
@@ -276,6 +285,12 @@ func AddGroupToFile(groupName string, desc string, gid int) error {
 // atomically. Without this, GRPDEL only removed the per-group config file and
 // the group reappeared from etc/group on the next restart/login.
 func RemoveGroupFromFile(groupName string) error {
+	var err error
+	groupName, err = normalizeSiteGroupName(groupName)
+	if err != nil {
+		return err
+	}
+
 	const groupPath = "etc/group"
 	passwdFileMu.Lock()
 	defer passwdFileMu.Unlock()
@@ -306,6 +321,13 @@ func RemoveGroupFromFile(groupName string) error {
 		return nil
 	}
 	return atomicWriteFile(groupPath, []byte(strings.Join(kept, "\n")), mode)
+}
+
+func sanitizeGroupDescription(desc string) string {
+	desc = strings.TrimSpace(desc)
+	desc = strings.NewReplacer(":", " ", "\r", " ", "\n", " ").Replace(desc)
+	desc = strings.Join(strings.Fields(desc), " ")
+	return desc
 }
 
 // Password and user management functions
@@ -358,6 +380,12 @@ func GetGroupnameByGID(gid int, groupMap map[string]int) string {
 // AddUserToPasswd appends a new user entry to the passwd file.
 // If the user already exists, it replaces the hash.
 func AddUserToPasswd(username, hash, path string) error {
+	var err error
+	username, err = user.NormalizeName(username)
+	if err != nil {
+		return err
+	}
+
 	passwdFileMu.Lock()
 	defer passwdFileMu.Unlock()
 
@@ -430,6 +458,12 @@ func formatPasswdLine(username, hash, existingLine string) string {
 
 // RemoveUserFromPasswd removes a user entry from the passwd file.
 func RemoveUserFromPasswd(username, path string) error {
+	var err error
+	username, err = user.NormalizeName(username)
+	if err != nil {
+		return err
+	}
+
 	passwdFileMu.Lock()
 	defer passwdFileMu.Unlock()
 
@@ -462,6 +496,16 @@ func RemoveUserFromPasswd(username, path string) error {
 
 // RenameUserInPasswd renames a passwd entry while preserving the existing hash and fields.
 func RenameUserInPasswd(oldUsername, newUsername, path string) error {
+	var err error
+	oldUsername, err = user.NormalizeName(oldUsername)
+	if err != nil {
+		return err
+	}
+	newUsername, err = user.NormalizeName(newUsername)
+	if err != nil {
+		return err
+	}
+
 	passwdFileMu.Lock()
 	defer passwdFileMu.Unlock()
 
@@ -476,6 +520,13 @@ func RenameUserInPasswd(oldUsername, newUsername, path string) error {
 		return err
 	}
 	lines := strings.Split(string(existing), "\n")
+	if oldUsername != newUsername {
+		for _, line := range lines {
+			if strings.HasPrefix(line, newUsername+":") {
+				return fmt.Errorf("user %s already exists in passwd", newUsername)
+			}
+		}
+	}
 	changed := false
 	for i, line := range lines {
 		if !strings.HasPrefix(line, oldUsername+":") {

@@ -21,7 +21,10 @@ type MasterBridge interface {
 
 	// UploadFile routes an upload from the FTP client data connection to a slave.
 	// owner and group are set on the VFS entry for directory listings.
-	UploadFile(filePath string, clientData net.Conn, owner, group string, position int64, transferType byte) (int64, uint32, error)
+	// Returns final size, checksum, and the slave-measured transfer time in
+	// milliseconds (pure data time; use this for announced speeds instead of
+	// wall-clock around the call, which includes slave setup round trips).
+	UploadFile(filePath string, clientData net.Conn, owner, group string, position int64, transferType byte) (int64, uint32, int64, error)
 
 	// DownloadFile routes a download from a slave to the FTP client data connection.
 	// The bridge finds which slave has the file, tells it to send, then bridges data.
