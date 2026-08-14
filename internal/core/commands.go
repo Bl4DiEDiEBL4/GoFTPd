@@ -703,7 +703,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			fmt.Fprintf(s.Conn, "501 Syntax error\r\n")
 			return false
 		}
-		dirPath := path.Join(s.CurrentDir, args[0])
+		dirPath := resolveSessionPath(s.CurrentDir, args[0])
 		if !s.canRemoveDirPath(dirPath) {
 			fmt.Fprintf(s.Conn, "550 Access Denied: Insufficient flags.\r\n")
 			return false
@@ -719,7 +719,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				}
 			}
 		}
-		s.emitEvent(EventRMDir, path.Join(s.CurrentDir, args[0]), args[0], 0, 0, nil)
+		s.emitEvent(EventRMDir, dirPath, path.Base(dirPath), 0, 0, nil)
 		fmt.Fprintf(s.Conn, "250 Directory removed.\r\n")
 
 	case "SIZE":
@@ -729,7 +729,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		}
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
-				filePath := path.Join(s.CurrentDir, args[0])
+				filePath := resolveSessionPath(s.CurrentDir, args[0])
 				size := bridge.GetFileSize(filePath)
 				if size >= 0 {
 					fmt.Fprintf(s.Conn, "213 %d\r\n", size)
@@ -746,10 +746,13 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 		}
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
-				entries := bridge.ListDir(s.CurrentDir)
+				filePath := resolveSessionPath(s.CurrentDir, args[0])
+				parent := path.Dir(filePath)
+				name := path.Base(filePath)
+				entries := bridge.ListDir(parent)
 				found := false
 				for _, e := range entries {
-					if e.Name == args[0] {
+					if e.Name == name {
 						fmt.Fprintf(s.Conn, "213 %s\r\n", timeutil.FTPMachineUnix(e.ModTime))
 						found = true
 						break
@@ -766,7 +769,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			fmt.Fprintf(s.Conn, "501 Syntax error\r\n")
 			return false
 		}
-		filePath := path.Join(s.CurrentDir, args[0])
+		filePath := resolveSessionPath(s.CurrentDir, args[0])
 		if !s.canDeletePath(filePath) {
 			fmt.Fprintf(s.Conn, "550 Access Denied: Insufficient flags.\r\n")
 			return false
@@ -797,7 +800,20 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			fmt.Fprintf(s.Conn, "501 Syntax error\r\n")
 			return false
 		}
-		s.RenameFrom = args[0]
+		renameFrom := resolveSessionPath(s.CurrentDir, args[0])
+		if s.Config.Mode == "master" && s.MasterManager != nil {
+			if bridge, ok := s.MasterManager.(MasterBridge); ok && !bridge.FileExists(renameFrom) {
+				fmt.Fprintf(s.Conn, "550 File not found.\r\n")
+				return false
+			}
+		} else {
+			localPath := filepath.Join(s.Config.StoragePath, filepath.FromSlash(strings.TrimPrefix(renameFrom, "/")))
+			if _, err := os.Stat(localPath); err != nil {
+				fmt.Fprintf(s.Conn, "550 File not found.\r\n")
+				return false
+			}
+		}
+		s.RenameFrom = renameFrom
 		fmt.Fprintf(s.Conn, "350 File exists, ready for destination name.\r\n")
 
 	case "RNTO":
@@ -805,8 +821,8 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			fmt.Fprintf(s.Conn, "503 Bad sequence of commands.\r\n")
 			return false
 		}
-		fromPath := path.Join(s.CurrentDir, s.RenameFrom)
-		toPath := path.Join(s.CurrentDir, args[0])
+		fromPath := resolveSessionPath(s.CurrentDir, s.RenameFrom)
+		toPath := resolveSessionPath(s.CurrentDir, args[0])
 		toDir := path.Dir(toPath)
 		toName := path.Base(toPath)
 		if toName == "" || toName == "." || toName == "/" || toName == ".." {
@@ -1757,9 +1773,11 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					defer s.endTransfer()
 					dataConn = trackTransferConn(s, dataConn, "upload")
 
-					start := time.Now()
-					fileSize, checksum, err = bridge.UploadFile(filePath, dataConn, s.User.Name, s.User.PrimaryGroup, restOffset, s.currentTransferTypeByte())
-					xferMs = time.Since(start).Milliseconds()
+					// Use the slave-measured transfer time (pure data time) for the
+					// announced speed, not wall-clock around the whole call: that
+					// would include slave listen/receive RPCs, the master->slave
+					// TLS handshake and status round trips, deflating speeds.
+					fileSize, checksum, xferMs, err = bridge.UploadFile(filePath, dataConn, s.User.Name, s.User.PrimaryGroup, restOffset, s.currentTransferTypeByte())
 					dataConn.Close()
 
 					if err != nil {

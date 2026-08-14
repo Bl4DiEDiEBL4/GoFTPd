@@ -112,6 +112,9 @@ func listDeletedUsers() ([]string, error) {
 		if name == "" || entry.IsDir() || strings.HasSuffix(name, ".passwd") {
 			continue
 		}
+		if _, err := user.NormalizeName(name); err != nil {
+			continue
+		}
 		users = append(users, name)
 	}
 	sort.Strings(users)
@@ -119,6 +122,18 @@ func listDeletedUsers() ([]string, error) {
 }
 
 func createUserFromArgs(s *Session, username, plaintextPassword, primaryGroup string, ipArgs []string) (*user.User, string, error) {
+	var err error
+	username, err = user.NormalizeName(username)
+	if err != nil {
+		return nil, "", err
+	}
+	if strings.TrimSpace(primaryGroup) != "" {
+		primaryGroup, err = normalizeSiteGroupName(primaryGroup)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+
 	hashedPass, err := HashPassword(plaintextPassword)
 	if err != nil {
 		return nil, "", err
@@ -169,6 +184,7 @@ func createUserFromArgs(s *Session, username, plaintextPassword, primaryGroup st
 			newUser.GID = gid
 		}
 		newUser.Groups[primaryGroup] = 0
+		dropDefaultNoGroupSecondary(newUser.Groups, primaryGroup)
 	} else if newUser.PrimaryGroup != "" {
 		if _, ok := newUser.Groups[newUser.PrimaryGroup]; !ok {
 			newUser.Groups[newUser.PrimaryGroup] = 0
@@ -186,29 +202,35 @@ func (s *Session) HandleSiteAddUser(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE ADDUSER <n> <pass> [ident@ip ...]\r\n")
 		return false
 	}
-
-	// Check if user already exists
-	if _, err := user.LoadUser(args[0], s.GroupMap); err == nil {
-		fmt.Fprintf(s.Conn, "550 User %s already exists. Use SITE CHPASS or SITE ADDIP.\r\n", args[0])
+	username, err := user.NormalizeName(args[0])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid username %q.\r\n", strings.TrimSpace(args[0]))
 		return false
 	}
 
-	newUser, hashedPass, err := createUserFromArgs(s, args[0], args[1], "", args[2:])
+	// Check if user already exists
+	if _, err := user.LoadUser(username, s.GroupMap); err == nil {
+		fmt.Fprintf(s.Conn, "550 User %s already exists. Use SITE CHPASS or SITE ADDIP.\r\n", username)
+		return false
+	}
+
+	newUser, hashedPass, err := createUserFromArgs(s, username, args[1], "", args[2:])
 	if err != nil {
-		fmt.Fprintf(s.Conn, "550 Failed to hash password: %v\r\n", err)
+		fmt.Fprintf(s.Conn, "550 Failed to create user %s: %v\r\n", username, err)
 		return false
 	}
 	if err := newUser.Save(); err != nil {
-		fmt.Fprintf(s.Conn, "550 Failed to save user %s: %v\r\n", args[0], err)
+		fmt.Fprintf(s.Conn, "550 Failed to save user %s: %v\r\n", username, err)
 		return false
 	}
 
-	if err := AddUserToPasswd(args[0], hashedPass, s.Config.PasswdFile); err != nil {
-		fmt.Fprintf(s.Conn, "550 Failed to update passwd for %s: %v\r\n", args[0], err)
+	if err := AddUserToPasswd(newUser.Name, hashedPass, s.Config.PasswdFile); err != nil {
+		_ = os.Remove(filepath.Join("etc", "users", newUser.Name))
+		fmt.Fprintf(s.Conn, "550 Failed to update passwd for %s: %v\r\n", newUser.Name, err)
 		return false
 	}
 
-	fmt.Fprintf(s.Conn, "200 User %s added with %d IP(s).\r\n", args[0], len(newUser.IPs))
+	fmt.Fprintf(s.Conn, "200 User %s added with %d IP(s).\r\n", newUser.Name, len(newUser.IPs))
 	s.emitUserChange("ADDUSER", "user", newUser.Name, "", "", "", fmt.Sprintf("group=%s ips=%d", newUser.PrimaryGroup, len(newUser.IPs)))
 	return false
 }
@@ -218,38 +240,49 @@ func (s *Session) HandleSiteGAddUser(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE GADDUSER <user> <pass> <group> [ident@ip ...]\r\n")
 		return false
 	}
-	if !s.User.HasFlag("1") && !s.canManageGroup(args[2]) {
+	username, err := user.NormalizeName(args[0])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid username %q.\r\n", strings.TrimSpace(args[0]))
+		return false
+	}
+	groupName, err := normalizeSiteGroupName(args[2])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid group name %q.\r\n", strings.TrimSpace(args[2]))
+		return false
+	}
+	if !s.User.HasFlag("1") && !s.canManageGroup(groupName) {
 		fmt.Fprintf(s.Conn, "550 Access denied.\r\n")
 		return false
 	}
-	if _, ok := s.GroupMap[args[2]]; !ok {
-		fmt.Fprintf(s.Conn, "550 Group %s not found.\r\n", args[2])
+	if _, ok := s.GroupMap[groupName]; !ok {
+		fmt.Fprintf(s.Conn, "550 Group %s not found.\r\n", groupName)
 		return false
 	}
 	if !s.User.HasFlag("1") {
-		if !s.hasFreeGroupSlot(args[2]) {
-			fmt.Fprintf(s.Conn, "550 No group slots left for %s.\r\n", args[2])
+		if !s.hasFreeGroupSlot(groupName) {
+			fmt.Fprintf(s.Conn, "550 No group slots left for %s.\r\n", groupName)
 			return false
 		}
 	}
-	if _, err := user.LoadUser(args[0], s.GroupMap); err == nil {
-		fmt.Fprintf(s.Conn, "550 User %s already exists.\r\n", args[0])
+	if _, err := user.LoadUser(username, s.GroupMap); err == nil {
+		fmt.Fprintf(s.Conn, "550 User %s already exists.\r\n", username)
 		return false
 	}
-	newUser, hashedPass, err := createUserFromArgs(s, args[0], args[1], args[2], args[3:])
+	newUser, hashedPass, err := createUserFromArgs(s, username, args[1], groupName, args[3:])
 	if err != nil {
-		fmt.Fprintf(s.Conn, "550 Failed to hash password: %v\r\n", err)
+		fmt.Fprintf(s.Conn, "550 Failed to create user %s: %v\r\n", username, err)
 		return false
 	}
 	if err := newUser.Save(); err != nil {
-		fmt.Fprintf(s.Conn, "550 Failed to save user %s: %v\r\n", args[0], err)
+		fmt.Fprintf(s.Conn, "550 Failed to save user %s: %v\r\n", username, err)
 		return false
 	}
-	if err := AddUserToPasswd(args[0], hashedPass, s.Config.PasswdFile); err != nil {
-		fmt.Fprintf(s.Conn, "550 Failed to update passwd for %s: %v\r\n", args[0], err)
+	if err := AddUserToPasswd(newUser.Name, hashedPass, s.Config.PasswdFile); err != nil {
+		_ = os.Remove(filepath.Join("etc", "users", newUser.Name))
+		fmt.Fprintf(s.Conn, "550 Failed to update passwd for %s: %v\r\n", newUser.Name, err)
 		return false
 	}
-	fmt.Fprintf(s.Conn, "200 User %s added to group %s with %d IP(s).\r\n", args[0], args[2], len(newUser.IPs))
+	fmt.Fprintf(s.Conn, "200 User %s added to group %s with %d IP(s).\r\n", newUser.Name, groupName, len(newUser.IPs))
 	s.emitUserChange("GADDUSER", "user", newUser.Name, "primary_group", "", newUser.PrimaryGroup, fmt.Sprintf("ips=%d", len(newUser.IPs)))
 	return false
 }
@@ -263,7 +296,29 @@ func (s *Session) HandleSiteGrpAdd(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE GRPADD <groupname> [description]\r\n")
 		return false
 	}
-	groupName := args[0]
+	groupName, err := normalizeSiteGroupName(args[0])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid group name %q.\r\n", strings.TrimSpace(args[0]))
+		return false
+	}
+	if s.GroupMap == nil {
+		s.GroupMap = LoadGroupFile("etc/group")
+	}
+	if _, ok := s.GroupMap[groupName]; ok {
+		fmt.Fprintf(s.Conn, "550 Group %s already exists.\r\n", groupName)
+		return false
+	}
+	if _, ok := LoadGroupFile("etc/group")[groupName]; ok {
+		fmt.Fprintf(s.Conn, "550 Group %s already exists.\r\n", groupName)
+		return false
+	}
+	if _, err := os.Stat(filepath.Join("etc", "groups", groupName)); err == nil {
+		fmt.Fprintf(s.Conn, "550 Group %s already exists.\r\n", groupName)
+		return false
+	} else if !os.IsNotExist(err) {
+		fmt.Fprintf(s.Conn, "550 Failed to check group %s: %v\r\n", groupName, err)
+		return false
+	}
 	desc := groupName
 	if len(args) > 1 {
 		desc = strings.Join(args[1:], " ")
@@ -287,8 +342,12 @@ func (s *Session) HandleSiteGrpAdd(args []string) bool {
 		fmt.Fprintf(s.Conn, "550 Failed to create group %s: %v\r\n", groupName, err)
 		return false
 	}
+	if err := AddGroupToFile(groupName, desc, nextGID); err != nil {
+		_ = os.Remove(filepath.Join("etc", "groups", groupName))
+		fmt.Fprintf(s.Conn, "550 Failed to add group %s to etc/group: %v\r\n", groupName, err)
+		return false
+	}
 	s.GroupMap[groupName] = nextGID
-	AddGroupToFile(groupName, desc, nextGID)
 	fmt.Fprintf(s.Conn, "200 Group %s added.\r\n", groupName)
 	s.emitUserChange("GRPADD", "group", groupName, "description", "", desc, fmt.Sprintf("gid=%d", nextGID))
 	return false
@@ -303,9 +362,45 @@ func (s *Session) HandleSiteGrpDel(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE GRPDEL <groupname>\r\n")
 		return false
 	}
-	groupName := args[0]
-	_ = os.Remove(filepath.Join("etc", "groups", groupName))
+	groupName, err := normalizeSiteGroupName(args[0])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid group name %q.\r\n", strings.TrimSpace(args[0]))
+		return false
+	}
+	groupMap := s.GroupMap
+	if groupMap == nil {
+		groupMap = LoadGroupFile("etc/group")
+	}
+	if _, ok := groupMap[groupName]; !ok {
+		if _, ok := LoadGroupFile("etc/group")[groupName]; !ok {
+			if _, err := os.Stat(filepath.Join("etc", "groups", groupName)); os.IsNotExist(err) {
+				fmt.Fprintf(s.Conn, "550 Group %s not found.\r\n", groupName)
+				return false
+			} else if err != nil {
+				fmt.Fprintf(s.Conn, "550 Failed to check group %s: %v\r\n", groupName, err)
+				return false
+			}
+		}
+	}
+	if members, _ := groupMembers(groupName, groupMap); len(members) > 0 {
+		fmt.Fprintf(s.Conn, "550 Group %s still has %d member(s): %s.\r\n", groupName, len(members), formatGroupMemberPreview(members))
+		return false
+	}
+	groupPath := filepath.Join("etc", "groups", groupName)
+	groupData, readGroupErr := os.ReadFile(groupPath)
+	hadGroupFile := readGroupErr == nil
+	groupMode := os.FileMode(0644)
+	if st, err := os.Stat(groupPath); err == nil {
+		groupMode = st.Mode().Perm()
+	}
+	if err := os.Remove(groupPath); err != nil && !os.IsNotExist(err) {
+		fmt.Fprintf(s.Conn, "550 Failed to remove group file %s: %v\r\n", groupName, err)
+		return false
+	}
 	if err := RemoveGroupFromFile(groupName); err != nil {
+		if hadGroupFile {
+			_ = atomicWriteFile(groupPath, groupData, groupMode)
+		}
 		fmt.Fprintf(s.Conn, "550 Failed to remove group from etc/group: %v\r\n", err)
 		return false
 	}
@@ -324,39 +419,76 @@ func (s *Session) HandleSiteChGrp(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE CHGRP <user> <group> [group2 ...]\r\n")
 		return false
 	}
-	targetUser, err := user.LoadUser(args[0], s.GroupMap)
+	username, err := user.NormalizeName(args[0])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid username %q.\r\n", strings.TrimSpace(args[0]))
+		return false
+	}
+	targetUser, err := user.LoadUser(username, s.GroupMap)
 	if err != nil {
 		fmt.Fprintf(s.Conn, "550 User not found.\r\n")
 		return false
 	}
 	oldGroups := strings.Join(sortedUserGroups(targetUser), ",")
+	oldPrimary := targetUser.PrimaryGroup
 
-	// Toggle group membership (drftpd style): if in group, remove; if not, add
+	nextGroups := make(map[string]int, len(targetUser.Groups))
+	for group, admin := range targetUser.Groups {
+		nextGroups[group] = admin
+	}
+
+	// Toggle group membership (drftpd style): if in group, remove; if not, add.
+	// Validate first and apply to a copy so a failing command cannot leave the
+	// in-memory user different from what is on disk.
 	var added, removed []string
-	for _, grp := range args[1:] {
-		if _, inGroup := targetUser.Groups[grp]; inGroup {
-			delete(targetUser.Groups, grp)
+	for _, rawGroup := range args[1:] {
+		grp, err := normalizeSiteGroupName(rawGroup)
+		if err != nil {
+			fmt.Fprintf(s.Conn, "550 Invalid group name %q.\r\n", strings.TrimSpace(rawGroup))
+			return false
+		}
+		if _, inGroup := nextGroups[grp]; inGroup {
+			delete(nextGroups, grp)
 			removed = append(removed, grp)
 		} else {
 			if _, ok := s.GroupMap[grp]; !ok {
 				fmt.Fprintf(s.Conn, "550 Group %s does not exist.\r\n", grp)
 				return false
 			}
-			targetUser.Groups[grp] = 0
+			nextGroups[grp] = 0
 			added = append(added, grp)
 		}
 	}
+	newPrimary := targetUser.PrimaryGroup
+	if newPrimary != "" {
+		if _, ok := nextGroups[newPrimary]; !ok {
+			promoted := pickPrimaryGroupAfterCHGRP(nextGroups, added)
+			if promoted == "" {
+				fmt.Fprintf(s.Conn, "550 Cannot remove %s from %s because it is the primary group and no other group remains.\r\n", newPrimary, targetUser.Name)
+				return false
+			}
+			newPrimary = promoted
+		}
+	}
+	targetUser.Groups = nextGroups
+	targetUser.PrimaryGroup = newPrimary
+	if gid, ok := s.GroupMap[newPrimary]; ok {
+		targetUser.GID = gid
+	}
 	if err := targetUser.Save(); err != nil {
-		fmt.Fprintf(s.Conn, "550 Failed to save user %s: %v\r\n", args[0], err)
+		fmt.Fprintf(s.Conn, "550 Failed to save user %s: %v\r\n", targetUser.Name, err)
 		return false
 	}
 
-	msg := fmt.Sprintf("200 %s:", args[0])
+	msg := fmt.Sprintf("200 %s:", targetUser.Name)
 	if len(added) > 0 {
 		msg += " added " + strings.Join(added, ",")
 	}
 	if len(removed) > 0 {
 		msg += " removed " + strings.Join(removed, ",")
+	}
+	if oldPrimary != targetUser.PrimaryGroup {
+		msg += " primary " + oldPrimary + "->" + targetUser.PrimaryGroup
 	}
 	fmt.Fprintf(s.Conn, "%s.\r\n", msg)
 	detailParts := []string{}
@@ -366,8 +498,28 @@ func (s *Session) HandleSiteChGrp(args []string) bool {
 	if len(removed) > 0 {
 		detailParts = append(detailParts, "removed="+strings.Join(removed, ","))
 	}
+	if oldPrimary != targetUser.PrimaryGroup {
+		detailParts = append(detailParts, "primary="+oldPrimary+"->"+targetUser.PrimaryGroup)
+	}
 	s.emitUserChange("CHGRP", "user", targetUser.Name, "groups", oldGroups, strings.Join(sortedUserGroups(targetUser), ","), strings.Join(detailParts, " "))
 	return false
+}
+
+func pickPrimaryGroupAfterCHGRP(groups map[string]int, preferred []string) string {
+	for _, group := range preferred {
+		if _, ok := groups[group]; ok {
+			return group
+		}
+	}
+	names := make([]string, 0, len(groups))
+	for group := range groups {
+		names = append(names, group)
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		return ""
+	}
+	return names[0]
 }
 
 // HandleSiteFlags adds or removes flags from a user.
@@ -440,26 +592,72 @@ func (s *Session) HandleSiteChPGrp(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE CHPGRP <user> <group>\r\n")
 		return false
 	}
-	targetUser, err := user.LoadUser(args[0], s.GroupMap)
+	username, err := user.NormalizeName(args[0])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid username %q.\r\n", strings.TrimSpace(args[0]))
+		return false
+	}
+	groupName, err := normalizeSiteGroupName(args[1])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid group name %q.\r\n", strings.TrimSpace(args[1]))
+		return false
+	}
+	targetUser, err := user.LoadUser(username, s.GroupMap)
 	if err != nil {
 		fmt.Fprintf(s.Conn, "550 User not found.\r\n")
 		return false
 	}
-	gid, ok := s.GroupMap[args[1]]
+	gid, ok := s.GroupMap[groupName]
 	if !ok {
-		fmt.Fprintf(s.Conn, "550 Group %s does not exist.\r\n", args[1])
+		fmt.Fprintf(s.Conn, "550 Group %s does not exist.\r\n", groupName)
 		return false
 	}
 	oldPrimary := targetUser.PrimaryGroup
-	targetUser.PrimaryGroup = args[1]
+	targetUser.PrimaryGroup = groupName
 	targetUser.GID = gid
+	if targetUser.Groups == nil {
+		targetUser.Groups = make(map[string]int)
+	}
+	targetUser.Groups[groupName] = 0
+	dropDefaultNoGroupSecondary(targetUser.Groups, targetUser.PrimaryGroup)
 	if err := targetUser.Save(); err != nil {
-		fmt.Fprintf(s.Conn, "550 Failed to save primary group for %s: %v\r\n", args[0], err)
+		fmt.Fprintf(s.Conn, "550 Failed to save primary group for %s: %v\r\n", targetUser.Name, err)
 		return false
 	}
 	fmt.Fprintf(s.Conn, "200 Primary group changed.\r\n")
 	s.emitUserChange("CHPGRP", "user", targetUser.Name, "primary_group", oldPrimary, targetUser.PrimaryGroup, "")
 	return false
+}
+
+func dropDefaultNoGroupSecondary(groups map[string]int, primaryGroup string) {
+	if groups == nil || isDefaultNoGroup(primaryGroup) {
+		return
+	}
+	for group := range groups {
+		if isDefaultNoGroup(group) {
+			delete(groups, group)
+		}
+	}
+}
+
+func isDefaultNoGroup(group string) bool {
+	return strings.EqualFold(strings.TrimSpace(group), "NoGroup")
+}
+
+func formatGroupMemberPreview(members []string) string {
+	if len(members) == 0 {
+		return ""
+	}
+	const maxShown = 5
+	shown := members
+	if len(shown) > maxShown {
+		shown = shown[:maxShown]
+	}
+	out := strings.Join(shown, ",")
+	if len(members) > maxShown {
+		out += fmt.Sprintf(",+%d more", len(members)-maxShown)
+	}
+	return out
 }
 
 func (s *Session) HandleSiteGAdmin(args []string) bool {
@@ -471,29 +669,34 @@ func (s *Session) HandleSiteGAdmin(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE GADMIN <group> <user>\r\n")
 		return false
 	}
+	groupName, err := normalizeSiteGroupName(args[0])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid group name %q.\r\n", strings.TrimSpace(args[0]))
+		return false
+	}
 	targetUser, err := user.LoadUser(args[1], s.GroupMap)
 	if err != nil {
 		fmt.Fprintf(s.Conn, "550 User not found.\r\n")
 		return false
 	}
-	if _, ok := s.GroupMap[args[0]]; !ok {
-		fmt.Fprintf(s.Conn, "550 Group %s does not exist.\r\n", args[0])
+	if _, ok := s.GroupMap[groupName]; !ok {
+		fmt.Fprintf(s.Conn, "550 Group %s does not exist.\r\n", groupName)
 		return false
 	}
 	// The user must actually belong to the group before being made its admin;
 	// previously this silently added them to an arbitrary group as admin.
-	_, isMember := targetUser.Groups[args[0]]
-	if !isMember && !strings.EqualFold(targetUser.PrimaryGroup, args[0]) {
-		fmt.Fprintf(s.Conn, "550 %s is not a member of group %s.\r\n", targetUser.Name, args[0])
+	_, isMember := targetUser.Groups[groupName]
+	if !isMember && !strings.EqualFold(targetUser.PrimaryGroup, groupName) {
+		fmt.Fprintf(s.Conn, "550 %s is not a member of group %s.\r\n", targetUser.Name, groupName)
 		return false
 	}
 	// Toggle: grant gadmin if not set, revoke it (keeping membership) if already set.
-	oldAdmin := targetUser.Groups[args[0]]
+	oldAdmin := targetUser.Groups[groupName]
 	newAdmin := 1
 	if oldAdmin == 1 {
 		newAdmin = 0
 	}
-	targetUser.Groups[args[0]] = newAdmin
+	targetUser.Groups[groupName] = newAdmin
 	if err := targetUser.Save(); err != nil {
 		fmt.Fprintf(s.Conn, "550 Failed to save gadmin for %s: %v\r\n", args[1], err)
 		return false
@@ -502,8 +705,8 @@ func (s *Session) HandleSiteGAdmin(args []string) bool {
 	if newAdmin == 0 {
 		verb = "revoked"
 	}
-	fmt.Fprintf(s.Conn, "200 Gadmin %s for %s on group %s.\r\n", verb, targetUser.Name, args[0])
-	s.emitUserChange("GADMIN", "user", targetUser.Name, "group_admin", fmt.Sprintf("%d", oldAdmin), fmt.Sprintf("%s=%d", args[0], newAdmin), "")
+	fmt.Fprintf(s.Conn, "200 Gadmin %s for %s on group %s.\r\n", verb, targetUser.Name, groupName)
+	s.emitUserChange("GADMIN", "user", targetUser.Name, "group_admin", fmt.Sprintf("%d", oldAdmin), fmt.Sprintf("%s=%d", groupName, newAdmin), "")
 	return false
 }
 
@@ -519,9 +722,15 @@ func (s *Session) HandleSiteChPass(args []string) bool {
 		return false
 	}
 
-	u, err := user.LoadUser(args[0], s.GroupMap)
+	username, err := user.NormalizeName(args[0])
 	if err != nil {
-		fmt.Fprintf(s.Conn, "550 User %s not found.\r\n", args[0])
+		fmt.Fprintf(s.Conn, "550 Invalid username %q.\r\n", strings.TrimSpace(args[0]))
+		return false
+	}
+
+	u, err := user.LoadUser(username, s.GroupMap)
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 User %s not found.\r\n", username)
 		return false
 	}
 
@@ -531,17 +740,12 @@ func (s *Session) HandleSiteChPass(args []string) bool {
 		return false
 	}
 
-	u.Password = hashedPass
-	if err := u.Save(); err != nil {
-		fmt.Fprintf(s.Conn, "550 Failed to save password for %s: %v\r\n", args[0], err)
-		return false
-	}
-	if err := AddUserToPasswd(args[0], hashedPass, s.Config.PasswdFile); err != nil {
-		fmt.Fprintf(s.Conn, "550 Failed to update passwd for %s: %v\r\n", args[0], err)
+	if err := AddUserToPasswd(u.Name, hashedPass, s.Config.PasswdFile); err != nil {
+		fmt.Fprintf(s.Conn, "550 Failed to update passwd for %s: %v\r\n", u.Name, err)
 		return false
 	}
 
-	fmt.Fprintf(s.Conn, "200 Password changed for %s.\r\n", args[0])
+	fmt.Fprintf(s.Conn, "200 Password changed for %s.\r\n", u.Name)
 	s.emitUserChange("CHPASS", "user", u.Name, "password", "", "changed", "")
 	return false
 }
@@ -870,9 +1074,11 @@ func (s *Session) HandleSiteAddIP(args []string) bool {
 
 	added := 0
 	addedIPs := []string{}
-	for _, ip := range args[1:] {
-		if !strings.Contains(ip, "@") {
-			ip = "*@" + ip
+	for _, rawIP := range args[1:] {
+		ip := normalizeUserIP(rawIP)
+		if ip == "" {
+			fmt.Fprintf(s.Conn, "550 Invalid IP mask %q.\r\n", strings.TrimSpace(rawIP))
+			return false
 		}
 		// Skip if already present
 		exists := false
@@ -920,9 +1126,11 @@ func (s *Session) HandleSiteDelIP(args []string) bool {
 
 	removed := 0
 	removedIPs := []string{}
-	for _, ip := range args[1:] {
-		if !strings.Contains(ip, "@") {
-			ip = "*@" + ip
+	for _, rawIP := range args[1:] {
+		ip := normalizeUserIP(rawIP)
+		if ip == "" {
+			fmt.Fprintf(s.Conn, "550 Invalid IP mask %q.\r\n", strings.TrimSpace(rawIP))
+			return false
 		}
 		for i, existing := range u.IPs {
 			if existing == ip {
@@ -1599,9 +1807,9 @@ func (s *Session) HandleSiteGroupSimult(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE GROUPSIMULT <group> <count>\r\n")
 		return false
 	}
-	group := strings.TrimSpace(args[0])
-	if group == "" {
-		fmt.Fprintf(s.Conn, "550 Group is required.\r\n")
+	group, err := normalizeSiteGroupName(args[0])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid group name %q.\r\n", strings.TrimSpace(args[0]))
 		return false
 	}
 	if !s.canManageGroup(group) {
@@ -1640,14 +1848,19 @@ func (s *Session) HandleSiteDelUser(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE DELUSER <user>\r\n")
 		return false
 	}
-	if args[0] == s.User.Name {
+	username, err := user.NormalizeName(args[0])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid username %q.\r\n", strings.TrimSpace(args[0]))
+		return false
+	}
+	if username == s.User.Name {
 		fmt.Fprintf(s.Conn, "550 Cannot delete yourself.\r\n")
 		return false
 	}
 
-	userPath := filepath.Join("etc", "users", args[0])
+	userPath := filepath.Join("etc", "users", username)
 	if _, err := os.Stat(userPath); err != nil {
-		fmt.Fprintf(s.Conn, "550 User %s not found.\r\n", args[0])
+		fmt.Fprintf(s.Conn, "550 User %s not found.\r\n", username)
 		return false
 	}
 	if err := os.MkdirAll(deletedUsersDir, 0755); err != nil {
@@ -1655,17 +1868,21 @@ func (s *Session) HandleSiteDelUser(args []string) bool {
 		return false
 	}
 	if passwds, err := LoadPasswdFile(s.Config.PasswdFile); err == nil {
-		if hash, ok := passwds[args[0]]; ok && hash != "" {
-			_ = os.WriteFile(deletedUserPasswdPath(args[0]), []byte(hash+"\n"), 0600)
+		if hash, ok := passwds[username]; ok && hash != "" {
+			_ = os.WriteFile(deletedUserPasswdPath(username), []byte(hash+"\n"), 0600)
 		}
 	}
-	if err := os.Rename(userPath, deletedUserPath(args[0])); err != nil {
-		fmt.Fprintf(s.Conn, "550 Failed to delete user %s: %v\r\n", args[0], err)
+	if err := os.Rename(userPath, deletedUserPath(username)); err != nil {
+		fmt.Fprintf(s.Conn, "550 Failed to delete user %s: %v\r\n", username, err)
 		return false
 	}
-	RemoveUserFromPasswd(args[0], s.Config.PasswdFile)
-	fmt.Fprintf(s.Conn, "200 User %s deleted (can be restored with SITE READD).\r\n", args[0])
-	s.emitUserChange("DELUSER", "user", args[0], "", "", "", "stored for READD")
+	if err := RemoveUserFromPasswd(username, s.Config.PasswdFile); err != nil {
+		_ = os.Rename(deletedUserPath(username), userPath)
+		fmt.Fprintf(s.Conn, "550 Failed to update passwd for %s: %v\r\n", username, err)
+		return false
+	}
+	fmt.Fprintf(s.Conn, "200 User %s deleted (can be restored with SITE READD).\r\n", username)
+	s.emitUserChange("DELUSER", "user", username, "", "", "", "stored for READD")
 	return false
 }
 
@@ -1691,24 +1908,25 @@ func (s *Session) HandleSiteReAdd(args []string) bool {
 		fmt.Fprintf(s.Conn, "200 %d deleted user(s) stored.\r\n", len(users))
 		return false
 	}
-	if _, err := user.LoadUser(args[0], s.GroupMap); err == nil {
-		fmt.Fprintf(s.Conn, "550 User %s already exists.\r\n", args[0])
+	username, err := user.NormalizeName(args[0])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid username %q.\r\n", strings.TrimSpace(args[0]))
 		return false
 	}
-	deletedPath := deletedUserPath(args[0])
+	if _, err := user.LoadUser(username, s.GroupMap); err == nil {
+		fmt.Fprintf(s.Conn, "550 User %s already exists.\r\n", username)
+		return false
+	}
+	deletedPath := deletedUserPath(username)
 	if _, err := os.Stat(deletedPath); err != nil {
-		fmt.Fprintf(s.Conn, "550 Deleted user %s not found.\r\n", args[0])
-		return false
-	}
-	if err := os.Rename(deletedPath, filepath.Join("etc", "users", args[0])); err != nil {
-		fmt.Fprintf(s.Conn, "550 Failed to restore user %s: %v\r\n", args[0], err)
+		fmt.Fprintf(s.Conn, "550 Deleted user %s not found.\r\n", username)
 		return false
 	}
 
 	hash := ""
-	if data, err := os.ReadFile(deletedUserPasswdPath(args[0])); err == nil {
+	passwdPath := deletedUserPasswdPath(username)
+	if data, err := os.ReadFile(passwdPath); err == nil {
 		hash = strings.TrimSpace(string(data))
-		_ = os.Remove(deletedUserPasswdPath(args[0]))
 	}
 	if hash == "" && len(args) > 1 {
 		var err error
@@ -1722,12 +1940,19 @@ func (s *Session) HandleSiteReAdd(args []string) bool {
 		fmt.Fprintf(s.Conn, "550 No stored password available. Use SITE READD <user> <newpass>.\r\n")
 		return false
 	}
-	if err := AddUserToPasswd(args[0], hash, s.Config.PasswdFile); err != nil {
-		fmt.Fprintf(s.Conn, "550 Failed to restore passwd entry for %s: %v\r\n", args[0], err)
+	userPath := filepath.Join("etc", "users", username)
+	if err := os.Rename(deletedPath, userPath); err != nil {
+		fmt.Fprintf(s.Conn, "550 Failed to restore user %s: %v\r\n", username, err)
 		return false
 	}
-	fmt.Fprintf(s.Conn, "200 User %s restored.\r\n", args[0])
-	s.emitUserChange("READD", "user", args[0], "", "", "", "restored deleted user")
+	if err := AddUserToPasswd(username, hash, s.Config.PasswdFile); err != nil {
+		_ = os.Rename(userPath, deletedPath)
+		fmt.Fprintf(s.Conn, "550 Failed to restore passwd entry for %s: %v\r\n", username, err)
+		return false
+	}
+	_ = os.Remove(passwdPath)
+	fmt.Fprintf(s.Conn, "200 User %s restored.\r\n", username)
+	s.emitUserChange("READD", "user", username, "", "", "", "restored deleted user")
 	return false
 }
 
@@ -1740,7 +1965,16 @@ func (s *Session) HandleSiteRenUser(args []string) bool {
 		fmt.Fprintf(s.Conn, "501 Usage: SITE RENUSER <olduser> <newuser>\r\n")
 		return false
 	}
-	oldName, newName := args[0], args[1]
+	oldName, err := user.NormalizeName(args[0])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid username %q.\r\n", strings.TrimSpace(args[0]))
+		return false
+	}
+	newName, err := user.NormalizeName(args[1])
+	if err != nil {
+		fmt.Fprintf(s.Conn, "550 Invalid username %q.\r\n", strings.TrimSpace(args[1]))
+		return false
+	}
 	u, err := user.LoadUser(oldName, s.GroupMap)
 	if err != nil {
 		fmt.Fprintf(s.Conn, "550 User %s not found.\r\n", oldName)
@@ -1751,14 +1985,21 @@ func (s *Session) HandleSiteRenUser(args []string) bool {
 		return false
 	}
 	oldPath := filepath.Join("etc", "users", oldName)
+	newPath := filepath.Join("etc", "users", newName)
 	u.Name = newName
 	if err := u.Save(); err != nil {
 		fmt.Fprintf(s.Conn, "550 Failed to save renamed user: %v\r\n", err)
 		return false
 	}
-	_ = os.Remove(oldPath)
 	if err := RenameUserInPasswd(oldName, newName, s.Config.PasswdFile); err != nil {
+		_ = os.Remove(newPath)
 		fmt.Fprintf(s.Conn, "550 Failed to rename passwd entry: %v\r\n", err)
+		return false
+	}
+	if err := os.Remove(oldPath); err != nil {
+		_ = RenameUserInPasswd(newName, oldName, s.Config.PasswdFile)
+		_ = os.Remove(newPath)
+		fmt.Fprintf(s.Conn, "550 Failed to remove old user file: %v\r\n", err)
 		return false
 	}
 	fmt.Fprintf(s.Conn, "200 User %s renamed to %s.\r\n", oldName, newName)
