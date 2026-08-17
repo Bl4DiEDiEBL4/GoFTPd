@@ -14,7 +14,15 @@ import (
 	"unicode/utf8"
 )
 
-const maxIRCLineBytes = 510
+const (
+	maxIRCLineBytes = 510
+	// IRC servers add a source prefix (":nick!user@host ") before relaying
+	// PRIVMSG/NOTICE lines to channel clients. If we fill the full client-to-
+	// server 512-byte budget, receivers can see the tail truncated. Keep message
+	// lines shorter so long announces split before the server has to cut them.
+	maxIRCDeliveredPrefixReserveBytes = 96
+	maxIRCMessageLineBytes            = maxIRCLineBytes - maxIRCDeliveredPrefixReserveBytes
+)
 
 type Bot struct {
 	Host string
@@ -391,8 +399,8 @@ func (b *Bot) sendEncryptedTarget(target, msg string, notice bool, enc *Blowfish
 	maxPlain := maxEncryptedPlainBytes(prefix)
 	for _, chunk := range splitTextByByteLimit(msg, maxPlain) {
 		encrypted := "+OK *" + enc.Encrypt(chunk)
-		if len(prefix)+len(encrypted) > maxIRCLineBytes {
-			encrypted = truncateIRCMessage(prefix, encrypted)
+		if len(prefix)+len(encrypted) > maxIRCMessageLineBytes {
+			encrypted = truncateIRCMessage(prefix, encrypted, maxIRCMessageLineBytes)
 		}
 		if err := b.SendRaw(prefix + encrypted); err != nil {
 			return err
@@ -402,7 +410,7 @@ func (b *Bot) sendEncryptedTarget(target, msg string, notice bool, enc *Blowfish
 }
 
 func splitIRCMessage(prefix, msg string) []string {
-	return splitTextByByteLimit(msg, maxIRCLineBytes-len(prefix))
+	return splitTextByByteLimit(msg, maxIRCMessageLineBytes-len(prefix))
 }
 
 func splitTextByByteLimit(msg string, max int) []string {
@@ -472,7 +480,7 @@ func safeUTF8Cut(s string, max int) int {
 }
 
 func maxEncryptedPlainBytes(prefix string) int {
-	maxCipher := maxIRCLineBytes - len(prefix) - len("+OK *")
+	maxCipher := maxIRCMessageLineBytes - len(prefix) - len("+OK *")
 	if maxCipher <= 0 {
 		return 0
 	}
@@ -498,8 +506,8 @@ func cbcBase64Len(plainLen int) int {
 	return ((raw + 2) / 3) * 4
 }
 
-func truncateIRCMessage(prefix, msg string) string {
-	max := maxIRCLineBytes - len(prefix)
+func truncateIRCMessage(prefix, msg string, lineMax int) string {
+	max := lineMax - len(prefix)
 	if max <= 0 || len(msg) <= max {
 		return msg
 	}
