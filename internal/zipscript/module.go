@@ -251,6 +251,10 @@ func NoSFVIndicator(cfg Config) string {
 	return strings.TrimSpace(cfg.Incomplete.NoSFVIndicator)
 }
 
+func IgnoreNoSFVMarker(cfg Config, releasePath, releaseName string) bool {
+	return matchesNameOrPathPatternList(releasePath, releaseName, cfg.Incomplete.NoSFVIgnore)
+}
+
 func CDIndicator(cfg Config) string {
 	if !IncompleteEnabled(cfg) {
 		return ""
@@ -313,7 +317,7 @@ func BuildStatusMarkerEntries(cfg Config, parentDir string, releases []StatusMar
 			hasContent = rel.VisibleCount > 0
 		}
 		expectsSFV := UsesSFVEntry(cfg, releasePath) && !UsesZipEntry(cfg, releasePath)
-		if hasContent && expectsSFV && noSFVPattern != "" && !rel.HasSFV {
+		if hasContent && expectsSFV && noSFVPattern != "" && !rel.HasSFV && !IgnoreNoSFVMarker(cfg, releasePath, name) {
 			appendStatusMarker(&out, seen, statusMarkerName(noSFVPattern, name), releasePath, rel.ModTime)
 		}
 		if hasContent && nfoPattern != "" && !rel.HasNFO {
@@ -355,6 +359,30 @@ func appendStatusMarker(out *[]StatusMarkerEntry, seen map[string]struct{}, name
 		LinkTarget: target,
 		ModTime:    modTime,
 	})
+}
+
+func matchesNameOrPathPatternList(releasePath, releaseName string, patterns []string) bool {
+	releasePath = strings.ToLower(normalizePath(releasePath))
+	releaseName = strings.ToLower(strings.TrimSpace(releaseName))
+	for _, pattern := range patterns {
+		pattern = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(pattern), "\\", "/"))
+		if pattern == "" {
+			continue
+		}
+		if strings.Contains(pattern, "/") {
+			if !strings.HasPrefix(pattern, "/") {
+				pattern = "/" + pattern
+			}
+			if ok, _ := path.Match(pattern, releasePath); ok {
+				return true
+			}
+			continue
+		}
+		if ok, _ := path.Match(pattern, releaseName); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func isDiscDirName(name string) bool {

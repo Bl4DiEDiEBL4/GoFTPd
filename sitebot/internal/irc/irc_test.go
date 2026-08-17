@@ -133,8 +133,12 @@ func TestSendMessageSplitsOverlongIRCLines(t *testing.T) {
 	}
 	for _, write := range conn.writes {
 		line := strings.TrimSuffix(write, "\r\n")
-		if len(line) > maxIRCLineBytes {
-			t.Fatalf("IRC line length = %d, want <= %d", len(line), maxIRCLineBytes)
+		if len(line) > maxIRCMessageLineBytes {
+			t.Fatalf("IRC message line length = %d, want <= %d", len(line), maxIRCMessageLineBytes)
+		}
+		delivered := ":Bot!sitebot@very.long.example.host.name " + line
+		if len(delivered) > maxIRCLineBytes {
+			t.Fatalf("delivered IRC line length = %d, want <= %d", len(delivered), maxIRCLineBytes)
 		}
 	}
 }
@@ -158,8 +162,12 @@ func TestSendMessageSplitsEncryptedOverlongIRCLines(t *testing.T) {
 	}
 	for _, write := range conn.writes {
 		line := strings.TrimSuffix(write, "\r\n")
-		if len(line) > maxIRCLineBytes {
-			t.Fatalf("IRC line length = %d, want <= %d", len(line), maxIRCLineBytes)
+		if len(line) > maxIRCMessageLineBytes {
+			t.Fatalf("IRC message line length = %d, want <= %d", len(line), maxIRCMessageLineBytes)
+		}
+		delivered := ":Bot!sitebot@very.long.example.host.name " + line
+		if len(delivered) > maxIRCLineBytes {
+			t.Fatalf("delivered IRC line length = %d, want <= %d", len(delivered), maxIRCLineBytes)
 		}
 		payload := strings.TrimPrefix(line, "PRIVMSG #chan :")
 		if !strings.HasPrefix(payload, "+OK *") {
