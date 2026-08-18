@@ -126,20 +126,21 @@ type SlaveManager struct {
 	remergeMode       atomic.Value
 	manualRemergeMode atomic.Value
 
-	listener        net.Listener
-	running         atomic.Bool
-	diskStatusHook  func(name string, status protocol.DiskStatus, online, available bool, sections []string)
-	securityHook    func(ip, remoteAddr, action, reason string, strikes, limit int, bannedUntil time.Time)
-	remergeHook     func(RemergeStatus)
-	authMu          sync.Mutex
-	authState       map[string]*slaveAuthState
-	remergeCRCJobs  sync.Map
-	remergeSFVJobs  sync.Map
-	remergeCRCMu    sync.RWMutex
-	remergeCRCSem   chan struct{}
-	remergeCRCSlots atomic.Int64
-	remergePauseAt  atomic.Int64
-	remergeResumeAt atomic.Int64
+	listener         net.Listener
+	running          atomic.Bool
+	diskStatusHook   func(name string, status protocol.DiskStatus, online, available bool, sections []string)
+	securityHook     func(ip, remoteAddr, action, reason string, strikes, limit int, bannedUntil time.Time)
+	remergeHook      func(RemergeStatus)
+	authMu           sync.Mutex
+	authState        map[string]*slaveAuthState
+	remergeCRCJobs   sync.Map
+	remergeSFVJobs   sync.Map
+	remergeCRCMu     sync.RWMutex
+	remergeCRCSem    chan struct{}
+	remergeCRCSlots  atomic.Int64
+	remergeCRCQueued atomic.Int64 // jobs waiting for / holding a worker slot, capped by remergeCRCMaxQueuedJobs
+	remergePauseAt   atomic.Int64
+	remergeResumeAt  atomic.Int64
 
 	enableRemergeChecksums atomic.Bool
 
@@ -1847,6 +1848,14 @@ func (sm *SlaveManager) scheduleRemergeSFVParse(rs *RemoteSlave, sfvPath string)
 	}()
 }
 
+// remergeCRCMaxQueuedJobs bounds how many CRC-refresh jobs may wait for a worker
+// slot at once. Each queued job used to be a parked goroutine holding a copy of
+// the release's SFV map; a site-wide remerge with a single worker thread queued
+// one per release dir (observed: ~24.5k parked goroutines, ~800MB heap). Beyond
+// the cap a dir is simply skipped -- the next remerge pass re-schedules it, and
+// verified releases queue nothing at all (see the early target check below).
+const remergeCRCMaxQueuedJobs = 512
+
 func (sm *SlaveManager) scheduleRemergeReleaseChecksumRefresh(rs *RemoteSlave, dirPath string, sfvMap map[string]uint32) {
 	if sm == nil || rs == nil || !rs.IsOnline() || !sm.enableRemergeChecksums.Load() || len(sfvMap) == 0 {
 		return
@@ -1856,26 +1865,35 @@ func (sm *SlaveManager) scheduleRemergeReleaseChecksumRefresh(rs *RemoteSlave, d
 		return
 	}
 	jobKey := rs.Name() + "|" + dirPath
+	// Decide whether there is anything to do BEFORE spawning: this is a cheap
+	// in-memory VFS read, and for an already-verified release (every file has a
+	// checksum) it returns nothing. Without this check every SFV dir on the site
+	// parked a goroutine per remerge pass just to discover it had no work.
+	targets := sm.remergeChecksumTargets(dirPath, sfvMap)
+	if len(targets) == 0 {
+		return
+	}
 	if _, loaded := sm.remergeCRCJobs.LoadOrStore(jobKey, struct{}{}); loaded {
 		return
 	}
-	sfvCopy := make(map[string]uint32, len(sfvMap))
-	for name, checksum := range sfvMap {
-		sfvCopy[name] = checksum
+	if queued := sm.remergeCRCQueued.Add(1); queued > remergeCRCMaxQueuedJobs {
+		sm.remergeCRCQueued.Add(-1)
+		sm.remergeCRCJobs.Delete(jobKey)
+		return
 	}
 	go func() {
+		defer sm.remergeCRCQueued.Add(-1)
 		defer sm.remergeCRCJobs.Delete(jobKey)
 		sem := sm.remergeChecksumSemaphore()
 		if sem != nil {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 		}
-		sm.refreshRemergeReleaseChecksums(rs, dirPath, sfvCopy)
+		sm.refreshRemergeReleaseChecksums(rs, dirPath, targets)
 	}()
 }
 
-func (sm *SlaveManager) refreshRemergeReleaseChecksums(rs *RemoteSlave, dirPath string, sfvMap map[string]uint32) {
-	targets := sm.remergeChecksumTargets(dirPath, sfvMap)
+func (sm *SlaveManager) refreshRemergeReleaseChecksums(rs *RemoteSlave, dirPath string, targets []remergeChecksumTarget) {
 	if len(targets) == 0 {
 		return
 	}
@@ -1884,6 +1902,11 @@ func (sm *SlaveManager) refreshRemergeReleaseChecksums(rs *RemoteSlave, dirPath 
 	for _, target := range targets {
 		if rs == nil || !rs.IsOnline() {
 			return
+		}
+		// The job may have waited in the queue; skip files that were verified
+		// (e.g. by an upload completing) in the meantime.
+		if f := sm.vfs.GetFile(target.filePath); f == nil || f.Checksum != 0 {
+			continue
 		}
 		index, err := IssueChecksum(rs, target.filePath)
 		if err != nil {

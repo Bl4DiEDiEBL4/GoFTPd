@@ -154,19 +154,23 @@ func createUserFromArgs(s *Session, username, plaintextPassword, primaryGroup st
 	newUser, err := user.LoadTemplate(username, defaultUserTemplate, s.GroupMap)
 	if err != nil {
 		newUser = &user.User{
-			Name:          username,
-			Flags:         "3",
-			Tagline:       "No Tagline Set",
-			HomeRoot:      "/site",
-			HomeDir:       "/",
-			Groups:        map[string]int{"NoGroup": 0},
-			PrimaryGroup:  "NoGroup",
-			Credits:       15000,
-			Ratio:         3,
-			LoginSlots:    16,
-			MaxSim:        0,
-			UploadSlots:   10,
-			DownloadSlots: 6,
+			Name:         username,
+			Flags:        "3",
+			Tagline:      "No Tagline Set",
+			HomeRoot:     "/site",
+			HomeDir:      "/",
+			Groups:       map[string]int{"NoGroup": 0},
+			PrimaryGroup: "NoGroup",
+			Credits:      15000,
+			Ratio:        3,
+			LoginSlots:   7,
+			MaxSim:       0,
+			// Few, fast streams beat many slow ones: a racer's line is fixed, so
+			// more upload slots just divide it into thinner streams that each take
+			// longer, hold a file locked for longer, and are more likely to trip
+			// the slow-transfer floor. 3 matches the drftpd/scene convention.
+			UploadSlots:   3,
+			DownloadSlots: 3,
 			GroupSlots:    0,
 			LeechSlots:    0,
 		}
