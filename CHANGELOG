@@ -85,8 +85,22 @@ Performance
   index instead of scanning the full VFS map.
 - Per-file -MISSING marker cleanup now runs in the post-upload path instead of
   blocking the upload 226 response.
+- New users now default to 7 login slots and 3 upload/download slots, matching
+  the intended racer-friendly stream limits instead of the older 16/10/6 values.
 
 Reliability
+- Fixed a massive goroutine/memory backlog from remerge CRC refresh. Every remerge
+  pass spawned one goroutine per SFV release dir, each parking on the worker
+  semaphore (default 1 thread) while holding a copy of the release's SFV map --
+  observed ~24.5k parked goroutines and ~800MB heap, with the slave continuously
+  re-reading files for CRC in the background against live races. The work check
+  now runs BEFORE spawning (verified releases queue nothing), queued jobs carry
+  only the unverified targets, the backlog is capped (skipped dirs are simply
+  re-scheduled by the next remerge pass), and a queued job re-skips files that
+  were verified while it waited.
+- Clamped sub-millisecond slave upload timings to 1ms so tiny files on very fast
+  links still enter race stats instead of being filtered out as zero-duration
+  transfers.
 - Fixed `slowkick` aborting a direct-slave transfer without disconnecting the FTP
   control session, which let the same user immediately claim another slot. Local
   and master-proxied data sockets are now tracked and closed during a kick too, so

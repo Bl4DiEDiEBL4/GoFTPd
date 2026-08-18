@@ -123,6 +123,57 @@ func TestStatusMarkersDoNotCreateNoSFVForZipSections(t *testing.T) {
 	}
 }
 
+func TestStatusMarkersCanIgnoreNoSFVByReleaseName(t *testing.T) {
+	cfg := Config{
+		Enabled: true,
+		Sections: SectionsConfig{
+			SFV:          []string{"/TV-DE/*"},
+			ReleaseCheck: []string{"/TV-DE/*"},
+		},
+		Incomplete: IncompleteConfig{
+			Enabled:        true,
+			NoSFVIndicator: "[no-sfv]-%0",
+			NFOIndicator:   "[no-nfo]-%0",
+			NoSFVIgnore:    []string{"*DIRFIX*"},
+		},
+	}
+
+	got := BuildStatusMarkerEntries(cfg, "/TV-DE", []StatusMarkerRelease{{
+		Name:      "Some.Show.S01E01.DIRFIX-GRP",
+		Path:      "/TV-DE/Some.Show.S01E01.DIRFIX-GRP",
+		FileCount: 1,
+	}})
+
+	if len(got) != 1 || got[0].Name != "[no-nfo]-Some.Show.S01E01.DIRFIX-GRP" {
+		t.Fatalf("expected no-sfv marker ignored but no-nfo kept, got %#v", got)
+	}
+}
+
+func TestStatusMarkersCanIgnoreNoSFVByPath(t *testing.T) {
+	cfg := Config{
+		Enabled: true,
+		Sections: SectionsConfig{
+			SFV:          []string{"/TV-DE/*"},
+			ReleaseCheck: []string{"/TV-DE/*"},
+		},
+		Incomplete: IncompleteConfig{
+			Enabled:        true,
+			NoSFVIndicator: "[no-sfv]-%0",
+			NoSFVIgnore:    []string{"/TV-DE/*DIRFIX*"},
+		},
+	}
+
+	got := BuildStatusMarkerEntries(cfg, "/TV-DE", []StatusMarkerRelease{{
+		Name:      "Some.Show.S01E01.DIRFIX-GRP",
+		Path:      "/TV-DE/Some.Show.S01E01.DIRFIX-GRP",
+		FileCount: 1,
+	}})
+
+	if len(got) != 0 {
+		t.Fatalf("expected no-sfv marker ignored by path, got %#v", got)
+	}
+}
+
 func TestStatusMarkersIgnoreProgressWithoutCurrentContent(t *testing.T) {
 	cfg := Config{
 		Enabled: true,
