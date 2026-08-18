@@ -409,6 +409,14 @@ func (t *Transfer) ReceiveFile(path string, position int64, expectedPeer string)
 	elapsedMs := int64(0)
 	if !dataStarted.IsZero() {
 		elapsedMs = time.Since(dataStarted).Milliseconds()
+		if elapsedMs <= 0 && transferred > 0 {
+			// A small file on a fast link can finish in under 1ms now that the
+			// timer starts at the first byte. Clamp to 1ms: the race DB drops
+			// records with duration_ms <= 0 and every stats query filters on
+			// duration_ms > 0, so a 0 here silently loses the file from race
+			// stats (intermittently missing stats on 10gbit LANs).
+			elapsedMs = 1
+		}
 	}
 
 	return protocol.TransferStatus{
