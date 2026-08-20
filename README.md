@@ -28,7 +28,9 @@ FTP client <--TLS data--> slave storage
     +-- FTP control --> master
 ```
 
-Proxy mode is available when slaves are not reachable by clients:
+Proxy mode is available when slaves are not reachable by clients. In this mode
+the FTP client or FXP peer connects to the master for data, and the master
+bridges the bytes to or from the selected slave:
 
 ```text
 FTP client <--TLS data--> master <--TCP--> slave storage
@@ -39,8 +41,16 @@ FTP client <--TLS data--> master <--TCP--> slave storage
 | Passthrough | client <-> slave | slaves have reachable passive ports |
 | Proxy | client <-> master <-> slave | only the master is reachable |
 
-FXP is supported in passthrough mode, including secure data channels using
-PASV/CPSV/PORT, SSCN, and PROT P.
+FXP is supported in both modes, including secure client-facing data channels
+using PASV/CPSV/PORT, SSCN, and PROT P. In passthrough mode the FXP peer talks
+directly to the selected slave. In proxy mode the FXP peer talks to the master,
+and the master proxies the data to or from slave storage.
+
+Zipscript, race stats, COMPLETE/STATS/NEW announces, missing markers, no-SFV
+rules, sitebot events, VFS updates, and checksum handling run through the same
+master-side flow in both modes. Proxy mode only changes the data path; it costs
+extra master bandwidth and CPU, so passthrough remains recommended whenever the
+slaves' passive ports are reachable.
 
 ## Quick Start
 
