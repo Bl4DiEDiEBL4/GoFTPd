@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"weaveftpd/internal/timeutil"
@@ -880,11 +881,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					return false
 				}
 				if bridge.FileExists(pretTarget) {
-					names := duplicateResponseFileNames(existingFileNamesForXDupe(bridge.ListDir(path.Dir(pretTarget))), path.Base(pretTarget))
-					for _, line := range xdupeResponseLines(s.XDupeMode, names) {
-						fmt.Fprintf(s.Conn, "553-%s\r\n", line)
-					}
-					fmt.Fprintf(s.Conn, "553 %s: file already exists (X-DUPE)\r\n", path.Base(pretTarget))
+					writeDuplicateFileResponse(s, path.Base(pretTarget), existingFileNamesForXDupe(bridge.ListDir(path.Dir(pretTarget))))
 					return false
 				}
 			}
@@ -1843,7 +1840,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				return false
 			}
 		} else if info, err := os.Stat(localPath); err == nil && !info.IsDir() {
-			if s.Config.XdupeEnabled {
+			if s.Config.XdupeEnabled && s.XDupeMode > 0 {
 				dirEntries, readErr := os.ReadDir(filepath.Dir(localPath))
 				if readErr == nil {
 					var names []string
@@ -1854,7 +1851,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						fmt.Fprintf(s.Conn, "553-%s\r\n", line)
 					}
 				}
-				fmt.Fprintf(s.Conn, "553 %s: file already exists (X-DUPE)\r\n", fileName)
+				fmt.Fprintf(s.Conn, "553 %s: file already exists\r\n", fileName)
 			} else {
 				fmt.Fprintf(s.Conn, "553 %s: file already exists\r\n", fileName)
 			}
@@ -2437,12 +2434,12 @@ func (s *Session) showGlobalStats(code string, final bool) {
 		}
 	}
 	if freeSpaceMB == 0 {
+		var stat syscall.Statfs_t
 		wd, _ := os.Getwd()
-		if mb, ok := freeSpaceMBForPath(s.Config.StoragePath); ok {
-			freeSpaceMB = mb
-		} else if mb, ok := freeSpaceMBForPath(wd); ok {
-			freeSpaceMB = mb
+		if err := syscall.Statfs(s.Config.StoragePath, &stat); err != nil {
+			_ = syscall.Statfs(wd, &stat)
 		}
+		freeSpaceMB = (stat.Bavail * uint64(stat.Bsize)) / 1024 / 1024
 	}
 	ulGiB := 0.0
 	dlGiB := 0.0
@@ -2760,11 +2757,11 @@ func writeDuplicateFileResponse(s *Session, fileName string, existingNames []str
 	if s == nil || s.Conn == nil {
 		return
 	}
-	if s.Config != nil && s.Config.XdupeEnabled {
+	if s.Config != nil && s.Config.XdupeEnabled && s.XDupeMode > 0 {
 		for _, line := range xdupeResponseLines(s.XDupeMode, duplicateResponseFileNames(existingNames, fileName)) {
 			fmt.Fprintf(s.Conn, "553-%s\r\n", line)
 		}
-		fmt.Fprintf(s.Conn, "553 %s: file already exists (X-DUPE)\r\n", fileName)
+		fmt.Fprintf(s.Conn, "553 %s: file already exists\r\n", fileName)
 		return
 	}
 	fmt.Fprintf(s.Conn, "553 %s: file already exists\r\n", fileName)
