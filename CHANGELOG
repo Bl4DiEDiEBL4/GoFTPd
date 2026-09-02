@@ -22,9 +22,9 @@ Security
   and `DELMASK` commands for deployments that cannot use mTLS. Global slave
   allow/deny lists remain additional filters rather than authentication.
 - Extended auth-state backups to include the persistent slave mask file.
-- Moved sensitive online/account lookup SITE commands (`BW`, `SEEN`, `LASTLOGIN`,
+- Moved sensitive online/account lookup SITE commands (`SEEN`, `LASTLOGIN`,
   `GROUPS`, `GROUP`, `GINFO`, `GRP`, and `TRAFFIC`) out of the public ACL
-  defaults and into the staff command group.
+  defaults and into the staff command group while keeping `BW` public.
 
 Reliability and race integrity
 - Treat duplicate race upload attempts for a file already being uploaded as a
