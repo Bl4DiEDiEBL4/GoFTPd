@@ -24,11 +24,31 @@ func TestFormatUserBandwidthLineUsesMatchedSlaveStat(t *testing.T) {
 	}}
 
 	line := formatUserBandwidthLine(snap, stats)
-	if !strings.Contains(line, "25.00MB/s via LOCAL") {
+	if !strings.Contains(line, "209.72Mb/s via LOCAL") {
 		t.Fatalf("expected matched slave speed in line, got %q", line)
 	}
-	if strings.Contains(line, "0.00MB/s") {
+	if strings.Contains(line, "0.00Gb/s") {
 		t.Fatalf("expected non-zero slave speed, got %q", line)
+	}
+}
+
+func TestFormatBandwidthSpeedUsesNetworkUnits(t *testing.T) {
+	tests := []struct {
+		name           string
+		bytesPerSecond float64
+		want           string
+	}{
+		{name: "zero", bytesPerSecond: 0, want: "0.00Gb/s"},
+		{name: "megabit", bytesPerSecond: 25 * 1024 * 1024, want: "209.72Mb/s"},
+		{name: "gigabit", bytesPerSecond: 125_000_000, want: "1.00Gb/s"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatBandwidthSpeed(tt.bytesPerSecond); got != tt.want {
+				t.Fatalf("formatBandwidthSpeed(%v) = %q, want %q", tt.bytesPerSecond, got, tt.want)
+			}
+		})
 	}
 }
 
