@@ -32,6 +32,9 @@ Reliability and race integrity
   racer expectations from glFTPd-style sites.
 - Limit duplicate X-DUPE text to FTP sessions that enabled `SITE XDUPE`, so
   plain racers still receive a normal `553 File exists` response.
+- Report still-uploading race collisions as `553 file is being uploaded by
+  another user`, which cbftp treats as a duplicate without exposing user
+  names.
 - Multi-disc races now follow pzs-ng announce naming: `CD1`, `DISC1`, `DISK1`,
   and `DVD1` races retain independent totals but display as
   `Parent.Release/CD1` instead of losing the parent release name.
