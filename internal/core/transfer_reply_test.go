@@ -20,6 +20,30 @@ func TestTemporaryUploadBusyResponseIsRetryable(t *testing.T) {
 	}
 }
 
+func TestUploadAlreadyInProgressResponseLooksLikeDuplicate(t *testing.T) {
+	conn := &bufferConn{}
+	s := &Session{
+		Conn: conn,
+		Config: &Config{
+			XdupeEnabled: true,
+		},
+		XDupeMode: 3,
+	}
+
+	writeUploadAlreadyInProgressResponse(s, "file.r00", []string{"file.r01"})
+
+	got := conn.String()
+	if !strings.Contains(got, "553-X-DUPE: file.r00") {
+		t.Fatalf("expected in-progress file in X-DUPE response, got %q", got)
+	}
+	if !strings.Contains(got, "553 file.r00: file already exists (X-DUPE)") {
+		t.Fatalf("expected permanent duplicate response, got %q", got)
+	}
+	if strings.Contains(got, "450 ") || strings.Contains(strings.ToLower(got), "retry later") {
+		t.Fatalf("in-progress upload should not ask racing clients to retry the same file, got %q", got)
+	}
+}
+
 func TestValidationDeleteResponsesAreTransferFailures(t *testing.T) {
 	var zip bytes.Buffer
 	writeZipIntegrityFailureDeleteResponse(&zip)

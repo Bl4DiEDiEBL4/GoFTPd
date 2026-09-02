@@ -876,7 +876,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				}
 				pretTarget = bridge.ResolvePath(pretTarget)
 				if uploadPathReserved(pretTarget) || pendingUploadForReply(bridge, pretTarget) {
-					writeTemporaryUploadBusyResponse(s.Conn, path.Base(pretTarget))
+					writeUploadAlreadyInProgressResponse(s, path.Base(pretTarget), existingFileNamesForXDupe(bridge.ListDir(path.Dir(pretTarget))))
 					return false
 				}
 				if bridge.FileExists(pretTarget) {
@@ -1545,16 +1545,16 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			return false
 		}
 
+		var xdupeNames []string
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			fileExists := false
-			var xdupeNames []string
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
 				if err := ensureUploadDirsForEvent(s, bridge, uploadDir); err != nil {
 					fmt.Fprintf(s.Conn, "550 Upload prepare failed: %v\r\n", err)
 					return false
 				}
 				if pendingUploadForReply(bridge, uploadPath) {
-					writeTemporaryUploadBusyResponse(s.Conn, fileName)
+					writeUploadAlreadyInProgressResponse(s, fileName, existingFileNamesForXDupe(getMasterUploadEntries(bridge)))
 					return false
 				}
 				fileExists = bridge.FileExists(uploadPath)
@@ -1587,7 +1587,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			}
 		}
 		if !reserveUploadPath(uploadPath) {
-			writeTemporaryUploadBusyResponse(s.Conn, fileName)
+			writeUploadAlreadyInProgressResponse(s, fileName, xdupeNames)
 			return false
 		}
 		defer releaseUploadPath(uploadPath)
