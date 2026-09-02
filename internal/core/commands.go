@@ -1851,7 +1851,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						fmt.Fprintf(s.Conn, "553-%s\r\n", line)
 					}
 				}
-				fmt.Fprintf(s.Conn, "553 %s: file already exists (X-DUPE)\r\n", fileName)
+				fmt.Fprintf(s.Conn, "553 %s: file already exists\r\n", fileName)
 			} else {
 				fmt.Fprintf(s.Conn, "553 %s: file already exists\r\n", fileName)
 			}
@@ -2761,7 +2761,7 @@ func writeDuplicateFileResponse(s *Session, fileName string, existingNames []str
 		for _, line := range xdupeResponseLines(s.XDupeMode, duplicateResponseFileNames(existingNames, fileName)) {
 			fmt.Fprintf(s.Conn, "553-%s\r\n", line)
 		}
-		fmt.Fprintf(s.Conn, "553 %s: file already exists (X-DUPE)\r\n", fileName)
+		fmt.Fprintf(s.Conn, "553 %s: file already exists\r\n", fileName)
 		return
 	}
 	fmt.Fprintf(s.Conn, "553 %s: file already exists\r\n", fileName)

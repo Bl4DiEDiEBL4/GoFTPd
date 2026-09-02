@@ -36,8 +36,11 @@ func TestUploadAlreadyInProgressResponseLooksLikeDuplicate(t *testing.T) {
 	if !strings.Contains(got, "553-X-DUPE: file.r00") {
 		t.Fatalf("expected in-progress file in X-DUPE response, got %q", got)
 	}
-	if !strings.Contains(got, "553 file.r00: file already exists (X-DUPE)") {
+	if !strings.Contains(got, "553 file.r00: file already exists\r\n") {
 		t.Fatalf("expected permanent duplicate response, got %q", got)
+	}
+	if strings.Contains(got, "(X-DUPE)") {
+		t.Fatalf("final duplicate response should not include an X-DUPE suffix, got %q", got)
 	}
 	if strings.Contains(got, "450 ") || strings.Contains(strings.ToLower(got), "retry later") {
 		t.Fatalf("in-progress upload should not ask racing clients to retry the same file, got %q", got)
