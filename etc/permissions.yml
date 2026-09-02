@@ -89,6 +89,7 @@ rules:
     - allow:
         - HELP
         - RULES
+        - BW
         - STAT
         - USER
         - SEARCH
@@ -125,7 +126,6 @@ rules:
     - allow:
         - WHO
         - SWHO
-        - BW
         - SEEN
         - LASTLOGIN
         - GROUPS
