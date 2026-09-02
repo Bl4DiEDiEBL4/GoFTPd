@@ -36,7 +36,7 @@ func TestUploadAlreadyInProgressResponseLooksLikeDuplicate(t *testing.T) {
 	if !strings.Contains(got, "553-X-DUPE: file.r00") {
 		t.Fatalf("expected in-progress file in X-DUPE response, got %q", got)
 	}
-	if !strings.Contains(got, "553 file.r00: file already exists\r\n") {
+	if !strings.Contains(got, "553 file.r00: File exists.\r\n") {
 		t.Fatalf("expected permanent duplicate response, got %q", got)
 	}
 	if strings.Contains(got, "(X-DUPE)") {
@@ -59,7 +59,7 @@ func TestDuplicateResponseDoesNotEmitXDupeWhenSessionModeDisabled(t *testing.T) 
 	writeDuplicateFileResponse(s, "file.r00", []string{"file.r01"})
 
 	got := conn.String()
-	if got != "553 file.r00: file already exists\r\n" {
+	if got != "553 file.r00: File exists.\r\n" {
 		t.Fatalf("expected plain duplicate response when SITE XDUPE is off, got %q", got)
 	}
 	if strings.Contains(strings.ToUpper(got), "X-DUPE") {
