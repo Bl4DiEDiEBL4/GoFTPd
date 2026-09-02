@@ -22,8 +22,14 @@ Security
   and `DELMASK` commands for deployments that cannot use mTLS. Global slave
   allow/deny lists remain additional filters rather than authentication.
 - Extended auth-state backups to include the persistent slave mask file.
+- Moved sensitive online/account lookup SITE commands (`BW`, `SEEN`, `LASTLOGIN`,
+  `GROUPS`, `GROUP`, `GINFO`, `GRP`, and `TRAFFIC`) out of the public ACL
+  defaults and into the staff command group.
 
 Reliability and race integrity
+- Treat duplicate race upload attempts for a file already being uploaded as a
+  normal duplicate/X-DUPE reply instead of a temporary retry response, matching
+  racer expectations from glFTPd-style sites.
 - Multi-disc races now follow pzs-ng announce naming: `CD1`, `DISC1`, `DISK1`,
   and `DVD1` races retain independent totals but display as
   `Parent.Release/CD1` instead of losing the parent release name.
@@ -89,6 +95,8 @@ Performance
   the intended racer-friendly stream limits instead of the older 16/10/6 values.
 
 Reliability
+- Fixed MP3 audio-info genres tagged as ID3 numeric codes such as `(15)`, which
+  are now announced as their text names (`Rap`) instead of the raw tag value.
 - Fixed a massive goroutine/memory backlog from remerge CRC refresh. Every remerge
   pass spawned one goroutine per SFV release dir, each parking on the worker
   semaphore (default 1 thread) while holding a copy of the release's SFV map --

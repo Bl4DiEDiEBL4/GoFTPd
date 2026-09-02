@@ -25,6 +25,25 @@ var mp3SampleRates = [4][3]int{
 	3: {44100, 48000, 32000},
 }
 
+var id3v1Genres = []string{
+	"Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop",
+	"Jazz", "Metal", "New Age", "Oldies", "Other", "Pop", "R&B", "Rap",
+	"Reggae", "Rock", "Techno", "Industrial", "Alternative", "Ska", "Death Metal", "Pranks",
+	"Soundtrack", "Euro-Techno", "Ambient", "Trip-Hop", "Vocal", "Jazz+Funk", "Fusion", "Trance",
+	"Classical", "Instrumental", "Acid", "House", "Game", "Sound Clip", "Gospel", "Noise",
+	"AlternRock", "Bass", "Soul", "Punk", "Space", "Meditative", "Instrumental Pop", "Instrumental Rock",
+	"Ethnic", "Gothic", "Darkwave", "Techno-Industrial", "Electronic", "Pop-Folk", "Eurodance", "Dream",
+	"Southern Rock", "Comedy", "Cult", "Gangsta", "Top 40", "Christian Rap", "Pop/Funk", "Jungle",
+	"Native American", "Cabaret", "New Wave", "Psychedelic", "Rave", "Showtunes", "Trailer", "Lo-Fi",
+	"Tribal", "Acid Punk", "Acid Jazz", "Polka", "Retro", "Musical", "Rock & Roll", "Hard Rock",
+	"Folk", "Folk-Rock", "National Folk", "Swing", "Fast Fusion", "Bebob", "Latin", "Revival",
+	"Celtic", "Bluegrass", "Avantgarde", "Gothic Rock", "Progressive Rock", "Psychedelic Rock", "Symphonic Rock", "Slow Rock",
+	"Big Band", "Chorus", "Easy Listening", "Acoustic", "Humour", "Speech", "Chanson", "Opera",
+	"Chamber Music", "Sonata", "Symphony", "Booty Bass", "Primus", "Porn Groove", "Satire", "Slow Jam",
+	"Club", "Tango", "Samba", "Folklore", "Ballad", "Power Ballad", "Rhythmic Soul", "Freestyle",
+	"Duet", "Punk Rock", "Drum Solo", "A Cappella", "Euro-House", "Dance Hall",
+}
+
 func probeFastAudioMetadata(fullPath string) (map[string]string, bool, error) {
 	switch strings.ToLower(strings.TrimPrefix(filepath.Ext(fullPath), ".")) {
 	case "mp3":
@@ -186,7 +205,7 @@ func readID3v2Tags(f *os.File, fields map[string]string) (int64, error) {
 			case "TALB":
 				setIfEmpty(fields, "album", text)
 			case "TCON":
-				setIfEmpty(fields, "genre", text)
+				setIfEmpty(fields, "genre", normalizeID3Genre(text))
 			case "TYER", "TDRC":
 				setIfEmpty(fields, "year", text)
 			case "TRCK":
@@ -213,6 +232,9 @@ func readID3v1Tags(f *os.File, fileSize int64, fields map[string]string) {
 	setIfEmpty(fields, "artist", trimNullLatin1(buf[33:63]))
 	setIfEmpty(fields, "album", trimNullLatin1(buf[63:93]))
 	setIfEmpty(fields, "year", trimNullLatin1(buf[93:97]))
+	if genre := id3GenreByIndex(int(buf[127])); genre != "" {
+		setIfEmpty(fields, "genre", genre)
+	}
 }
 
 func decodeID3Text(payload []byte) string {
@@ -277,6 +299,78 @@ func setIfEmpty(fields map[string]string, key, value string) {
 		return
 	}
 	fields[key] = value
+}
+
+func normalizeID3Genre(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if genre := id3GenreToken(value); genre != "" {
+		return genre
+	}
+
+	rest := value
+	genres := make([]string, 0, 2)
+	for strings.HasPrefix(rest, "(") {
+		end := strings.IndexByte(rest, ')')
+		if end <= 1 {
+			break
+		}
+		genre := id3GenreToken(rest[1:end])
+		if genre == "" {
+			break
+		}
+		genres = appendUniqueString(genres, genre)
+		rest = strings.TrimSpace(rest[end+1:])
+	}
+	if rest != "" {
+		if genre := id3GenreToken(rest); genre != "" {
+			genres = appendUniqueString(genres, genre)
+			if len(genres) > 0 {
+				return strings.Join(genres, ", ")
+			}
+		}
+		if len(genres) > 0 && !strings.HasPrefix(rest, "(") {
+			return rest
+		}
+		return value
+	}
+	if len(genres) > 0 {
+		return strings.Join(genres, ", ")
+	}
+	return value
+}
+
+func id3GenreToken(token string) string {
+	token = strings.TrimSpace(token)
+	switch strings.ToUpper(token) {
+	case "RX":
+		return "Remix"
+	case "CR":
+		return "Cover"
+	}
+	index, err := strconv.Atoi(token)
+	if err != nil {
+		return ""
+	}
+	return id3GenreByIndex(index)
+}
+
+func id3GenreByIndex(index int) string {
+	if index < 0 || index >= len(id3v1Genres) {
+		return ""
+	}
+	return id3v1Genres[index]
+}
+
+func appendUniqueString(values []string, value string) []string {
+	for _, existing := range values {
+		if strings.EqualFold(existing, value) {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func parseMP3FrameHeader(h uint32) (bitrate int, sampleRate int, mode int, frameLen int, ok bool) {

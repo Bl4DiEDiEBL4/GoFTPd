@@ -25,6 +25,10 @@ func writeTemporaryUploadBusyResponse(conn io.Writer, fileName string) {
 	fmt.Fprintf(conn, "450 %s: upload already in progress, retry later\r\n", fileName)
 }
 
+func writeUploadAlreadyInProgressResponse(s *Session, fileName string, existingNames []string) {
+	writeDuplicateFileResponse(s, fileName, existingNames)
+}
+
 func writeZipIntegrityFailureDeleteResponse(conn io.Writer) {
 	if conn == nil {
 		return
