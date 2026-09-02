@@ -881,11 +881,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 					return false
 				}
 				if bridge.FileExists(pretTarget) {
-					names := duplicateResponseFileNames(existingFileNamesForXDupe(bridge.ListDir(path.Dir(pretTarget))), path.Base(pretTarget))
-					for _, line := range xdupeResponseLines(s.XDupeMode, names) {
-						fmt.Fprintf(s.Conn, "553-%s\r\n", line)
-					}
-					fmt.Fprintf(s.Conn, "553 %s: file already exists (X-DUPE)\r\n", path.Base(pretTarget))
+					writeDuplicateFileResponse(s, path.Base(pretTarget), existingFileNamesForXDupe(bridge.ListDir(path.Dir(pretTarget))))
 					return false
 				}
 			}
@@ -1844,7 +1840,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				return false
 			}
 		} else if info, err := os.Stat(localPath); err == nil && !info.IsDir() {
-			if s.Config.XdupeEnabled {
+			if s.Config.XdupeEnabled && s.XDupeMode > 0 {
 				dirEntries, readErr := os.ReadDir(filepath.Dir(localPath))
 				if readErr == nil {
 					var names []string
@@ -2761,7 +2757,7 @@ func writeDuplicateFileResponse(s *Session, fileName string, existingNames []str
 	if s == nil || s.Conn == nil {
 		return
 	}
-	if s.Config != nil && s.Config.XdupeEnabled {
+	if s.Config != nil && s.Config.XdupeEnabled && s.XDupeMode > 0 {
 		for _, line := range xdupeResponseLines(s.XDupeMode, duplicateResponseFileNames(existingNames, fileName)) {
 			fmt.Fprintf(s.Conn, "553-%s\r\n", line)
 		}

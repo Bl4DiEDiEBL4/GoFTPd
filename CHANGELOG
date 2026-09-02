@@ -30,6 +30,8 @@ Reliability and race integrity
 - Treat duplicate race upload attempts for a file already being uploaded as a
   normal duplicate/X-DUPE reply instead of a temporary retry response, matching
   racer expectations from glFTPd-style sites.
+- Limit duplicate X-DUPE text to FTP sessions that enabled `SITE XDUPE`, so
+  plain racers still receive a normal `553 file already exists` response.
 - Multi-disc races now follow pzs-ng announce naming: `CD1`, `DISC1`, `DISK1`,
   and `DVD1` races retain independent totals but display as
   `Parent.Release/CD1` instead of losing the parent release name.

@@ -44,6 +44,26 @@ func TestUploadAlreadyInProgressResponseLooksLikeDuplicate(t *testing.T) {
 	}
 }
 
+func TestDuplicateResponseDoesNotEmitXDupeWhenSessionModeDisabled(t *testing.T) {
+	conn := &bufferConn{}
+	s := &Session{
+		Conn: conn,
+		Config: &Config{
+			XdupeEnabled: true,
+		},
+	}
+
+	writeDuplicateFileResponse(s, "file.r00", []string{"file.r01"})
+
+	got := conn.String()
+	if got != "553 file.r00: file already exists\r\n" {
+		t.Fatalf("expected plain duplicate response when SITE XDUPE is off, got %q", got)
+	}
+	if strings.Contains(strings.ToUpper(got), "X-DUPE") {
+		t.Fatalf("did not expect X-DUPE text when session mode is disabled, got %q", got)
+	}
+}
+
 func TestValidationDeleteResponsesAreTransferFailures(t *testing.T) {
 	var zip bytes.Buffer
 	writeZipIntegrityFailureDeleteResponse(&zip)
