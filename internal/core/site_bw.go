@@ -190,9 +190,14 @@ func snapshotTransferSpeedBytes(snap sessionSnapshot) float64 {
 
 func formatBandwidthSpeed(bytesPerSecond float64) string {
 	if bytesPerSecond <= 0 {
-		return "0.00MB/s"
+		return "0.00Gb/s"
 	}
-	return fmt.Sprintf("%.2fMB/s", bytesPerSecond/(1024.0*1024.0))
+	bitsPerSecond := bytesPerSecond * 8
+	gigabitsPerSecond := bitsPerSecond / 1_000_000_000.0
+	if gigabitsPerSecond >= 1 {
+		return fmt.Sprintf("%.2fGb/s", gigabitsPerSecond)
+	}
+	return fmt.Sprintf("%.2fMb/s", bitsPerSecond/1_000_000.0)
 }
 
 func formatUserBandwidthLine(snap sessionSnapshot, slaveStats []LiveTransferStat) string {

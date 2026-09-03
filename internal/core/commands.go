@@ -877,15 +877,11 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				}
 				pretTarget = bridge.ResolvePath(pretTarget)
 				if uploadPathReserved(pretTarget) || pendingUploadForReply(bridge, pretTarget) {
-					writeTemporaryUploadBusyResponse(s.Conn, path.Base(pretTarget))
+					writeUploadAlreadyInProgressResponse(s, path.Base(pretTarget), existingFileNamesForXDupe(bridge.ListDir(path.Dir(pretTarget))))
 					return false
 				}
 				if bridge.FileExists(pretTarget) {
-					names := duplicateResponseFileNames(existingFileNamesForXDupe(bridge.ListDir(path.Dir(pretTarget))), path.Base(pretTarget))
-					for _, line := range xdupeResponseLines(s.XDupeMode, names) {
-						fmt.Fprintf(s.Conn, "553-%s\r\n", line)
-					}
-					fmt.Fprintf(s.Conn, "553 %s: file already exists (X-DUPE)\r\n", path.Base(pretTarget))
+					writeDuplicateFileResponse(s, path.Base(pretTarget), existingFileNamesForXDupe(bridge.ListDir(path.Dir(pretTarget))))
 					return false
 				}
 			}
@@ -1546,16 +1542,16 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			return false
 		}
 
+		var xdupeNames []string
 		if s.Config.Mode == "master" && s.MasterManager != nil {
 			fileExists := false
-			var xdupeNames []string
 			if bridge, ok := s.MasterManager.(MasterBridge); ok {
 				if err := ensureUploadDirsForEvent(s, bridge, uploadDir); err != nil {
 					fmt.Fprintf(s.Conn, "550 Upload prepare failed: %v\r\n", err)
 					return false
 				}
 				if pendingUploadForReply(bridge, uploadPath) {
-					writeTemporaryUploadBusyResponse(s.Conn, fileName)
+					writeUploadAlreadyInProgressResponse(s, fileName, existingFileNamesForXDupe(getMasterUploadEntries(bridge)))
 					return false
 				}
 				fileExists = bridge.FileExists(uploadPath)
@@ -1588,7 +1584,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 			}
 		}
 		if !reserveUploadPath(uploadPath) {
-			writeTemporaryUploadBusyResponse(s.Conn, fileName)
+			writeUploadAlreadyInProgressResponse(s, fileName, xdupeNames)
 			return false
 		}
 		defer releaseUploadPath(uploadPath)
@@ -1844,7 +1840,7 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 				return false
 			}
 		} else if info, err := os.Stat(localPath); err == nil && !info.IsDir() {
-			if s.Config.XdupeEnabled {
+			if s.Config.XdupeEnabled && s.XDupeMode > 0 {
 				dirEntries, readErr := os.ReadDir(filepath.Dir(localPath))
 				if readErr == nil {
 					var names []string
@@ -1855,9 +1851,9 @@ func (s *Session) processCommand(cmd string, args []string, tlsConfig *tls.Confi
 						fmt.Fprintf(s.Conn, "553-%s\r\n", line)
 					}
 				}
-				fmt.Fprintf(s.Conn, "553 %s: file already exists (X-DUPE)\r\n", fileName)
+				fmt.Fprintf(s.Conn, "553 %s: File exists.\r\n", fileName)
 			} else {
-				fmt.Fprintf(s.Conn, "553 %s: file already exists\r\n", fileName)
+				fmt.Fprintf(s.Conn, "553 %s: File exists.\r\n", fileName)
 			}
 			return false
 		}
@@ -2761,14 +2757,14 @@ func writeDuplicateFileResponse(s *Session, fileName string, existingNames []str
 	if s == nil || s.Conn == nil {
 		return
 	}
-	if s.Config != nil && s.Config.XdupeEnabled {
+	if s.Config != nil && s.Config.XdupeEnabled && s.XDupeMode > 0 {
 		for _, line := range xdupeResponseLines(s.XDupeMode, duplicateResponseFileNames(existingNames, fileName)) {
 			fmt.Fprintf(s.Conn, "553-%s\r\n", line)
 		}
-		fmt.Fprintf(s.Conn, "553 %s: file already exists (X-DUPE)\r\n", fileName)
+		fmt.Fprintf(s.Conn, "553 %s: File exists.\r\n", fileName)
 		return
 	}
-	fmt.Fprintf(s.Conn, "553 %s: file already exists\r\n", fileName)
+	fmt.Fprintf(s.Conn, "553 %s: File exists.\r\n", fileName)
 }
 
 func writeDuplicateUploadResponse(s *Session, bridge MasterBridge, uploadDir, fileName string, err error) bool {

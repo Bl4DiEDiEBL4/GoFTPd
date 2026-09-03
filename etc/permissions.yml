@@ -92,12 +92,6 @@ rules:
         - BW
         - STAT
         - USER
-        - SEEN
-        - LASTLOGIN
-        - GROUPS
-        - GROUP
-        - GINFO
-        - TRAFFIC
         - SEARCH
         - RACE
         - RESCAN
@@ -106,7 +100,6 @@ rules:
         - INVITE
         - BLOWFISH
         - IRC
-        - GRP
         - TAGLINE
         - ALLUP
         - ALLDN
@@ -133,6 +126,13 @@ rules:
     - allow:
         - WHO
         - SWHO
+        - SEEN
+        - LASTLOGIN
+        - GROUPS
+        - GROUP
+        - GINFO
+        - GRP
+        - TRAFFIC
       required: $staff
 
     - allow:

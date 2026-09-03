@@ -20,6 +20,76 @@ func TestTemporaryUploadBusyResponseIsRetryable(t *testing.T) {
 	}
 }
 
+func TestUploadAlreadyInProgressResponseLooksLikeDuplicate(t *testing.T) {
+	conn := &bufferConn{}
+	s := &Session{
+		Conn: conn,
+		Config: &Config{
+			XdupeEnabled: true,
+		},
+		XDupeMode: 3,
+	}
+
+	writeUploadAlreadyInProgressResponse(s, "file.r00", []string{"file.r01"})
+
+	got := conn.String()
+	if !strings.Contains(got, "553-X-DUPE: file.r00") {
+		t.Fatalf("expected in-progress file in X-DUPE response, got %q", got)
+	}
+	if !strings.Contains(got, "553 file.r00: file is being uploaded by another user\r\n") {
+		t.Fatalf("expected in-progress duplicate response, got %q", got)
+	}
+	if strings.Contains(got, "(X-DUPE)") {
+		t.Fatalf("final duplicate response should not include an X-DUPE suffix, got %q", got)
+	}
+	if strings.Contains(got, "450 ") || strings.Contains(strings.ToLower(got), "retry later") {
+		t.Fatalf("in-progress upload should not ask racing clients to retry the same file, got %q", got)
+	}
+}
+
+func TestUploadAlreadyInProgressResponseLooksLikeDuplicateWithoutXDupe(t *testing.T) {
+	conn := &bufferConn{}
+	s := &Session{
+		Conn: conn,
+		Config: &Config{
+			XdupeEnabled: true,
+		},
+	}
+
+	writeUploadAlreadyInProgressResponse(s, "file.r00", []string{"file.r01"})
+
+	got := conn.String()
+	if got != "553 file.r00: file is being uploaded by another user\r\n" {
+		t.Fatalf("expected plain in-progress duplicate response when SITE XDUPE is off, got %q", got)
+	}
+	if !strings.Contains(got, "uploaded by") {
+		t.Fatalf("cbftp duplicate detection expects 'uploaded by' in non-XDUPE replies, got %q", got)
+	}
+	if strings.Contains(strings.ToUpper(got), "X-DUPE") {
+		t.Fatalf("did not expect X-DUPE text when session mode is disabled, got %q", got)
+	}
+}
+
+func TestDuplicateResponseDoesNotEmitXDupeWhenSessionModeDisabled(t *testing.T) {
+	conn := &bufferConn{}
+	s := &Session{
+		Conn: conn,
+		Config: &Config{
+			XdupeEnabled: true,
+		},
+	}
+
+	writeDuplicateFileResponse(s, "file.r00", []string{"file.r01"})
+
+	got := conn.String()
+	if got != "553 file.r00: File exists.\r\n" {
+		t.Fatalf("expected plain duplicate response when SITE XDUPE is off, got %q", got)
+	}
+	if strings.Contains(strings.ToUpper(got), "X-DUPE") {
+		t.Fatalf("did not expect X-DUPE text when session mode is disabled, got %q", got)
+	}
+}
+
 func TestValidationDeleteResponsesAreTransferFailures(t *testing.T) {
 	var zip bytes.Buffer
 	writeZipIntegrityFailureDeleteResponse(&zip)

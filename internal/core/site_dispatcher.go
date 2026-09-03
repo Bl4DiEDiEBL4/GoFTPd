@@ -200,7 +200,12 @@ func requiredSiteCommandFlags(command string) string {
 	switch strings.ToUpper(strings.TrimSpace(command)) {
 	case "WHO",
 		"SWHO",
-		"BW",
+		"SEEN",
+		"LASTLOGIN",
+		"GROUPS",
+		"GROUP",
+		"GINFO",
+		"GRP",
 		"ADDUSER",
 		"DELUSER",
 		"READD",

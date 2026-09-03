@@ -25,6 +25,18 @@ func writeTemporaryUploadBusyResponse(conn io.Writer, fileName string) {
 	fmt.Fprintf(conn, "450 %s: upload already in progress, retry later\r\n", fileName)
 }
 
+func writeUploadAlreadyInProgressResponse(s *Session, fileName string, existingNames []string) {
+	if s == nil || s.Conn == nil {
+		return
+	}
+	if s.Config != nil && s.Config.XdupeEnabled && s.XDupeMode > 0 {
+		for _, line := range xdupeResponseLines(s.XDupeMode, duplicateResponseFileNames(existingNames, fileName)) {
+			fmt.Fprintf(s.Conn, "553-%s\r\n", line)
+		}
+	}
+	fmt.Fprintf(s.Conn, "553 %s: file is being uploaded by another user\r\n", fileName)
+}
+
 func writeZipIntegrityFailureDeleteResponse(conn io.Writer) {
 	if conn == nil {
 		return
